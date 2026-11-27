@@ -7,7 +7,6 @@ from collections import deque
 import os
 from pathlib import Path
 import shlex
-import shutil
 import subprocess
 import threading
 import time
@@ -16,160 +15,22 @@ from urllib.parse import urlparse
 
 import requests
 
+from ai.tts.adapters.qwen3_tts_discovery import (
+    _LANGUAGE_ALIASES,
+    _LOCAL_HOSTS,
+    _QUANT_PREFERENCE,
+    _is_local_server_url,
+    _normalize_qwen3_tts_lang,
+    _pick_gguf,
+    _rank_gguf,
+    _resolve_server_executable,
+    discover_qwen3_tts_files,
+)
 from core.adapters import builtin_adapter
 from core.storage.layout import StorageLayout
 from sdk.adapters import TTSAdapter
 
 DEFAULT_QWEN3_TTS_URL = "http://127.0.0.1:9882/"
-_LOCAL_HOSTS = frozenset({"", "127.0.0.1", "localhost", "0.0.0.0", "::1"})
-_QUANT_PREFERENCE = ("q8_0", "q4_k_m", "bf16", "f16")
-
-_LANGUAGE_ALIASES = {
-    "": "",
-    "auto": "",
-    "all_ja": "japanese",
-    "all_ko": "korean",
-    "all_yue": "cantonese",
-    "all_zh": "chinese",
-    "cantonese": "cantonese",
-    "chinese": "chinese",
-    "cn": "chinese",
-    "de": "german",
-    "de_de": "german",
-    "en": "english",
-    "en_gb": "english",
-    "en_us": "english",
-    "english": "english",
-    "es": "spanish",
-    "fr": "french",
-    "french": "french",
-    "german": "german",
-    "it": "italian",
-    "italian": "italian",
-    "ja": "japanese",
-    "ja_jp": "japanese",
-    "japanese": "japanese",
-    "jp": "japanese",
-    "ko": "korean",
-    "ko_kr": "korean",
-    "korean": "korean",
-    "portuguese": "portuguese",
-    "pt": "portuguese",
-    "pt_br": "portuguese",
-    "ru": "russian",
-    "russian": "russian",
-    "spanish": "spanish",
-    "yue": "cantonese",
-    "zh": "chinese",
-    "zh_cn": "chinese",
-    "zh_hk": "cantonese",
-    "zh_tw": "chinese",
-}
-
-
-def _is_local_server_url(url: str) -> bool:
-    host = (urlparse(url).hostname or "").lower()
-    return host in _LOCAL_HOSTS
-
-
-def _normalize_qwen3_tts_lang(raw: str | None) -> str:
-    clean = str(raw or "").strip().lower().replace("-", "_")
-    if clean in _LANGUAGE_ALIASES:
-        return _LANGUAGE_ALIASES[clean]
-    base = clean.split("_", 1)[0]
-    return _LANGUAGE_ALIASES.get(base, clean)
-
-
-def _rank_gguf(path: Path) -> tuple[int, str]:
-    lowered = path.name.lower()
-    for idx, token in enumerate(_QUANT_PREFERENCE):
-        if token in lowered:
-            return (idx, lowered)
-    return (len(_QUANT_PREFERENCE), lowered)
-
-
-def _pick_gguf(dirs: list[Path], *, is_mmproj: bool) -> str:
-    candidates: list[Path] = []
-    for directory in dirs:
-        if not directory.is_dir():
-            continue
-        for entry in directory.glob("*.gguf"):
-            if not entry.is_file():
-                continue
-            has_mmproj = "mmproj" in entry.name.lower()
-            if has_mmproj == is_mmproj:
-                candidates.append(entry)
-    if not candidates:
-        return ""
-    best = min(candidates, key=_rank_gguf)
-    return best.resolve().as_posix()
-
-
-def _resolve_server_executable(explicit: str, candidate_dirs: list[Path]) -> str:
-    exe_name = "llama-server.exe" if os.name == "nt" else "llama-server"
-    raw = str(explicit or "").strip()
-    if raw:
-        path = Path(raw).expanduser()
-        if path.is_file():
-            return path.resolve().as_posix()
-        for sub in (path / "llama.cpp" / exe_name, path / exe_name):
-            if sub.is_file():
-                return sub.resolve().as_posix()
-        return raw
-
-    for directory in candidate_dirs:
-        for sub in (directory / "llama.cpp" / exe_name, directory / exe_name):
-            if sub.is_file():
-                return sub.resolve().as_posix()
-
-    which_hit = shutil.which(exe_name) or shutil.which("llama-server")
-    return Path(which_hit).resolve().as_posix() if which_hit else ""
-
-
-def discover_qwen3_tts_files(
-    *,
-    work_path: str | Path | None = None,
-    model_path: str = "",
-    mmproj_path: str = "",
-    llama_server_path: str = "",
-    project_root: str | os.PathLike[str] | None = None,
-) -> tuple[str, str, str]:
-    """Resolve ``(llama_server, model_gguf, mmproj_gguf)`` from explicit args or StorageLayout."""
-    layout = StorageLayout.from_env(project_root)
-    weight_dirs: list[Path] = []
-    work_str = str(work_path or "").strip()
-    if work_str:
-        w = Path(work_str).expanduser()
-        weight_dirs.append(w.parent if w.is_file() else w)
-    weight_dirs.extend(
-        [
-            layout.model_dir("qwen3-tts-gguf"),
-            layout.cache_dir / "qwen3-tts-gguf",
-        ]
-    )
-
-    resolved_model = str(model_path or "").strip()
-    if resolved_model:
-        resolved_model = Path(resolved_model).expanduser().resolve().as_posix()
-    else:
-        resolved_model = _pick_gguf(weight_dirs, is_mmproj=False)
-
-    resolved_mmproj = str(mmproj_path or "").strip()
-    if resolved_mmproj:
-        resolved_mmproj = Path(resolved_mmproj).expanduser().resolve().as_posix()
-    else:
-        mmproj_dirs = list(weight_dirs)
-        if resolved_model:
-            mmproj_dirs.insert(0, Path(resolved_model).parent)
-        resolved_mmproj = _pick_gguf(mmproj_dirs, is_mmproj=True)
-
-    binary_dirs = [
-        *weight_dirs,
-        layout.model_dir("perception-gguf"),
-        layout.cache_dir / "perception-gguf",
-    ]
-    resolved_server = _resolve_server_executable(llama_server_path, binary_dirs)
-    return resolved_server, resolved_model, resolved_mmproj
 
 
 @builtin_adapter("qwen3-tts-gguf", label="Qwen3-TTS (llama.cpp GGUF)", order=40)
@@ -193,6 +54,7 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
         ctx_size: int = 4096,
         threads: int = 0,
         request_timeout: float = 180.0,
+        enable_voice_instruction: bool = False,
         extra_args: str = "",
         project_root: str | os.PathLike[str] | None = None,
     ) -> None:
@@ -208,6 +70,7 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
         self.ctx_size = max(512, int(ctx_size))
         self.threads = max(0, int(threads))
         self.request_timeout = max(5.0, float(request_timeout))
+        self.enable_voice_instruction = bool(enable_voice_instruction)
         self.extra_args = str(extra_args or "").strip()
         self.project_root = project_root
 
@@ -279,6 +142,12 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
                 "max": 1200.0,
                 "step": 5.0,
             },
+            "enable_voice_instruction": {
+                "type": "bool",
+                "label": "Enable Natural-Language Voice Instruction (requires server support)",
+                "labelKey": "ops.api.tts.qwen3Gguf.extra.enableVoiceInstruction",
+                "default": False,
+            },
             "extra_args": {
                 "type": "str",
                 "label": "Extra llama-server CLI arguments",
@@ -289,6 +158,11 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
     @property
     def requires_ref_audio(self) -> bool:
         return not bool(self._override_voice or self.voice)
+
+    @property
+    def supports_voice_instruction(self) -> bool:
+        """Whether Qwen3-TTS sends per-utterance ``instructions`` to the server."""
+        return self.enable_voice_instruction
 
     @property
     def owns_server_process(self) -> bool:
@@ -470,6 +344,10 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
             payload["voice"] = active_voice
         elif speaker_ref_b64:
             payload["speaker_ref_b64"] = speaker_ref_b64
+        if self.enable_voice_instruction:
+            voice_instruct = str(kwargs.get("voice_instruct") or "").strip()
+            if voice_instruct:
+                payload["instructions"] = voice_instruct
 
         try:
             response = self._session.post(

@@ -219,6 +219,7 @@ def create_chat_startup_context(
                 character_names=tuple(character_names),
                 primary_character_names=primary_character_names,
                 runtime_imports=runtime,
+                tts_manager=tts_manager,
             )
         )
 

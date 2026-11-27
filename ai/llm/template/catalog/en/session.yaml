@@ -79,3 +79,18 @@ outfit_lock_status_unlocked: unlocked
 outfit_character_entry: '- {name}: active outfit group "{active_group}" ({lock_desc}; available groups: {groups})'
 outfit_default_tag: default
 outfit_group_sprites_line: '  Available sprite IDs in group "{active_group}": {items}'
+tts_style_header: 'Active TTS expressiveness capabilities:'
+tts_style_inline_tags_rule: |-
+  Inline voice tags: You may embed concise natural-language square-bracket cues (e.g. [laugh], [sigh], [soft whisper], [laughing nervously], [excited]) at the start or mid-sentence to control emotion, delivery, or vocal sounds. Use sparingly and naturally; omit when neutral.
+tts_style_inline_tags_channel_json: |-
+  Placement rule: Put square-bracket voice tags ONLY inside `translate` for TTS synthesis; keep `speech` completely clean without `[...]` tags. Even when speech and voice share the same language, populate `translate` with the tagged TTS text only on items that use tags.
+tts_style_inline_tags_channel_xml: |-
+  Placement rule: Put square-bracket voice tags ONLY inside `<tr>...</tr>` for TTS synthesis; keep the main `<say>` text completely clean without `[...]` tags. Even when speech and voice share the same language, include `<tr>...</tr>` with the tagged text only on items that use tags.
+tts_style_inline_tags_channel_custom: |-
+  Placement rule: Put square-bracket voice tags ONLY in the TTS/translate channel (`translate`), keeping displayed dialogue text clean without `[...]` tags.
+tts_style_voice_instruct_json: |-
+  Natural-language voice instruction: You may add an optional `voice_instruct` field on character dialog items with a short phrase describing tone, emotion, or pacing (e.g. "soft teasing whisper, slightly slower"). Do not repeat the spoken text; omit when delivery is neutral.
+tts_style_voice_instruct_xml: |-
+  Natural-language voice instruction: You may add an optional `voice_instruct="..."` attribute on `<say>` with a short phrase describing tone, emotion, or pacing (e.g. `voice_instruct="soft teasing whisper"`). Do not repeat the spoken text; omit when delivery is neutral.
+tts_style_voice_instruct_custom: |-
+  Natural-language voice instruction: When supported by the active format, you may provide an optional `voice_instruct` field describing tone, emotion, or pacing on character lines; omit when neutral.

@@ -75,6 +75,7 @@ class StartupCapabilityContext:
     character_names: tuple[str, ...]
     primary_character_names: tuple[str, ...] | None = None
     runtime_imports: Any = None
+    tts_manager: Any = None
 
 
 @dataclass(frozen=True, slots=True)

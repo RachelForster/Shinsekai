@@ -79,3 +79,18 @@ outfit_lock_status_unlocked: 未ロック
 outfit_character_entry: '- {name}：現在の衣装グループ「{active_group}」（{lock_desc}；利用可能なグループ：{groups}）'
 outfit_default_tag: デフォルト
 outfit_group_sprites_line: '  現在の「{active_group}」グループで利用可能な sprite 番号：{items}'
+tts_style_header: 現在の音声合成エンジンが対応する表現制御機能：
+tts_style_inline_tags_rule: |-
+  インライン音声タグ：感情・口調・非言語音（例: [laugh]、[sigh]、[soft whisper]、[laughing nervously]、[excited]）を表す自然言語の角括弧タグを文頭や文中に挿入できます。自然な範囲で控えめに使い、通常のセリフには無理に入れないでください。
+tts_style_inline_tags_channel_json: |-
+  記述ルール：角括弧タグは音声合成専用の `translate` フィールドのみに入れ、`speech` には `[...]` を絶対に含めないでください。台詞と音声が同じ言語でも、タグを使う項目だけタグ付き読み上げ文を `translate` に記述してください。
+tts_style_inline_tags_channel_xml: |-
+  記述ルール：角括弧タグは音声合成専用の `<tr>...</tr>` のみに入れ、`<say>` 本文には `[...]` を含めないでください。台詞と音声が同じ言語でも、タグを使う項目だけタグ付き読み上げ文を `<tr>...</tr>` に書いてください。
+tts_style_inline_tags_channel_custom: |-
+  記述ルール：角括弧タグは音声合成用の `translate` チャネルのみに入れ、表示用の台詞本文には `[...]` を含めないでください。
+tts_style_voice_instruct_json: |-
+  自然言語による発話指示：必要に応じてキャラクターのセリフ項目に任意フィールド `voice_instruct`（口調・感情・話速の短い説明、例: "優しくささやくように、少しゆっくり"）を追加できます。セリフ本文は繰り返さず、通常の発話時は省略してください。
+tts_style_voice_instruct_xml: |-
+  自然言語による発話指示：必要に応じて `<say>` タグに任意属性 `voice_instruct="..."`（口調・感情・話速の短い説明）を付けられます。セリフ本文は繰り返さず、通常の発話時は省略してください。
+tts_style_voice_instruct_custom: |-
+  自然言語による発話指示：現在の出力形式が対応している場合、必要に応じて `voice_instruct` で口調・感情・話速を指定できます。通常時は省略してください。

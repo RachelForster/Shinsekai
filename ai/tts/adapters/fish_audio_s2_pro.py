@@ -60,6 +60,7 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         top_p: float = 0.7,
         repetition_penalty: float | None = None,
         normalize: bool = True,
+        enable_inline_tags: bool = True,
         request_timeout: float = 120.0,
         llama_checkpoint_path: str = "",
         decoder_checkpoint_path: str = "",
@@ -94,6 +95,7 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
             else max(0.9, min(2.0, float(repetition_penalty)))
         )
         self.normalize = bool(normalize)
+        self.enable_inline_tags = bool(enable_inline_tags)
         self.request_timeout = max(5.0, float(request_timeout))
 
         self.work_path = str(fish_speech_dir or "").strip() or None
@@ -118,6 +120,10 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
     def get_config_schema(cls) -> dict[str, dict[str, Any]]:
         """Return configurable Fish Audio S2 Pro adapter fields for API settings."""
         return build_fish_audio_config_schema()
+    @property
+    def supports_inline_voice_tags(self) -> bool:
+        """Whether Fish Audio S2 Pro advertises inline ``[...]`` tag guidance."""
+        return self.enable_inline_tags
 
     @property
     def owns_server_process(self) -> bool:
@@ -302,6 +308,9 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         clean_text = str(text or "").strip()
         if not clean_text:
             return None
+        voice_instruct = str(kwargs.get("voice_instruct") or "").strip().strip("[]").strip()
+        if voice_instruct and not clean_text.startswith("["):
+            clean_text = f"[{voice_instruct}] {clean_text}"
         if self._is_official_cloud_url() and not self.api_key:
             logger.warning("Fish Audio API key is empty.")
             return None

@@ -163,7 +163,7 @@ class XmlTagsDialogFormat(DialogOutputFormat):
                 )
                 lines.append(f"<cg{attrs}>{_xml_escape(speech)}</cg>")
             elif norm in NARR_ALIASES:
-                attrs = _fmt_attrs(effect=item.effect)
+                attrs = _fmt_attrs(effect=item.effect, voice_instruct=item.voice_instruct)
                 lines.append(f"<narr{attrs}>{_xml_escape(speech)}{tr_part}</narr>")
             elif norm in STAT_ALIASES:
                 lines.append(f"<stat>{_xml_escape(speech)}</stat>")
@@ -182,6 +182,7 @@ class XmlTagsDialogFormat(DialogOutputFormat):
                         outfit=item.outfit,
                         motion=item.motion,
                         effect=item.effect,
+                        voice_instruct=item.voice_instruct,
                     )
                     lines.append(f"<say{attrs}>{_xml_escape(speech)}{tr_part}</say>")
         return "\n".join(lines)

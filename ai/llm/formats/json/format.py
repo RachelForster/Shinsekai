@@ -142,6 +142,8 @@ class JsonDialogFormat(DialogOutputFormat):
                 payload["transition"] = item.transition
             if item.motion:
                 payload["motion"] = item.motion
+            if item.voice_instruct:
+                payload["voice_instruct"] = item.voice_instruct
             serialized_items.append(payload)
         return json.dumps({"dialog": serialized_items}, ensure_ascii=False)
 
