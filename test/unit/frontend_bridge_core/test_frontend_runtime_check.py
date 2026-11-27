@@ -1330,3 +1330,33 @@ def test_pytorch_specs_only_requirement_is_enforced_in_checks_and_post_install(
     assert Path(ok_result["pythonPath"]) == target_py.resolve()
 
 
+def test_prepare_project_root_retries_transient_probe_unlink_permission_error(
+    tmp_path, monkeypatch
+):
+    import frontend_bridge
+
+    project_root = tmp_path / "portable-data"
+    real_unlink = Path.unlink
+    attempts = 0
+
+    def flaky_unlink(self: Path, missing_ok: bool = False) -> None:
+        nonlocal attempts
+        if self.name.startswith(".shinsekai-write-test-"):
+            attempts += 1
+            if attempts == 1:
+                raise PermissionError(13, "Sharing violation")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+    monkeypatch.setattr(frontend_bridge.time, "sleep", lambda _seconds: None)
+
+    resolved = frontend_bridge._prepare_project_root(
+        str(project_root),
+        "SHINSEKAI_PROJECT_ROOT",
+    )
+
+    assert resolved == project_root.resolve()
+    assert attempts == 2
+
+
+

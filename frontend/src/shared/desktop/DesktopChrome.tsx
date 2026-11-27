@@ -282,6 +282,12 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   const canInstallDeps = runtimeCandidate?.repairActions.includes("installRuntimeDeps") ?? false;
   const canRetryStart = runtimeCandidate?.repairActions.includes("start") ?? false;
   const isBridgeStartError = runtime.status === "error" && runtimeCandidate?.status === "ready" && !canInstallDeps;
+  const showRuntimeProgress =
+    Boolean(runtimeProgress) &&
+    (runtime.status === "checking" ||
+      runtime.status === "updating" ||
+      runtimeProgress?.phase === "installingDeps" ||
+      (runtimeProgress?.logLines?.length ?? 0) > 0);
   const title =
     runtime.status === "checking"
       ? t("desktop.runtime.checking")
@@ -302,7 +308,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
           </div>
         </div>
         <p className="desktop-runtime__message">{detail}</p>
-        {runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
+        {showRuntimeProgress && runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
         {runtimeCandidate ? (
           <div className="desktop-runtime__runtime">
             <span>{t("desktop.runtime.candidatePath")}</span>

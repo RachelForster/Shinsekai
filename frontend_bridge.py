@@ -306,10 +306,20 @@ def _prepare_project_root(raw_path: str, source: str) -> Path:
             except OSError as exc:
                 probe_errors.append(f"close: {exc}")
         if owned_probe:
-            try:
-                probe.unlink()
-            except OSError as exc:
-                probe_errors.append(f"cleanup: {exc}")
+            for attempt in range(3):
+                try:
+                    probe.unlink()
+                    break
+                except FileNotFoundError:
+                    break
+                except PermissionError as exc:
+                    if attempt < 2:
+                        time.sleep(0.05)
+                        continue
+                    probe_errors.append(f"cleanup: {exc}")
+                except OSError as exc:
+                    probe_errors.append(f"cleanup: {exc}")
+                    break
     if probe_errors:
         raise RuntimeError(
             f"{source} project root is not safely writable: {root}: {'; '.join(probe_errors)}"

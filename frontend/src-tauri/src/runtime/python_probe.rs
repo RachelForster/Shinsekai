@@ -126,13 +126,25 @@ fn strip_case_insensitive_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a
         .and_then(|_| value.get(prefix.len()..))
 }
 
+pub fn effective_runtime_root(source_root: &Path, app_root: &Path) -> PathBuf {
+    if app_root != source_root && crate::state::is_portable_bundle(app_root) {
+        let portable_runtime = app_root.join("runtime");
+        if python_in_prefix(&portable_runtime).is_some() {
+            return portable_runtime;
+        }
+    }
+    install_dir_runtime_root(source_root)
+}
+
 pub fn runtime_root_candidates<R: Runtime>(
-    _app: &impl Manager<R>,
+    app: &impl Manager<R>,
     source_root: &Path,
 ) -> Vec<RuntimeRootCandidate> {
-    vec![RuntimeRootCandidate {
-        root: install_dir_runtime_root(source_root),
-    }]
+    let root = match app.try_state::<crate::state::DesktopState>() {
+        Some(state) => effective_runtime_root(source_root, &state.app_root),
+        None => install_dir_runtime_root(source_root),
+    };
+    vec![RuntimeRootCandidate { root }]
 }
 
 pub fn python_in_prefix(prefix: &Path) -> Option<PathBuf> {

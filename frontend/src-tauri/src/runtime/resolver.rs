@@ -103,8 +103,11 @@ pub fn scan_runtime_candidates<R: tauri::Runtime>(
 }
 
 pub fn install_dir_runtime_view(source_root: &Path) -> RuntimeScanView {
-    let runtime_root = super::python_probe::install_dir_runtime_root(source_root);
-    let python = super::python_probe::python_in_prefix(&runtime_root);
+    install_dir_runtime_view_for_root(&super::python_probe::install_dir_runtime_root(source_root))
+}
+
+pub fn install_dir_runtime_view_for_root(runtime_root: &Path) -> RuntimeScanView {
+    let python = super::python_probe::python_in_prefix(runtime_root);
     let (path, display_path, status, message, recommended_action, repair_actions) =
         if let Some(python) = python {
             (
@@ -118,7 +121,7 @@ pub fn install_dir_runtime_view(source_root: &Path) -> RuntimeScanView {
         } else {
             (
                 runtime_root.display().to_string(),
-                super::python_probe::display_path(&runtime_root),
+                super::python_probe::display_path(runtime_root),
                 RuntimeCandidateStatus::BrokenPython,
                 Some(format!(
                     "Shinsekai managed Python runtime not found at {}",
@@ -133,7 +136,7 @@ pub fn install_dir_runtime_view(source_root: &Path) -> RuntimeScanView {
         python_id: Some(INSTALL_DIR_RUNTIME_ID.to_string()),
         label: format!(
             "Shinsekai bundled runtime @ {}",
-            super::python_probe::display_path(&runtime_root)
+            super::python_probe::display_path(runtime_root)
         ),
         path,
         display_path,
