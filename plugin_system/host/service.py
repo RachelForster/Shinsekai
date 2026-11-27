@@ -1,6 +1,4 @@
-"""
-Host integration for :mod:`sdk` plugins: load manifest, merge factories/tools/handlers,
-and expose contributions for Settings / Tools / Chat UI.
+"""Host integration for :mod:`sdk` plugins: lifecycle, runtime bindings, and contributions.
 
 Call :func:`ensure_plugins_loaded` once per process after :class:`~config.config_manager.ConfigManager`
 is available (``main`` entry and/or Settings UI). Safe to call multiple times (idempotent).
@@ -8,30 +6,30 @@ is available (``main`` entry and/or Settings UI). Safe to call multiple times (i
 
 from __future__ import annotations
 
-import logging
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Callable, List, Optional
-
-import yaml
+from typing import TYPE_CHECKING, Any, Callable, List
 
 from config.config_manager import ConfigManager
-from sdk.messages import UserInputMessage
+from plugin_system.host import manifest as _manifest
 from plugin_system.host.builtin_plugins import register_builtin_plugins
 from plugin_system.requirements.install import (
     ensure_plugin_site_packages_on_syspath,
     ensure_plugins_namespace_on_syspath,
 )
 from sdk.manager import PluginManager
+from sdk.messages import UserInputMessage
 
 if TYPE_CHECKING:
-    from sdk.hooks import PluginHookDispatcher
     from sdk.handlers import MessageHandler, UIOutputMessageHandler
+    from sdk.hooks import PluginHookDispatcher
     from sdk.types import (
         ChatUIContribution,
-        FrontendConfigContribution,
         FrontendChatUIContribution,
+        FrontendConfigContribution,
         FrontendPageContribution,
         OutputContractPatch,
         SettingsUIContribution,
@@ -55,13 +53,17 @@ _plugin_output_contract_patches: list["OutputContractPatch"] = []
 class PluginRuntimeBindings:
     """Concrete host capabilities supplied by an application composition root."""
 
-    llm_adapters: dict[str, Any]
-    tts_adapters: dict[str, Any]
-    asr_adapters: dict[str, Any]
-    t2i_adapters: dict[str, Any]
     create_tool_manager: Callable[[], Any]
     configure_vision_fallbacks: Callable[[list[Any]], None]
     configure_avatar_formats: Callable[[list[Any]], None]
+    configure_llm_adapters: Callable[[Mapping[str, Any]], None] | None = None
+    configure_tts_adapters: Callable[[Mapping[str, Any]], None] | None = None
+    configure_asr_adapters: Callable[[Mapping[str, Any]], None] | None = None
+    configure_t2i_adapters: Callable[[Mapping[str, Any]], None] | None = None
+    llm_adapters: MutableMapping[str, Any] | None = None
+    tts_adapters: MutableMapping[str, Any] | None = None
+    asr_adapters: MutableMapping[str, Any] | None = None
+    t2i_adapters: MutableMapping[str, Any] | None = None
     register_mcp_tools: Callable[[Any], None] | None = None
     configure_model_assets: Callable[[list[Any]], None] | None = None
     configure_dialog_formats: Callable[[list[Any]], None] | None = None
@@ -135,10 +137,8 @@ def bind_frontend_ui_runtime(
         if event_type == "plugin.page.present":
             page_id = str(event.get("pageId") or "").strip()
             registered = any(
-                str(getattr(contribution, "plugin_id", "") or "").strip()
-                == plugin_id
-                and str(getattr(contribution, "page_id", "") or "").strip()
-                == page_id
+                str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id
+                and str(getattr(contribution, "page_id", "") or "").strip() == page_id
                 for contribution in collect_frontend_page_contributions()
             )
             if not registered:
@@ -207,16 +207,30 @@ def bind_model_assets_runtime(
     _bind_model_assets_dispatcher(dispatch)
 
 
+def _apply_plugin_adapters(
+    apply_fn: Callable[[MutableMapping[str, Any]], None],
+    *,
+    configure: Callable[[Mapping[str, Any]], None] | None,
+    legacy_target: MutableMapping[str, Any] | None,
+    label: str,
+) -> None:
+    try:
+        if configure is not None:
+            collected: dict[str, Any] = {}
+            apply_fn(collected)
+            configure(collected)
+        elif legacy_target is not None:
+            apply_fn(legacy_target)
+    except Exception:
+        logger.exception("%s failed", label)
+
+
 def ensure_plugins_loaded(
     config: ConfigManager | None = None,
     *,
     runtime_bindings: PluginRuntimeBindings | None = None,
 ) -> PluginManager | None:
-    """
-    Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge adapter
-    providers and vision fallbacks, register tools on the global ToolManager, and
-    cache message handlers for :mod:`application.chat.presentation.handlers.registry`.
-    """
+    """Load ``data/config/plugins.yaml``, instantiate plugins, and apply runtime bindings."""
     global _loaded, _plugin_manager
     global _plugin_dialog_media_handlers, _plugin_ui_handlers
     global _plugin_dag_yaml_paths
@@ -238,22 +252,30 @@ def ensure_plugins_loaded(
     cfg = config if config is not None else ConfigManager()
     mgr.load_own_config_all(app_config=cfg)
     if runtime_bindings is not None:
-        try:
-            mgr.apply_llm_providers(runtime_bindings.llm_adapters)
-        except Exception:
-            logger.exception("apply_llm_providers failed")
-        try:
-            mgr.apply_tts_providers(runtime_bindings.tts_adapters)
-        except Exception:
-            logger.exception("apply_tts_providers failed")
-        try:
-            mgr.apply_asr_providers(runtime_bindings.asr_adapters)
-        except Exception:
-            logger.exception("apply_asr_providers failed")
-        try:
-            mgr.apply_t2i_providers(runtime_bindings.t2i_adapters)
-        except Exception:
-            logger.exception("apply_t2i_providers failed")
+        _apply_plugin_adapters(
+            mgr.apply_llm_providers,
+            configure=runtime_bindings.configure_llm_adapters,
+            legacy_target=runtime_bindings.llm_adapters,
+            label="apply_llm_providers",
+        )
+        _apply_plugin_adapters(
+            mgr.apply_tts_providers,
+            configure=runtime_bindings.configure_tts_adapters,
+            legacy_target=runtime_bindings.tts_adapters,
+            label="apply_tts_providers",
+        )
+        _apply_plugin_adapters(
+            mgr.apply_asr_providers,
+            configure=runtime_bindings.configure_asr_adapters,
+            legacy_target=runtime_bindings.asr_adapters,
+            label="apply_asr_providers",
+        )
+        _apply_plugin_adapters(
+            mgr.apply_t2i_providers,
+            configure=runtime_bindings.configure_t2i_adapters,
+            legacy_target=runtime_bindings.t2i_adapters,
+            label="apply_t2i_providers",
+        )
         try:
             runtime_bindings.configure_vision_fallbacks(
                 mgr.collect_vision_fallbacks()
@@ -289,6 +311,7 @@ def ensure_plugins_loaded(
             )
         except Exception:
             logger.exception("apply_llm_tools failed")
+
     try:
         dialog_media, ui = mgr.collect_message_handlers()
         _plugin_dialog_media_handlers = dialog_media
@@ -323,20 +346,13 @@ def wire_user_input_plugins(
     *,
     sink: Callable[..., None] | None = None,
 ) -> Callable[..., bool]:
-    """
-    Build the user-input pipeline (plugin processors) and return ``emit_user_text``
-    for code that registers hooks via :meth:`sdk.register.PluginCapabilityRegistry.register_user_input_trigger`
-    or :meth:`~sdk.register.PluginCapabilityRegistry.register_user_input_processor` inside
-    :meth:`sdk.plugin.PluginBase.initialize`.
-
-    The returned callable runs processors and delegates the processed text to
-    ``sink``.  Without a custom sink it preserves the historical behavior of
-    enqueuing :class:`~sdk.messages.UserInputMessage` directly.
-    """
+    """Build the user-input pipeline and return ``emit_user_text``."""
     mgr = _plugin_manager
     processors: list[Callable[[str], str | None]] = []
 
-    def emit_user_text(text: str, *, attachments: list[dict[str, Any]] | None = None) -> bool:
+    def emit_user_text(
+        text: str, *, attachments: list[dict[str, Any]] | None = None
+    ) -> bool:
         t = text
         for proc in processors:
             try:
@@ -351,7 +367,9 @@ def wire_user_input_plugins(
         if sink is not None:
             sink(t, attachments=attachment_payloads)
         else:
-            user_input_queue.put(UserInputMessage(text=t, attachments=attachment_payloads))
+            user_input_queue.put(
+                UserInputMessage(text=t, attachments=attachment_payloads)
+            )
         return True
 
     if mgr is not None:
@@ -411,120 +429,35 @@ def collect_chat_ui_contributions() -> List["ChatUIContribution"]:
 
 
 def read_plugin_manifest_items(path: Path | None = None) -> list[dict[str, Any]]:
-    """
-    Return manifest rows as mutable dicts (shallow copy each), preserving list order.
-    Only includes dict items with a non-empty string ``entry``.
-    """
-    p = path if path is not None else _MANIFEST
-    if not p.is_file():
-        return []
-    try:
-        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
-    except Exception:
-        logger.exception("Failed to parse plugin manifest %s", p)
-        return []
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        entry = item.get("entry")
-        if not isinstance(entry, str) or not entry.strip():
-            continue
-        out.append(dict(item))
-    return out
+    return _manifest.read_plugin_manifest_items(path if path is not None else _MANIFEST)
 
 
-def write_plugin_manifest_items(items: list[dict[str, Any]], path: Path | None = None) -> None:
-    """Overwrite manifest with ``items`` (YAML list of mappings)."""
-    p = path if path is not None else _MANIFEST
-    p.parent.mkdir(parents=True, exist_ok=True)
-    text = yaml.safe_dump(
-        items,
-        allow_unicode=True,
-        sort_keys=False,
-        default_flow_style=False,
+def write_plugin_manifest_items(
+    items: list[dict[str, Any]], path: Path | None = None
+) -> None:
+    _manifest.write_plugin_manifest_items(items, path if path is not None else _MANIFEST)
+
+
+def set_plugin_manifest_enabled(
+    entry: str, enabled: bool, path: Path | None = None
+) -> bool:
+    return _manifest.set_plugin_manifest_enabled(
+        entry, enabled, path if path is not None else _MANIFEST
     )
-    p.write_text(text, encoding="utf-8")
-
-
-def set_plugin_manifest_enabled(entry: str, enabled: bool, path: Path | None = None) -> bool:
-    """
-    Set ``enabled`` on the manifest row whose ``entry`` matches (strip-wise).
-    Returns True if a row was updated and the file was written.
-    """
-    items = read_plugin_manifest_items(path)
-    norm = entry.strip()
-    changed = False
-    for item in items:
-        e = item.get("entry")
-        if isinstance(e, str) and e.strip() == norm:
-            item["enabled"] = bool(enabled)
-            changed = True
-            break
-    if changed:
-        write_plugin_manifest_items(items, path)
-    return changed
 
 
 def normalize_manifest_entry(entry: str) -> str:
-    """
-    Registry rows often omit the repo-local package root; downloaded plugins live under
-    ``plugins/``, so ensure ``entry`` uses the ``plugins.`` module prefix when absent.
-    """
-    norm = entry.strip()
-    if not norm:
-        return norm
-    if norm.startswith("plugins."):
-        return norm
-    return f"plugins.{norm}"
+    return _manifest.normalize_manifest_entry(entry)
 
 
 def remove_plugin_manifest_entry(entry: str, path: Path | None = None) -> bool:
-    """
-    Remove the manifest row whose ``entry`` matches (strip-wise).
-    Returns True if a row was removed and the file was written.
-    """
-    norm = entry.strip()
-    items = read_plugin_manifest_items(path)
-    kept: list[dict[str, Any]] = []
-    removed = False
-    for item in items:
-        e = item.get("entry")
-        if isinstance(e, str) and e.strip() == norm:
-            removed = True
-            continue
-        kept.append(item)
-    if not removed:
-        return False
-    write_plugin_manifest_items(kept, path)
-    return True
+    return _manifest.remove_plugin_manifest_entry(
+        entry, path if path is not None else _MANIFEST
+    )
 
 
 def infer_plugin_package_directory(entry: str) -> Path | None:
-    """
-    Map manifest ``entry`` module path to ``plugins/<top-level-package>/``.
-
-    Example: ``plugins.whisper_asr.plugin:WhisperAsrPlugin`` → ``plugins/whisper_asr``.
-    """
-    raw = entry.strip()
-    if not raw:
-        return None
-    mod = raw.split(":", 1)[0].strip()
-    if not mod.startswith("plugins."):
-        mod = normalize_manifest_entry(mod)
-    if not mod.startswith("plugins."):
-        return None
-    rest = mod[len("plugins.") :]
-    if not rest:
-        return None
-    top = rest.split(".", 1)[0].strip()
-    if not top:
-        return None
-    return Path("plugins") / top
+    return _manifest.infer_plugin_package_directory(entry)
 
 
 def append_plugin_manifest_entry_if_missing(
@@ -533,21 +466,8 @@ def append_plugin_manifest_entry_if_missing(
     enabled: bool = True,
     path: Path | None = None,
 ) -> str:
-    """
-    Append ``- entry: …`` row if not already present (strip-wise match on entry).
-
-    ``entry`` is normalized with :func:`normalize_manifest_entry` (``plugins.`` prefix).
-
-    Returns ``"added"`` | ``"exists"`` | ``"empty"``.
-    """
-    norm = normalize_manifest_entry(entry)
-    if not norm:
-        return "empty"
-    items = read_plugin_manifest_items(path)
-    for item in items:
-        e = item.get("entry")
-        if isinstance(e, str) and e.strip() == norm:
-            return "exists"
-    items.append({"entry": norm, "enabled": bool(enabled)})
-    write_plugin_manifest_items(items, path)
-    return "added"
+    return _manifest.append_plugin_manifest_entry_if_missing(
+        entry,
+        enabled=enabled,
+        path=path if path is not None else _MANIFEST,
+    )

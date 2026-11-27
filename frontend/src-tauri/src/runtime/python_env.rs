@@ -10,6 +10,7 @@ use std::os::windows::process::CommandExt;
 pub(super) fn configure_python_command(command: &mut Command, python: &Path) {
     sanitize_python_environment(command);
     command.env("PYTHONUTF8", "1");
+    command.env("PYGAME_HIDE_SUPPORT_PROMPT", "1");
     hide_python_child_window(command);
     configure_certifi_bundle(command, python);
 }
@@ -212,6 +213,25 @@ mod tests {
         assert!(envs.contains(&(
             "REQUESTS_CA_BUNDLE".to_string(),
             Some(cacert.display().to_string())
+        )));
+
+        let mut configured = Command::new(&python);
+        configure_python_command(&mut configured, &python);
+        let configured_envs = configured
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().to_string(),
+                    value.map(|value| value.to_string_lossy().to_string()),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(configured_envs.contains(&("PYTHONHOME".to_string(), None)));
+        assert!(configured_envs.contains(&("PYTHONPATH".to_string(), None)));
+        assert!(configured_envs.contains(&("PYTHONUTF8".to_string(), Some("1".to_string()))));
+        assert!(configured_envs.contains(&(
+            "PYGAME_HIDE_SUPPORT_PROMPT".to_string(),
+            Some("1".to_string())
         )));
 
         let _ = fs::remove_dir_all(temp_root);

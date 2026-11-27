@@ -84,6 +84,8 @@ export const shellZhCNMessages = {
   "desktop.runtime.progressSpeed": "{speed}/s",
   "desktop.runtime.pipLogLabel": "pip 输出日志",
   "desktop.runtime.required": "需要更新运行环境",
+  "desktop.runtime.retryStartButton": "重试启动",
+  "desktop.runtime.startFailed": "本地服务启动失败",
   "desktop.runtime.status.brokenBridge": "Bridge 检查失败",
   "desktop.runtime.status.brokenPython": "Python 不可用",
   "desktop.runtime.status.missingCoreDeps": "缺少核心依赖",
