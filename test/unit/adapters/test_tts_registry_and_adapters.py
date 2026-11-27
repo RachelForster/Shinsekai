@@ -15,6 +15,7 @@ from ai.tts.adapters import (
     LocalHttpTTSAdapter,
     Qwen3TTSLlamaAdapter,
 )
+from ai.tts.adapters.fish_audio_s2_pro import FishAudioS2ProAdapter
 from ai.tts.registry import (
     configure_registered_tts_adapters,
     create_tts_adapter,
@@ -34,6 +35,7 @@ def test_isolated_tts_registry_builtins_and_cleanup_on_wait_failure() -> None:
         "qwen3-tts-gguf",
         "index-tts",
         "cosyvoice",
+        "fish-audio-s2-pro",
     )
     assert isolated.get("gpt-sovits") is GPTSoVitsAdapter
     assert isolated.get("kaggle-gpt-sovits") is KaggleGPTSoVitsAdapter
@@ -41,6 +43,7 @@ def test_isolated_tts_registry_builtins_and_cleanup_on_wait_failure() -> None:
     assert isolated.get("qwen3-tts-gguf") is Qwen3TTSLlamaAdapter
     assert isolated.get("index-tts") is IndexTTSAdapter
     assert isolated.get("cosyvoice") is CosyVoiceAdapter
+    assert isolated.get("fish-audio-s2-pro") is FishAudioS2ProAdapter
 
     stopped: list[str] = []
 

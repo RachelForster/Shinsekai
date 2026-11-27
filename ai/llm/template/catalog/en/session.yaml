@@ -50,6 +50,12 @@ dialog_repair_retry_selective: That reply is STILL not valid. You MUST answer wi
 dialog_repair_bound_speakers_heading: 'Bound cast characters that require `{media_field}`:'
 dialog_repair_xml_initial: Reformat your immediately preceding answer as valid XML/HTML stage tags (such as `<say char="..." {media_field}="...">`, `<narr>`, `<scene>`, `<bgm>`, and `<choice>`). Output at least one complete stage tag; do not call tools, output JSON, or add markdown code fences.
 dialog_repair_xml_retry: That reply is STILL not valid XML/HTML stage tags. You MUST reply with ONLY valid stage tags (`<say char="..." {media_field}="...">`, `<narr>`, `<scene>`, `<bgm>`, etc.). Do not call tools, output JSON, or add prose commentary.
+dialog_repair_renpy_initial: 'Reformat your previous reply into valid Ren''Py-style DSL directive lines (`Name [{media_field}="..."] "..."`, scene/music/narration lines as enabled). Output at least one complete directive; do not call tools or output JSON, XML, or Markdown fences.'
+dialog_repair_renpy_retry: 'That reply is still invalid Ren''Py DSL. Respond ONLY with valid `Name [{media_field}="..."] "..."` and stage directive lines. Do not call tools or add commentary.'
+dialog_repair_renpy_initial_selective: 'Reformat your previous reply into valid Ren''Py-style DSL directive lines. Bound cast members as well as `scene` / `play music` must include non-empty `{media_field}`, while unbound NPC/bystander speakers may omit `{media_field}`. Do not call tools, JSON, XML, or Markdown fences.'
+dialog_repair_renpy_retry_selective: 'That reply is still invalid Ren''Py DSL. Output valid line-by-line directives only; bound speakers and `scene` / `play music` must include `{media_field}`, while unbound NPCs may omit it.'
+outfit_switch_rule_renpy: 'Outfit rule (Ren''Py DSL): Auto outfit switching is ON. When an unlocked character visibly changes outfit, add `outfit="target_group"` inside that speaker''s `[...]` brackets. Omit during normal expressions.'
+outfit_locked_rule_renpy: 'Auto outfit switching is OFF or outfits are locked: keep current outfits and do not emit `outfit=...` inside `[...]` brackets.'
 memory_context_simple_guidance: Relevant long-term memories for this turn. Use them only as background; do not mention the retrieval process unless the user asks.
 memory_context_tiered_guidance: Relevant long-term memories for this turn. Respect each item's clarity tag ([Canon], [Clear], [Faded impression], [Awakened distant memory]); use them naturally as background and never mention the retrieval system unless asked.
 memory_tier_canon: Canon
@@ -73,3 +79,18 @@ outfit_lock_status_unlocked: unlocked
 outfit_character_entry: '- {name}: active outfit group "{active_group}" ({lock_desc}; available groups: {groups})'
 outfit_default_tag: default
 outfit_group_sprites_line: '  Available sprite IDs in group "{active_group}": {items}'
+tts_style_header: 'Active TTS expressiveness capabilities:'
+tts_style_inline_tags_rule: |-
+  Inline voice tags: You may embed concise natural-language square-bracket cues (e.g. [laugh], [sigh], [soft whisper], [laughing nervously], [excited]) at the start or mid-sentence to control emotion, delivery, or vocal sounds. Use sparingly and naturally; omit when neutral.
+tts_style_inline_tags_channel_json: |-
+  Placement rule: Put square-bracket voice tags ONLY inside `translate` for TTS synthesis; keep `speech` completely clean without `[...]` tags. Even when speech and voice share the same language, populate `translate` with the tagged TTS text only on items that use tags.
+tts_style_inline_tags_channel_xml: |-
+  Placement rule: Put square-bracket voice tags ONLY inside `<tr>...</tr>` for TTS synthesis; keep the main `<say>` text completely clean without `[...]` tags. Even when speech and voice share the same language, include `<tr>...</tr>` with the tagged text only on items that use tags.
+tts_style_inline_tags_channel_custom: |-
+  Placement rule: Put square-bracket voice tags ONLY in the TTS/translate channel (`translate`), keeping displayed dialogue text clean without `[...]` tags.
+tts_style_voice_instruct_json: |-
+  Natural-language voice instruction: You may add an optional `voice_instruct` field on character dialog items with a short phrase describing tone, emotion, or pacing (e.g. "soft teasing whisper, slightly slower"). Do not repeat the spoken text; omit when delivery is neutral.
+tts_style_voice_instruct_xml: |-
+  Natural-language voice instruction: You may add an optional `voice_instruct="..."` attribute on `<say>` with a short phrase describing tone, emotion, or pacing (e.g. `voice_instruct="soft teasing whisper"`). Do not repeat the spoken text; omit when delivery is neutral.
+tts_style_voice_instruct_custom: |-
+  Natural-language voice instruction: When supported by the active format, you may provide an optional `voice_instruct` field describing tone, emotion, or pacing on character lines; omit when neutral.

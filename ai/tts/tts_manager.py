@@ -22,6 +22,7 @@ from ai.tts.tts_adapter import (  # noqa: F401
     Qwen3TTSLlamaAdapter,
     TTSAdapter,
 )
+from ai.tts.voice_tags import strip_inline_voice_tags
 from sdk.voice_lang import resolve_character_voice_language
 
 
@@ -96,6 +97,7 @@ class TTSManager:
         prompt_lang: str | None = None,
         character_name: str | None = None,
         speed_factor: float | None = None,
+        voice_instruct: str | None = None,
     ) -> str:
         """Generate TTS audio using the currently active adapter."""
         print("Generating speech")
@@ -103,13 +105,14 @@ class TTSManager:
         if text_processor:
             text = text_processor.remove_parentheses(text)
             text = text_processor.html_to_plain_qt(text)
-            language = text_processor.decide_language(text)
+            lang_probe = strip_inline_voice_tags(text) or text
+            language = text_processor.decide_language(lang_probe)
             text = text_processor.replace_names(text)
             effective_voice_lang = resolve_character_voice_language(
                 self.voice_language,
                 prompt_lang=prompt_lang,
                 prompt_text=prompt_text,
-                speech_text=text,
+                speech_text=strip_inline_voice_tags(text) or text,
                 fallback=language or "ja",
             )
             if language != effective_voice_lang:
@@ -127,12 +130,19 @@ class TTSManager:
                 self.voice_language,
                 prompt_lang=prompt_lang,
                 prompt_text=prompt_text,
-                speech_text=text,
+                speech_text=strip_inline_voice_tags(text) or text,
             )
 
         if not ref_audio_path and getattr(self.tts_adapter, "requires_ref_audio", True):
             print("No reference audio provided")
             return ""
+
+        extra_kwargs: dict[str, Any] = {}
+        clean_instruct = str(voice_instruct or "").strip()
+        if clean_instruct and bool(
+            getattr(self.tts_adapter, "supports_voice_instruction", False)
+        ):
+            extra_kwargs["voice_instruct"] = clean_instruct
 
         filename = (
             uuid.uuid4().hex
@@ -155,6 +165,7 @@ class TTSManager:
                 text_lang=effective_voice_lang,
                 character_name=character_name,
                 speed_factor=speed_factor,
+                **extra_kwargs,
             )
             if result and self._is_valid_audio_file(tmp_path):
                 tmp_path.replace(final_path)

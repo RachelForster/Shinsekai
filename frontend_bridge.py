@@ -368,7 +368,10 @@ def _start_plugin_loader(state, logger) -> None:
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
             from core.media.avatar.registry import configure_registered_formats
-            from core.messaging.formats.registry import configure_registered_dialog_formats
+            from ai.llm.formats import (
+                configure_builtin_dialog_formats,
+                configure_registered_dialog_formats,
+            )
             from ai.asr.registry import (
                 configure_builtin_asr_adapters,
                 configure_registered_asr_adapters,
@@ -391,6 +394,7 @@ def _start_plugin_loader(state, logger) -> None:
             configure_builtin_tts_adapters()
             configure_builtin_asr_adapters()
             configure_builtin_t2i_adapters()
+            configure_builtin_dialog_formats()
 
             def register_mcp_tools(tool_manager) -> None:
                 from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
@@ -523,7 +527,7 @@ def run(
 
     from core.media.avatar.registry import configure_builtin_formats
     configure_builtin_formats()
-    from core.messaging.formats.registry import configure_builtin_dialog_formats
+    from ai.llm.formats import configure_builtin_dialog_formats
     configure_builtin_dialog_formats()
     state = BridgeState(
         config_manager=config_manager,

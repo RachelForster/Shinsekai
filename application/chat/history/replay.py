@@ -12,6 +12,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.history.state import canonical_user_turn_payload
@@ -26,6 +27,10 @@ from application.chat.presentation.replay import PRESENTATION_KEYS
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _replay_speech_key(speech: str, voice_instruct: str) -> str:
+    return digest([speech, voice_instruct]) if voice_instruct else digest(speech)
 
 
 def split_text(entry):
@@ -46,6 +51,29 @@ def replay_user_text(entry, body, users):
 
 def revision(entries):
     return digest([(e.get("id"), e.get("role"), e.get("text"), e.get("dialogId")) for e in entries])
+
+
+def _provider_requires_ref_audio(provider: str, kwargs: dict[str, Any]) -> bool:
+    clean_provider = str(provider or "").strip()
+    if not clean_provider or clean_provider.lower() == "none":
+        return True
+    try:
+        from ai.tts.registry import get_tts_adapter_registry
+
+        registration = get_tts_adapter_registry().get_registration(clean_provider)
+        adapter_cls = registration.resolve_class() if registration is not None else None
+    except Exception:
+        return True
+    if adapter_cls is None:
+        return True
+    checker = getattr(adapter_cls, "requires_ref_audio_for_config", None)
+    if callable(checker):
+        try:
+            return bool(checker(**kwargs))
+        except Exception:
+            pass
+    raw_flag = getattr(adapter_cls, "requires_ref_audio", True)
+    return raw_flag if isinstance(raw_flag, bool) else True
 
 
 class ChatReplayService:
@@ -84,7 +112,7 @@ class ChatReplayService:
         source = _chat_history(self.state)
         store = ReplayStore(path)
         messages = replay_history_messages(chat_history_active_path(path))
-        legacy_by_id, legacy_by_text, speech_by_id, speech_by_text = replay_dialog_inputs(messages)
+        legacy_by_id, legacy_by_text, speech_by_id, speech_by_text, instruct_by_id, instruct_by_text = replay_dialog_inputs(messages)
         users = [message for message in messages if is_real_user_turn_message(message)]
         archive = VoiceArchive(path)
         config = self.state.config_manager
@@ -92,6 +120,7 @@ class ChatReplayService:
         kwargs = copy.deepcopy(config.merged_tts_factory_kwargs(
             provider, {"gpt_sovits_work_path": work_path, "tts_server_url": url}
         )) if provider and provider != "none" else {}
+        needs_ref_audio = _provider_requires_ref_audio(provider, kwargs)
         settings = {"provider": provider, "kwargs": kwargs, "url": url,
                     "language": str(config.config.system_config.voice_language or "ja")}
         plan_id = uuid.uuid4().hex
@@ -121,10 +150,20 @@ class ChatReplayService:
             if not isinstance(recorded_text, str):
                 recorded_text = ""
             speech = speech_by_id.get(dialog_id) or speech_by_text.get((speaker, body)) or recorded_text or body
-            speech_key = digest(speech)
+            recorded_instruct = recorded_message.get("voice_instruct") if isinstance(recorded_message, dict) else None
+            if not isinstance(recorded_instruct, str):
+                recorded_instruct = ""
+            voice_instruct = str(instruct_by_id.get(dialog_id) or instruct_by_text.get((speaker, body)) or recorded_instruct or "").strip()
+            speech_key = _replay_speech_key(speech, voice_instruct)
             character = copy.deepcopy(config.get_character_by_name(speaker)) if raw.get("role") == "assistant" else None
-            can_generate = bool(character and provider and provider != "none" and
-                                str(getattr(character, "refer_audio_path", "") or "").strip() and speech.strip())
+            has_ref_audio = bool(str(getattr(character, "refer_audio_path", "") or "").strip())
+            can_generate = bool(
+                character
+                and provider
+                and provider != "none"
+                and (not needs_ref_audio or has_ref_audio)
+                and speech.strip()
+            )
             paths, origin, voice_label = [], "", ""
             voice_id = raw.get("voiceId") or (archive.voice_for_dialog(dialog_id) if dialog_id else "")
             if voice_id:
@@ -161,6 +200,7 @@ class ChatReplayService:
                         break
             plan["entries"].append(entry)
             plan["private"][key] = {"character": character, "paths": paths, "speech": speech,
+                                    "voice_instruct": voice_instruct,
                                     "message": recorded_message or (legacy_message if raw.get("role") == "assistant" else None)}
         with self.lock:
             now = time.monotonic()
@@ -349,7 +389,12 @@ class ChatReplayService:
                 return {k: entry[k] for k in ("voiceUrls", "voiceSource", "voiceLabel")}
             store = plan["store"]
             character = private["character"]
-            file_key = digest([key, private["speech"], plan["settings"], vars(character)])
+            voice_instruct = str(private.get("voice_instruct") or "").strip()
+            file_key = (
+                digest([key, private["speech"], voice_instruct, plan["settings"], vars(character)])
+                if voice_instruct
+                else digest([key, private["speech"], plan["settings"], vars(character)])
+            )
             target = store.path(file_key, "wav")
             if not target.is_file():
                 generated = self._synthesize(plan, entry, character)
@@ -369,8 +414,17 @@ class ChatReplayService:
                             temporary.unlink(missing_ok=True)
                 finally:
                     generated.unlink(missing_ok=True)
-            store.write(key, "voice.json", {"fileKey": file_key, "speechKey": digest(private["speech"]),
-                                            "label": entry["voiceLabel"], "source": "generated"})
+            store.write(
+                key,
+                "voice.json",
+                {
+                    "fileKey": file_key,
+                    "speechKey": _replay_speech_key(private["speech"], voice_instruct),
+                    "label": entry["voiceLabel"],
+                    "source": "generated",
+                    **({"voiceInstruct": voice_instruct} if voice_instruct else {}),
+                },
+            )
             private["paths"] = [target]
             entry.update(voiceUrls=self._urls(plan_id, key, [target]), voiceSource="generated")
             return {k: entry[k] for k in ("voiceUrls", "voiceSource", "voiceLabel")}
@@ -379,6 +433,7 @@ class ChatReplayService:
         from ai.llm.text_processor import TextProcessor
         from ai.tts.model_session import tts_model_session
         from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
+        from ai.tts.voice_tags import strip_inline_voice_tags
         settings = plan["settings"]
         manager = TTSManager(audio_cache_dir=Path(self.state.project_root_dir) / "cache" / "audio", unique_cache_files=True)
         adapter = None
@@ -387,18 +442,21 @@ class ChatReplayService:
             manager.set_tts_adapter(adapter)
             adapter.wait_until_ready(timeout_seconds=30)
             processor = TextProcessor(pronunciation_map={})
-            source = plan["private"][entry["key"]]["speech"]
+            private = plan["private"][entry["key"]]
+            source = private["speech"]
             speech = processor.html_to_plain_qt(processor.remove_parentheses(source)).strip()
             if not speech:
                 raise ValueError("此句只有动作描述，没有可合成的台词")
             # Read the saved line in its own language. Replay never asks a
             # translation service to rewrite the historical dialogue.
-            manager.set_language(processor.decide_language(speech))
+            manager.set_language(processor.decide_language(strip_inline_voice_tags(speech) or speech))
             def absolute(value):
                 if not value or str(value).startswith("/kaggle/"):
                     return value or ""
                 p = Path(value)
                 return str(p if p.is_absolute() else Path(self.state.project_root_dir) / p)
+            voice_instruct = str(private.get("voice_instruct") or "").strip()
+            extra_tts_kwargs = {"voice_instruct": voice_instruct} if voice_instruct else {}
             with tts_model_session(adapter, settings["url"]):
                 self._plan(plan["id"])
                 manager.switch_model({"character_name": entry["speaker"],
@@ -406,7 +464,8 @@ class ChatReplayService:
                                       "sovits_model_path": absolute(character.sovits_model_path)})
                 path = manager.generate_tts(speech, ref_audio_path=absolute(character.refer_audio_path),
                                             prompt_text=character.prompt_text, prompt_lang=character.prompt_lang,
-                                            character_name=entry["speaker"], speed_factor=character.speech_speed)
+                                            character_name=entry["speaker"], speed_factor=character.speech_speed,
+                                            **extra_tts_kwargs)
             if not path or not Path(path).is_file():
                 raise ValueError("语音生成失败，可重试或跳过本句语音")
             return Path(path)

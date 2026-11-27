@@ -219,6 +219,7 @@ def create_chat_startup_context(
                 character_names=tuple(character_names),
                 primary_character_names=primary_character_names,
                 runtime_imports=runtime,
+                tts_manager=tts_manager,
             )
         )
 
@@ -296,7 +297,7 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats,
         configure_builtin_formats,
     )
-    from core.messaging.formats.registry import (
+    from ai.llm.formats import (
         configure_builtin_dialog_formats,
         configure_registered_dialog_formats,
     )
@@ -420,6 +421,9 @@ def _load_plugin_manager(
     )
     if callable(configure_dialog_formats_fn):
         extra_bindings["configure_dialog_formats"] = configure_dialog_formats_fn
+    builtin_plugins = getattr(runtime, "builtin_plugins", ())
+    if builtin_plugins:
+        extra_bindings["builtin_plugins"] = tuple(builtin_plugins)
 
     return runtime.ensure_plugins_loaded(
         config,

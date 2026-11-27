@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.parse import urlparse
 
 from ai.tts.model_session import tts_model_session
+from ai.tts.voice_tags import split_tts_sentences_preserving_tags
 from .models import TtsGenerationRequest
 
 
@@ -75,6 +75,9 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         if text_processor:
             speech_text = text_processor.remove_parentheses(speech_text)
 
+        voice_instruct = str(getattr(request.message, "voice_instruct", "") or "").strip()
+        extra_tts_kwargs = {"voice_instruct": voice_instruct} if voice_instruct else {}
+
         sentences = self._sentences(request, speech_text)
         if len(sentences) <= 1:
             audio_path = manager.generate_tts(
@@ -85,6 +88,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 prompt_lang=character.prompt_lang,
                 character_name=request.character_name,
                 speed_factor=character.speech_speed,
+                **extra_tts_kwargs,
             )
             yield audio_path or ""
             return
@@ -98,6 +102,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 prompt_lang=character.prompt_lang,
                 character_name=request.character_name,
                 speed_factor=character.speech_speed,
+                **extra_tts_kwargs,
             )
             if not self._is_audio_file(audio_path):
                 yield ""
@@ -125,21 +130,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         if not getattr(api_config, "tts_split_enabled", False):
             return []
         max_length = getattr(api_config, "tts_max_sentence_length", 15)
-        pieces = re.split(r"(?<=[。！？，、；：\.!\?,;:])", speech_text)
-        pieces = [piece.strip() for piece in pieces if piece.strip()]
-        sentences: list[str] = []
-        current = ""
-        for piece in pieces:
-            if not current:
-                current = piece
-            elif len(current) + len(piece) <= max_length:
-                current += piece
-            else:
-                sentences.append(current)
-                current = piece
-        if current:
-            sentences.append(current)
-        return sentences
+        return split_tts_sentences_preserving_tags(speech_text, max_length)
 
     @staticmethod
     def _can_use_sprite_reference(request: TtsGenerationRequest) -> bool:

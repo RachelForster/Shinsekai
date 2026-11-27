@@ -163,6 +163,12 @@ def _build_dialog_message(
                 speech=speech,
                 translate=translate,
                 effect=(attrs.get("effect") or "").strip(),
+                voice_instruct=(
+                    attrs.get("voice_instruct")
+                    or attrs.get("voice_instruction")
+                    or attrs.get("instruct")
+                    or ""
+                ).strip(),
             ),
             "",
         )
@@ -215,6 +221,12 @@ def _build_dialog_message(
                 effect=effect,
                 outfit=(attrs.get("outfit") or attrs.get("sprite_group") or "").strip(),
                 motion=normalize_character_motion(attrs.get("motion")),
+                voice_instruct=(
+                    attrs.get("voice_instruct")
+                    or attrs.get("voice_instruction")
+                    or attrs.get("instruct")
+                    or ""
+                ).strip(),
             ),
             "",
         )

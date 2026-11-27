@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import json
 from typing import Any
-from xml.sax.saxutils import escape as xml_escape, quoteattr as xml_quoteattr
 
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from ai.llm.formats import resolve_dialog_format
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, DialogOutfitHintContext
 
 from ai.llm.template.core import (
     I18nSection,
@@ -186,40 +185,6 @@ class OutfitContextPromptContext(TemplateContext):
     custom_outfit_example: str = ""
 
 
-def _render_outfit_example_line(context: OutfitContextPromptContext) -> str:
-    prefix = context.tr("session.outfit_switch_example_prefix")
-    example_speech = context.tr("session.outfit_example_speech")
-    is_xml = (
-        str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-        == XML_DIALOG_FORMAT_ID
-    )
-    if is_xml:
-        media_attr = (
-            f"vibe={xml_quoteattr(context.tr('session.outfit_example_vibe'))}"
-            if context.media_selection_mode == "semantic"
-            else 'sprite="-1"'
-        )
-        return (
-            prefix
-            + f"<say char={xml_quoteattr(context.switch_example_character)} "
-            + f"{media_attr} "
-            + f"outfit={xml_quoteattr(context.switch_example_target_group)}>"
-            + f"{xml_escape(example_speech)}</say>"
-        )
-    media = (
-        {"vibe": context.tr("session.outfit_example_vibe")}
-        if context.media_selection_mode == "semantic"
-        else {"sprite": "-1"}
-    )
-    payload = {
-        "character_name": context.switch_example_character,
-        **media,
-        "speech": example_speech,
-        "outfit": context.switch_example_target_group,
-    }
-    return prefix + json.dumps(payload, ensure_ascii=False)
-
-
 def _render_outfit_entries(context: OutfitContextPromptContext) -> str:
     lines: list[str] = []
     default_tag = context.tr("session.outfit_default_tag")
@@ -277,13 +242,39 @@ class _OutfitContextSection(Section[OutfitContextPromptContext]):
                     key="session.outfit_indexed_sprite_rule",
                 )
             )
-        is_xml = (
-            str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-            == XML_DIALOG_FORMAT_ID
+        auto_switch = bool(
+            context.switch_example_character and context.switch_example_target_group
         )
         custom_rule = str(context.custom_outfit_rule or "").strip()
+        custom_example = str(context.custom_outfit_example or "").strip()
+        if not custom_rule:
+            fmt = resolve_dialog_format(context.output_format_id)
+            hint_ctx = DialogOutfitHintContext(
+                locale=str(context.locale or "zh_CN"),
+                media_selection_mode=context.media_selection_mode,
+                auto_switch_enabled=auto_switch,
+                example_character=context.switch_example_character,
+                example_target_group=context.switch_example_target_group,
+                example_vibe=context.tr("session.outfit_example_vibe"),
+                example_speech=context.tr("session.outfit_example_speech"),
+            )
+            hint = fmt.render_outfit_hint(hint_ctx)
+            if hint is None and fmt.format_id != DEFAULT_DIALOG_FORMAT_ID:
+                hint = resolve_dialog_format(DEFAULT_DIALOG_FORMAT_ID).render_outfit_hint(
+                    hint_ctx
+                )
+            if hint is not None and str(hint.rule_text or "").strip():
+                custom_rule = hint.rule_text.strip()
+                raw_example = str(hint.example_line or "").strip()
+                if raw_example:
+                    prefix = context.tr("session.outfit_switch_example_prefix")
+                    custom_example = (
+                        raw_example
+                        if (not prefix or raw_example.startswith(prefix))
+                        else f"{prefix}{raw_example}"
+                    )
         if custom_rule:
-            if context.switch_example_character and context.switch_example_target_group:
+            if auto_switch:
                 children.append(
                     TextSection(
                         id="switch_rule",
@@ -291,7 +282,6 @@ class _OutfitContextSection(Section[OutfitContextPromptContext]):
                         text=custom_rule,
                     )
                 )
-                custom_example = str(context.custom_outfit_example or "").strip()
                 if custom_example:
                     children.append(
                         TextSection(
@@ -308,37 +298,6 @@ class _OutfitContextSection(Section[OutfitContextPromptContext]):
                         text=custom_rule,
                     )
                 )
-        elif context.switch_example_character and context.switch_example_target_group:
-            children.append(
-                I18nSection(
-                    id="switch_rule",
-                    priority=40,
-                    key=(
-                        "session.outfit_auto_switch_rule_xml"
-                        if is_xml
-                        else "session.outfit_auto_switch_rule"
-                    ),
-                )
-            )
-            children.append(
-                TextSection(
-                    id="switch_example",
-                    priority=45,
-                    text=_render_outfit_example_line,
-                )
-            )
-        else:
-            children.append(
-                I18nSection(
-                    id="locked_rule",
-                    priority=40,
-                    key=(
-                        "session.outfit_locked_or_disabled_rule_xml"
-                        if is_xml
-                        else "session.outfit_locked_or_disabled_rule"
-                    ),
-                )
-            )
         children.append(
             TextSection(
                 id="entries",
