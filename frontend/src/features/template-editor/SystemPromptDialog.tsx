@@ -5,6 +5,7 @@ import { useI18n } from "../../shared/i18n";
 import type { DialogFormatOption, DialogOutputFormatId, MediaSelectionMode } from "../../shared/platform/types";
 import { AsyncButton, Button, Dialog, NumberInput, Select, Switch, TextArea } from "../../shared/ui";
 import { SemanticMediaSwitch } from "./SemanticMediaSwitch";
+import { DEFAULT_NEW_OUTPUT_FORMAT, resolveSupportedOutputFormat } from "./templateFlow";
 
 const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
   { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
@@ -97,6 +98,11 @@ export function SystemPromptDialog({
   const initialSigRef = useRef("");
   const lastSyncedSigRef = useRef("");
 
+  const formatOptions = useMemo(
+    () => (dialogFormats?.length ? dialogFormats : FALLBACK_DIALOG_FORMATS),
+    [dialogFormats],
+  );
+
   useEffect(() => {
     if (!open) {
       wasOpenRef.current = false;
@@ -106,14 +112,28 @@ export function SystemPromptDialog({
       return;
     }
     wasOpenRef.current = true;
-    setDraftRules(rules);
+    const normalizedRules: SystemPromptRulesDraft = {
+      ...rules,
+      outputFormat: resolveSupportedOutputFormat(rules.outputFormat, formatOptions, DEFAULT_NEW_OUTPUT_FORMAT),
+    };
+    setDraftRules(normalizedRules);
     setDraftSystem(systemText);
     setDraftManuallyEdited(systemManuallyEdited);
     setDraftLocalStale(systemConfigStale);
-    const sig = rulesSignature(rules);
+    const sig = rulesSignature(normalizedRules);
     initialSigRef.current = sig;
     lastSyncedSigRef.current = sig;
-  }, [open, rules, systemConfigStale, systemManuallyEdited, systemText]);
+  }, [formatOptions, open, rules, systemConfigStale, systemManuallyEdited, systemText]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const supported = resolveSupportedOutputFormat(draftRules.outputFormat, formatOptions, DEFAULT_NEW_OUTPUT_FORMAT);
+    if (supported !== draftRules.outputFormat) {
+      setDraftRules((curr) => ({ ...curr, outputFormat: supported }));
+    }
+  }, [draftRules.outputFormat, formatOptions, open]);
 
   const currentSig = useMemo(() => rulesSignature(draftRules), [draftRules]);
 
@@ -167,14 +187,6 @@ export function SystemPromptDialog({
       setLocalGenerating(false);
     }
   };
-
-  const formatOptions = useMemo(() => {
-    const base = dialogFormats?.length ? dialogFormats : FALLBACK_DIALOG_FORMATS;
-    if (base.some((item) => item.id === draftRules.outputFormat)) {
-      return base;
-    }
-    return [...base, { id: draftRules.outputFormat, label: draftRules.outputFormat, builtin: false }];
-  }, [dialogFormats, draftRules.outputFormat]);
 
   const busy = generating || localGenerating;
 
@@ -283,7 +295,12 @@ export function SystemPromptDialog({
           <span className="template-side-field__label">{t("template.field.outputFormat")}</span>
           <Select
             aria-label={t("template.field.outputFormat")}
-            onChange={(event) => setDraftRules((curr) => ({ ...curr, outputFormat: event.target.value || "xml_v1" }))}
+            onChange={(event) =>
+              setDraftRules((curr) => ({
+                ...curr,
+                outputFormat: event.target.value || formatOptions[0]?.id || DEFAULT_NEW_OUTPUT_FORMAT,
+              }))
+            }
             value={draftRules.outputFormat}
           >
             {formatOptions.map((option) => (

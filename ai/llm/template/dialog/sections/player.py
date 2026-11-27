@@ -11,7 +11,12 @@ from config.schema import (
     is_self_persona_id,
     is_self_persona_name,
 )
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from core.messaging.formats.registry import resolve_dialog_format
+from sdk.adapters.dialog_format import (
+    DEFAULT_DIALOG_FORMAT_ID,
+    DialogPlayerHintContext,
+    XML_DIALOG_FORMAT_ID,
+)
 
 from ...core import PROMPT_CATALOG, Section
 from ...integrations.localization import (
@@ -119,10 +124,10 @@ class PlayerSection(Section[DialogTemplateContext]):
             setting = f"{note}\n{raw_setting}" if (note and raw_setting) else (raw_setting or note)
         else:
             setting = raw_setting
-        is_xml = (
+        format_id = (
             str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-            == XML_DIALOG_FORMAT_ID
         )
+        is_xml = format_id == XML_DIALOG_FORMAT_ID
         if context.uses_vibe:
             portrait_field = "vibe"
             portrait_value = context.translate("player_portrait_vibe_value")
@@ -131,6 +136,26 @@ class PlayerSection(Section[DialogTemplateContext]):
             portrait_field = "sprite"
             portrait_value = "01"
             speech_media = 'sprite="-1"' if is_xml else '"sprite":"-1"'
+
+        if format_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
+            fmt = resolve_dialog_format(format_id)
+            custom_hint = fmt.render_player_hint(
+                DialogPlayerHintContext(
+                    locale=str(context.locale or "zh_CN"),
+                    name=name,
+                    setting=setting,
+                    uses_vibe=bool(context.uses_vibe),
+                    allow_player_dialogue=bool(context.allow_player_dialogue),
+                    read_player_speech=bool(context.read_player_speech),
+                    target_voice_name=str(context.target_voice_name or ""),
+                    portrait_field=portrait_field,
+                    portrait_value=portrait_value,
+                )
+            )
+            if isinstance(custom_hint, str):
+                cleaned_hint = custom_hint.strip("\r\n")
+                if cleaned_hint.strip():
+                    return f"\n{cleaned_hint}\n"
 
         if context.allow_player_dialogue:
             return context.translate(

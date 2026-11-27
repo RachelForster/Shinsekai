@@ -32,11 +32,20 @@ def _repair_prompt(
 ) -> str:
     fmt = resolve_dialog_format(output_format_id)
     resolved_locale = resolve_dynamic_locale(locale)
-    custom = fmt.render_repair_prompt(
-        media_field=media_field,
-        retry=retry,
-        locale=resolved_locale,
-    )
+    try:
+        custom = fmt.render_repair_prompt(
+            media_field=media_field,
+            retry=retry,
+            locale=resolved_locale,
+            allow_unbound_speakers=allow_unbound_speakers,
+            bound_speakers=tuple(bound_speakers),
+        )
+    except TypeError:
+        custom = fmt.render_repair_prompt(
+            media_field=media_field,
+            retry=retry,
+            locale=resolved_locale,
+        )
     if isinstance(custom, str) and custom.strip():
         return custom
     return DIALOG_REPAIR_PROMPT_SPEC.render_user(

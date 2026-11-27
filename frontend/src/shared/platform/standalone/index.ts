@@ -59,6 +59,13 @@ import { exportCharPackage, importCharPackage, refreshCharacterMouthManifestUrls
 import { createStandaloneTemplateTranslator } from "./ai/standaloneTemplateLocales";
 import { characterNameKey, generateStandaloneTemplateSummary } from "./ai/templateGenerator";
 import {
+  listStandaloneDialogFormats,
+  normalizeStandaloneChatLaunchPayload,
+  normalizeStandaloneTemplate,
+  normalizeStandaloneTemplateSession,
+  STANDALONE_DIALOG_FORMAT_ID,
+} from "./dialogFormatPolicy";
+import {
   loadBundledPresets,
   resolveBundledStarterAssetUrl,
   STARTER_BACKGROUND_NAME,
@@ -575,10 +582,18 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         });
       }
       if (savedTemplateSession) {
-        ctx.setTemplateSession(savedTemplateSession);
+        const normalizedSession = normalizeStandaloneTemplateSession(savedTemplateSession);
+        ctx.setTemplateSession(normalizedSession);
+        if (normalizedSession.outputFormat !== savedTemplateSession.outputFormat) {
+          await setKvConfig(KV_TEMPLATE_SESSION, clone(normalizedSession));
+        }
       }
       if (Array.isArray(savedTemplates) && savedTemplates.length) {
-        ctx.setTemplates(savedTemplates);
+        const normalizedTemplates = savedTemplates.map(normalizeStandaloneTemplate);
+        ctx.setTemplates(normalizedTemplates);
+        if (normalizedTemplates.some((item, idx) => item.outputFormat !== savedTemplates[idx]?.outputFormat)) {
+          await setKvConfig(KV_TEMPLATES, clone(normalizedTemplates));
+        }
       } else {
         const starterChar = ctx.config.characters[0]?.name ?? STARTER_CHARACTER_NAME;
         const starterBg = ctx.config.background_list[0]?.name ?? STARTER_BACKGROUND_NAME;
@@ -595,6 +610,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
                 scenario: starterScenario,
                 characters: ctx.config.characters.length ? [starterChar] : [],
                 backgroundName: starterBg,
+                outputFormat: STANDALONE_DIALOG_FORMAT_ID,
                 voiceLanguage: ctx.config.system_config.voice_language,
               },
               ctx.config,
@@ -609,6 +625,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
               ...currentTemplates[0],
               id: currentTemplates[0].id || "starter-template",
               name: starterTemplateName,
+              outputFormat: STANDALONE_DIALOG_FORMAT_ID,
               scenario: starterScenario,
               system: starterSystem,
               content: starterContent,
@@ -629,6 +646,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             maxSpeechChars: 120,
             mediaSelectionMode: "indexed",
             memoryMode: "isolated",
+            outputFormat: STANDALONE_DIALOG_FORMAT_ID,
             playerCharacter: tr("plat.standalone.defaultPlayerTraveler"),
             primaryCharacters: [starterChar],
             readPlayerSpeech: false,
@@ -810,11 +828,11 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       }
     }
 
-    const sessionPayload: ChatLaunchPayload = {
+    const sessionPayload = normalizeStandaloneChatLaunchPayload({
       ...effectivePayload,
       historyPath: targetHistoryPath,
       resetHistory: false,
-    };
+    });
 
     const session = await sessionStore.ensureSession({
       historyPath: targetHistoryPath,
@@ -850,7 +868,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       await ensureInitialized();
       const session = sessionStore.getSession(id) ?? sessionStore.getSessionByHistoryPath(id);
       if (!session) throw new Error(tr("plat.standalone.conversationNotFound"));
-      return clone(session.payload);
+      return normalizeStandaloneChatLaunchPayload(clone(session.payload));
     },
     async reconfigureConversation(id, payload) {
       const session = sessionStore.getSession(id) ?? sessionStore.getSessionByHistoryPath(id);
@@ -1802,6 +1820,9 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     },
     templates: {
       ...baseTemplates,
+      async listDialogFormats() {
+        return listStandaloneDialogFormats();
+      },
       async generate(input) {
         await ensureInitialized();
         const nextVoice = input.voiceLanguage?.trim();
@@ -1809,17 +1830,20 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           ctx.config.system_config.voice_language = nextVoice;
           await persistAppConfig();
         }
-        return generateStandaloneTemplateSummary(input, ctx.config);
+        return {
+          ...generateStandaloneTemplateSummary(input, ctx.config),
+          outputFormat: STANDALONE_DIALOG_FORMAT_ID,
+        };
       },
       async list() {
         await ensureInitialized();
-        return clone(ctx.getTemplates());
+        return clone(ctx.getTemplates()).map(normalizeStandaloneTemplate);
       },
       async save(template) {
         await ensureInitialized();
-        const res = await baseTemplates.save(template);
+        const res = await baseTemplates.save(normalizeStandaloneTemplate(template));
         await persistTemplates();
-        return res;
+        return normalizeStandaloneTemplate(res);
       },
       async getPresets() {
         await ensureInitialized();
@@ -1833,13 +1857,14 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       },
       async getSession() {
         await ensureInitialized();
-        return baseTemplates.getSession();
+        const session = await baseTemplates.getSession();
+        return session ? normalizeStandaloneTemplateSession(session) : null;
       },
       async saveSession(session) {
         await ensureInitialized();
-        const res = await baseTemplates.saveSession(session);
+        const res = await baseTemplates.saveSession(normalizeStandaloneTemplateSession(session));
         await persistTemplateSession();
-        return res;
+        return normalizeStandaloneTemplateSession(res);
       },
     },
     chat: chatPlatform,

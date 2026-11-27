@@ -182,6 +182,8 @@ class OutfitContextPromptContext(TemplateContext):
     switch_example_character: str = ""
     switch_example_target_group: str = ""
     output_format_id: str = DEFAULT_DIALOG_FORMAT_ID
+    custom_outfit_rule: str = ""
+    custom_outfit_example: str = ""
 
 
 def _render_outfit_example_line(context: OutfitContextPromptContext) -> str:
@@ -279,7 +281,34 @@ class _OutfitContextSection(Section[OutfitContextPromptContext]):
             str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
             == XML_DIALOG_FORMAT_ID
         )
-        if context.switch_example_character and context.switch_example_target_group:
+        custom_rule = str(context.custom_outfit_rule or "").strip()
+        if custom_rule:
+            if context.switch_example_character and context.switch_example_target_group:
+                children.append(
+                    TextSection(
+                        id="switch_rule",
+                        priority=40,
+                        text=custom_rule,
+                    )
+                )
+                custom_example = str(context.custom_outfit_example or "").strip()
+                if custom_example:
+                    children.append(
+                        TextSection(
+                            id="switch_example",
+                            priority=45,
+                            text=custom_example,
+                        )
+                    )
+            else:
+                children.append(
+                    TextSection(
+                        id="locked_rule",
+                        priority=40,
+                        text=custom_rule,
+                    )
+                )
+        elif context.switch_example_character and context.switch_example_target_group:
             children.append(
                 I18nSection(
                     id="switch_rule",
