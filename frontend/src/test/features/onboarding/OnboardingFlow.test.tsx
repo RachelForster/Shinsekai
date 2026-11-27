@@ -83,15 +83,42 @@ vi.mock("../../../features/plugin-manager/pluginReload", () => ({
   reloadPluginService: () => mocks.reloadPluginService(),
 }));
 
-const visualCatalogItem = {
-  author: "Preview",
-  description: "vision screen image assistant",
+const heartbeatCatalogItem = {
+  author: "Hard-to-tell",
+  description: "Heartbeat companion for idle chat and study supervision",
+  displayName: "心跳陪伴 Heartbeat Companion",
   downloaded: false,
-  entry: "vision.plugin:VisionPlugin",
-  id: "vision-plugin",
+  entry: "plugins.shinsekai_heartbeat.plugin:HeartbeatCompanionPlugin",
+  id: "shinsekai_heartbeat",
   installed: false,
-  name: "Vision Plugin",
-  repo: "example/vision",
+  name: "shinsekai_heartbeat",
+  repo: "Hard-to-tell/shinsekai-heartbeat",
+  tags: ["心跳陪伴", "学习监督"],
+};
+
+const chatPhoneCatalogItem = {
+  author: "Mizushima-Mihane",
+  description: "Virtual phone for texting and calling characters",
+  displayName: "Doki Chat",
+  downloaded: false,
+  entry: "plugins.shinsekai_chat_phone.plugin:ChatPhonePlugin",
+  id: "shinsekai_chat_phone",
+  installed: false,
+  name: "shinsekai_chat_phone",
+  repo: "Mizushima-Mihane/Shinsekai-chat-phone",
+  tags: [],
+};
+
+const moondreamCatalogItem = {
+  author: "RachelForster",
+  description: "Moondream screen understanding plugin",
+  displayName: "Moondream Vision",
+  downloaded: false,
+  entry: "moondream_vision.plugin:MoondreamVisionPlugin",
+  id: "moondream_vision",
+  installed: false,
+  name: "moondream_vision",
+  repo: "RachelForster/shinsekai-moondream-vision",
   tags: ["vision", "screen"],
 };
 
@@ -122,15 +149,15 @@ const voiceCatalogItem = {
 const installedPlugin = {
   author: "Preview",
   description: "Installed plugin",
-  directory: "plugins/vision",
+  directory: "plugins/shinsekai_heartbeat",
   enabled: true,
-  entry: "vision.plugin:VisionPlugin",
-  id: "vision-plugin",
+  entry: "plugins.shinsekai_heartbeat.plugin:HeartbeatCompanionPlugin",
+  id: "shinsekai_heartbeat",
   loaded: true,
   permissions: ["settings"],
-  settingsPages: ["Vision settings"],
+  settingsPages: ["Plugin settings"],
   slots: ["settings-extension" as const],
-  title: "Vision Plugin",
+  title: "Heartbeat Companion",
   toolsTabs: [],
   version: "1.0.0",
 };
@@ -160,15 +187,41 @@ describe("onboarding flow", () => {
     mocks.testLlmConnection.mockResolvedValue(undefined);
     mocks.saveApiConfig.mockImplementation(async (input) => input);
     mocks.downloadTtsBundle.mockResolvedValue({ path: "/tmp/gpt-sovits", provider: "gpt-sovits" });
-    mocks.listPluginCatalog.mockResolvedValue([visualCatalogItem, browserCatalogItem, voiceCatalogItem]);
+    mocks.listPluginCatalog.mockResolvedValue([
+      heartbeatCatalogItem,
+      chatPhoneCatalogItem,
+      moondreamCatalogItem,
+      browserCatalogItem,
+      voiceCatalogItem,
+    ]);
     mocks.listPlugins.mockResolvedValue([]);
     mocks.installMissingRuntimeDependency.mockImplementation(async (_input, options) => {
       options?.onTaskUpdate?.({ message: "dependency", phase: "completed", progress: 1, status: "succeeded" });
-      return { message: "installed", moduleName: "openai", packageName: "openai", pipCode: 0, pipOutput: "" };
+      return { message: "installed", moduleName: "playwright", packageName: "playwright", pipCode: 0, pipOutput: "" };
     });
     mocks.installPlugin.mockImplementation(async (source, options) => {
       options?.onTaskUpdate?.({ message: "plugin", phase: "completed", progress: 1, status: "succeeded" });
-      return { ...installedPlugin, id: String(source).includes("browser") ? "browser-plugin" : "vision-plugin" };
+      const text = String(source);
+      if (text.includes("browser")) {
+        return {
+          ...installedPlugin,
+          directory: "plugins/browser",
+          entry: "browser.plugin:BrowserPlugin",
+          id: "browser-plugin",
+          title: "Browser Plugin",
+          toolsTabs: ["Browser tools"],
+        };
+      }
+      if (text.includes("chat-phone") || text.includes("chat_phone")) {
+        return {
+          ...installedPlugin,
+          directory: "plugins/shinsekai_chat_phone",
+          entry: "plugins.shinsekai_chat_phone.plugin:ChatPhonePlugin",
+          id: "shinsekai_chat_phone",
+          title: "Doki Chat",
+        };
+      }
+      return installedPlugin;
     });
     mocks.isTauriDesktop.mockReturnValue(false);
     mocks.reloadPluginService.mockResolvedValue(undefined);
@@ -222,9 +275,17 @@ describe("onboarding flow", () => {
   it("installs selected plugin presets and exposes configuration after reload", async () => {
     const onInstalled = vi.fn();
     mocks.listPlugins.mockImplementation(async () => [
-      { ...installedPlugin, id: "vision-plugin", title: "Vision Plugin" },
+      { ...installedPlugin, id: "shinsekai_heartbeat", title: "Heartbeat Companion" },
       {
         ...installedPlugin,
+        directory: "plugins/shinsekai_chat_phone",
+        entry: "plugins.shinsekai_chat_phone.plugin:ChatPhonePlugin",
+        id: "shinsekai_chat_phone",
+        title: "Doki Chat",
+      },
+      {
+        ...installedPlugin,
+        directory: "plugins/browser",
         entry: "browser.plugin:BrowserPlugin",
         id: "browser-plugin",
         title: "Browser Plugin",
@@ -232,6 +293,14 @@ describe("onboarding flow", () => {
       },
       {
         ...installedPlugin,
+        directory: "plugins/moondream_vision",
+        entry: "moondream_vision.plugin:MoondreamVisionPlugin",
+        id: "moondream_vision",
+        title: "Moondream Vision",
+      },
+      {
+        ...installedPlugin,
+        directory: "plugins/voice",
         entry: "voice.plugin:VoicePlugin",
         id: "voice-plugin",
         settingsPages: [],
@@ -241,15 +310,45 @@ describe("onboarding flow", () => {
 
     renderWithProviders(<PluginSetupPanel onInstalled={onInstalled} />);
 
-    expect(await screen.findByText("Visual plugin")).toBeInTheDocument();
+    expect(await screen.findByText("Heartbeat companion")).toBeInTheDocument();
+    expect(screen.getByText("Doki Chat phone")).toBeInTheDocument();
+    expect(screen.getByText("Browser plugin")).toBeInTheDocument();
+    expect(screen.queryByText("Visual plugin")).not.toBeInTheDocument();
     expect(screen.queryByText("Voice input plugin")).not.toBeInTheDocument();
+    expect(screen.queryByText("Moondream Vision")).not.toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "One-click download" }));
 
-    await waitFor(() => expect(mocks.installMissingRuntimeDependency).toHaveBeenCalled());
-    await waitFor(() => expect(mocks.installPlugin).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.installMissingRuntimeDependency).toHaveBeenCalledTimes(1));
+    expect(mocks.installMissingRuntimeDependency).toHaveBeenCalledWith(
+      { moduleName: "playwright" },
+      expect.any(Object),
+    );
+    await waitFor(() => expect(mocks.installPlugin).toHaveBeenCalledTimes(3));
+    expect(mocks.installPlugin).toHaveBeenNthCalledWith(1, "Hard-to-tell/shinsekai-heartbeat", expect.any(Object));
+    expect(mocks.installPlugin).toHaveBeenNthCalledWith(2, "Mizushima-Mihane/Shinsekai-chat-phone", expect.any(Object));
+    expect(mocks.installPlugin).toHaveBeenNthCalledWith(3, "example/browser", expect.any(Object));
+    expect(mocks.installPlugin).not.toHaveBeenCalledWith(expect.stringContaining("moondream"), expect.anything());
     await waitFor(() => expect(onInstalled).toHaveBeenCalledTimes(1));
-    expect(await screen.findAllByRole("button", { name: "Configure" })).toHaveLength(2);
+    expect(await screen.findAllByRole("button", { name: "Configure" })).toHaveLength(3);
     expect(screen.getByText(/Dependencies and selected plugins are installed/)).toBeInTheDocument();
+  });
+
+  it("skips runtime dependency installs when browser preset is deselected", async () => {
+    const onInstalled = vi.fn();
+    renderWithProviders(<PluginSetupPanel onInstalled={onInstalled} />);
+
+    expect(await screen.findByText("Heartbeat companion")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Browser plugin/i }));
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "One-click download" }));
+
+    await waitFor(() => expect(mocks.installPlugin).toHaveBeenCalledTimes(2));
+    expect(mocks.installMissingRuntimeDependency).not.toHaveBeenCalled();
+    expect(mocks.installPlugin).toHaveBeenNthCalledWith(1, "Hard-to-tell/shinsekai-heartbeat", expect.any(Object));
+    expect(mocks.installPlugin).toHaveBeenNthCalledWith(2, "Mizushima-Mihane/Shinsekai-chat-phone", expect.any(Object));
+    await waitFor(() => expect(onInstalled).toHaveBeenCalledTimes(1));
   });
 
   it("imports characters and backgrounds and opens resource links", async () => {
