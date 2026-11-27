@@ -98,6 +98,12 @@ pub(crate) struct DesktopMiniWindowLayout {
     pub(crate) dock_side: &'static str,
 }
 
+pub(crate) fn is_portable_bundle(app_root: &std::path::Path) -> bool {
+    app_root
+        .join(project_root::PORTABLE_ROOT_MARKER_FILE)
+        .is_file()
+}
+
 pub(crate) struct DesktopState {
     pub(crate) source_root: PathBuf,
     pub(crate) project_root: PathBuf,
@@ -143,6 +149,10 @@ impl DesktopState {
             mode.mini_input_shortcut = None;
             mode.normal_bounds = None;
         }
+    }
+
+    pub(crate) fn is_portable(&self) -> bool {
+        is_portable_bundle(&self.app_root)
     }
 
     pub(crate) fn bridge_url(&self) -> String {

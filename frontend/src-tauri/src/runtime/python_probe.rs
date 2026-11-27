@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{Manager, Runtime};
 
-use super::python_env;
+use super::{probe_runner, python_env};
 
 pub const INSTALL_DIR_RUNTIME_ID: &str = "install-dir-runtime";
 const PRIORITY_INSTALL_DIR_RUNTIME: i32 = 9_000;
@@ -126,13 +126,25 @@ fn strip_case_insensitive_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a
         .and_then(|_| value.get(prefix.len()..))
 }
 
+pub fn effective_runtime_root(source_root: &Path, app_root: &Path) -> PathBuf {
+    if app_root != source_root && crate::state::is_portable_bundle(app_root) {
+        let portable_runtime = app_root.join("runtime");
+        if python_in_prefix(&portable_runtime).is_some() {
+            return portable_runtime;
+        }
+    }
+    install_dir_runtime_root(source_root)
+}
+
 pub fn runtime_root_candidates<R: Runtime>(
-    _app: &impl Manager<R>,
+    app: &impl Manager<R>,
     source_root: &Path,
 ) -> Vec<RuntimeRootCandidate> {
-    vec![RuntimeRootCandidate {
-        root: install_dir_runtime_root(source_root),
-    }]
+    let root = match app.try_state::<crate::state::DesktopState>() {
+        Some(state) => effective_runtime_root(source_root, &state.app_root),
+        None => install_dir_runtime_root(source_root),
+    };
+    vec![RuntimeRootCandidate { root }]
 }
 
 pub fn python_in_prefix(prefix: &Path) -> Option<PathBuf> {
@@ -180,10 +192,18 @@ fn probe_python_source(source: PythonSource) -> PythonInstall {
     let mut command = Command::new(&source.executable);
     command.arg("-c").arg(PYTHON_PROBE_SCRIPT);
     python_env::configure_python_command(&mut command, &source.executable);
-    let output = command.output();
+    let output = probe_runner::run_probe_command_with_retry(&mut command, |output| {
+        !output.status.success()
+            || probe_runner::parse_json_line::<PythonProbePayload>(&String::from_utf8_lossy(
+                &output.stdout,
+            ))
+            .is_err()
+    });
     match output {
         Ok(output) if output.status.success() => {
-            let payload = serde_json::from_slice::<PythonProbePayload>(&output.stdout);
+            let payload = probe_runner::parse_json_line::<PythonProbePayload>(
+                &String::from_utf8_lossy(&output.stdout),
+            );
             match payload {
                 Ok(payload) => install_from_payload(source, payload),
                 Err(error) => {
