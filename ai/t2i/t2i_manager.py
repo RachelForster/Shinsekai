@@ -1,128 +1,121 @@
-import requests
-import threading
-import queue
-from pathlib import Path
-from typing import Optional, Dict, Any
+"""T2I generation queue manager and compatibility factory wrapper."""
 
+from __future__ import annotations
+
+from pathlib import Path
+import queue
+import threading
+from typing import Any, Dict, Optional
+
+from ai.t2i.registry import create_t2i_adapter, get_t2i_adapter_registry
+from ai.t2i.t2i_adapter import ComfyUIT2IAdapter, StableDiffusionAdapter  # noqa: F401
 from sdk.adapters.t2i import T2IAdapter
-from ai.t2i.t2i_adapter import ComfyUIT2IAdapter, StableDiffusionAdapter
+
 
 class T2IAdapterFactory:
-    """
-    Factory for creating different T2IAdapter instances.
-    """
-    _adapters = {
-        'stable diffusion': StableDiffusionAdapter,
-        'comfyui': ComfyUIT2IAdapter,
-    }
+    """Compatibility wrapper backed by the process-wide T2I ``AdapterRegistry``."""
+
+    _adapters = get_t2i_adapter_registry().as_mutable_mapping()
 
     @staticmethod
-    def create_adapter(adapter_name: str, **kwargs) -> T2IAdapter:
-        """
-        Creates and returns a T2IAdapter instance based on the given name.
+    def create_adapter(adapter_name: str, **kwargs: Any) -> T2IAdapter:
+        """Create and return a ``T2IAdapter`` instance for ``adapter_name``."""
+        return create_t2i_adapter(adapter_name, **kwargs)
 
-        Args:
-            adapter_name (str): The name of the adapter to create (e.g., 'stable-diffusion').
-            **kwargs: Configuration arguments for the adapter's constructor (e.g., api_key, api_url).
 
-        Returns:
-            T2IAdapter: An instance of a concrete T2IAdapter.
-
-        Raises:
-            ValueError: If the adapter name is not supported.
-        """
-        adapter_class = T2IAdapterFactory._adapters.get(adapter_name.lower())
-
-        if not adapter_class:
-            raise ValueError(f"Unsupported T2I adapter: '{adapter_name}'. Supported adapters are: {list(T2IAdapterFactory._adapters.keys())}")
-
-        try:
-            # Instantiate the correct adapter class with the provided kwargs
-            from config.adapter_extra_kwargs import filter_kwargs_for_ctor
-
-            return adapter_class(
-                **filter_kwargs_for_ctor(adapter_class, kwargs)
-            )
-        except TypeError as e:
-            print(f"Error creating adapter '{adapter_name}'. Check the required arguments for {adapter_name}.")
-            raise e
-
-# T2I管理器
 class T2IManager:
-    def __init__(self, t2i_adapter, image_cache_dir: str = ".\\cache\\images"):
+    """Manage queued text-to-image synthesis and circular disk caching."""
+
+    def __init__(
+        self,
+        t2i_adapter: Optional[T2IAdapter],
+        image_cache_dir: str = ".\\cache\\images",
+    ) -> None:
         self.image_cache_dir = Path(image_cache_dir)
-        self.cache_num = 10  # Max number of cached images
-        self.index = 0       # Index for circular caching
+        self.cache_num = 10
+        self.index = 0
 
         self.image_cache_dir.mkdir(exist_ok=True, parents=True)
-        # Use the adapter for T2I operations
         self.t2i_adapter: Optional[T2IAdapter] = t2i_adapter
 
-        # Work queue for processing image generation requests
-        self.task_queue = queue.Queue()
+        self.task_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
         self.worker_thread = threading.Thread(target=self._process_queue, daemon=True)
         self.worker_thread.start()
 
-    def set_t2i_adapter(self, adapter: T2IAdapter):
-        """Allows switching the T2I adapter at runtime."""
+    def set_t2i_adapter(self, adapter: T2IAdapter) -> None:
+        """Allow switching the T2I adapter at runtime."""
         self.t2i_adapter = adapter
 
-    def t2i(self, prompt: str, prompt_processor: Optional[Any] = None, *, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
-        """
-        Generates T2I image using the currently set adapter and returns the file path.
-        """
+    def t2i(
+        self,
+        prompt: str,
+        prompt_processor: Optional[Any] = None,
+        *,
+        file_path: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Optional[str]:
+        """Generate an image using the active adapter and return the saved file path."""
         if not self.t2i_adapter:
             print("Error: T2I adapter is not set.")
             return None
 
         print(f"Generating image for prompt: '{prompt[:50]}...'")
 
-
-        # Determine the file path for caching
-        destination = Path(file_path) if file_path else self.image_cache_dir / f'{self.index % self.cache_num}.png'
+        destination = (
+            Path(file_path)
+            if file_path
+            else self.image_cache_dir / f"{self.index % self.cache_num}.png"
+        )
         destination.parent.mkdir(parents=True, exist_ok=True)
         self.index += 1
 
-        # The adapter handles the specifics of the image generation
         return self.t2i_adapter.generate_image(
             prompt=prompt,
             file_path=destination.as_posix(),
-            **kwargs
+            **kwargs,
         )
 
-    def switch_model(self, model_info: Dict[str, Any]):
-        """Switches the T2I model/configuration via the adapter."""
+    def switch_model(self, model_info: Dict[str, Any]) -> None:
+        """Switch the T2I model/configuration via the active adapter."""
         if self.t2i_adapter:
             self.t2i_adapter.switch_model(model_info)
         else:
             print("Error: Cannot switch model, T2I adapter is not set.")
 
-    def _process_queue(self):
-        """Worker thread to process T2I generation tasks in the queue sequentially."""
+    def _process_queue(self) -> None:
+        """Worker thread to process T2I generation tasks sequentially."""
         while True:
             task = self.task_queue.get()
-            if task is None:  # Termination signal
+            if task is None:
                 break
             try:
-                if task['type'] == 'generate':
-                    self.t2i(task['prompt'], task['prompt_processor'], **task['kwargs'])
-                # Add other task types (e.g., 'inpaint', 'upscale') here
-            except Exception as e:
-                print(f"T2I task failed: {e}")
+                if task["type"] == "generate":
+                    self.t2i(
+                        task["prompt"], task["prompt_processor"], **task["kwargs"]
+                    )
+            except Exception as exc:
+                print(f"T2I task failed: {exc}")
             finally:
                 self.task_queue.task_done()
 
-    def queue_generation(self, prompt: str, prompt_processor: Optional[Any] = None, **kwargs):
-        """Adds a T2I generation request to the queue."""
-        self.task_queue.put({
-            'type': 'generate',
-            'prompt': prompt,
-            'prompt_processor': prompt_processor,
-            'kwargs': kwargs
-        })
+    def queue_generation(
+        self,
+        prompt: str,
+        prompt_processor: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Enqueue a T2I generation request."""
+        self.task_queue.put(
+            {
+                "type": "generate",
+                "prompt": prompt,
+                "prompt_processor": prompt_processor,
+                "kwargs": kwargs,
+            }
+        )
 
-    def shutdown(self, *, stop_server: bool = False):
-        """Shuts down the queue and worker thread."""
+    def shutdown(self, *, stop_server: bool = False) -> None:
+        """Shut down the queue and worker thread."""
         print("Shutting down T2IManager worker thread...")
         self.task_queue.put(None)
         self.worker_thread.join()

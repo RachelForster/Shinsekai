@@ -162,6 +162,7 @@ def test_save_system_config_applies_network_proxy_environment(monkeypatch, tmp_p
         "SOCKS_PROXY",
         "socks_proxy",
     ):
+        monkeypatch.setenv(name, "")
         monkeypatch.delenv(name, raising=False)
         monkeypatch.setitem(network_proxy._ORIGINAL_PROXY_ENV, name, None)
     monkeypatch.setattr("config.config_manager.apply_mirror_environment", lambda _config: None)

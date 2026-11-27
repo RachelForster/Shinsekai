@@ -112,6 +112,64 @@ fn python_in_prefix_accepts_versioned_pbs_binary() {
     let _ = fs::remove_dir_all(temp_root);
 }
 
+#[test]
+fn effective_runtime_root_prefers_outer_portable_runtime_when_available() {
+    let temp_root = unique_temp_dir("runtime-effective-portable");
+    let source_root = temp_root.join("appimage-mount").join("usr").join("lib").join("shinsekai");
+    let app_root = temp_root.join("portable-dir");
+    let outer_python = app_root.join("runtime").join("bin").join("python3");
+    let inner_python = source_root.join("runtime").join("bin").join("python3");
+    fs::create_dir_all(outer_python.parent().unwrap()).unwrap();
+    fs::create_dir_all(inner_python.parent().unwrap()).unwrap();
+    fs::write(&outer_python, "").unwrap();
+    fs::write(&inner_python, "").unwrap();
+    fs::write(
+        app_root.join(crate::project_root::PORTABLE_ROOT_MARKER_FILE),
+        "portable=1\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        effective_runtime_root(&source_root, &app_root),
+        app_root.join("runtime")
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn effective_runtime_root_falls_back_to_source_root_without_outer_python_or_marker() {
+    let temp_root = unique_temp_dir("runtime-effective-fallback");
+    let source_root = temp_root.join("Shinsekai.app").join("Contents").join("Resources");
+    let app_root = temp_root.join("portable-dir");
+    let inner_python = source_root.join("runtime").join("bin").join("python3");
+    fs::create_dir_all(inner_python.parent().unwrap()).unwrap();
+    fs::create_dir_all(&app_root).unwrap();
+    fs::write(&inner_python, "").unwrap();
+    fs::write(
+        app_root.join(crate::project_root::PORTABLE_ROOT_MARKER_FILE),
+        "portable=1\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        effective_runtime_root(&source_root, &app_root),
+        source_root.join("runtime")
+    );
+
+    let outer_python = app_root.join("runtime").join("bin").join("python3");
+    fs::create_dir_all(outer_python.parent().unwrap()).unwrap();
+    fs::write(&outer_python, "").unwrap();
+    let _ = fs::remove_file(app_root.join(crate::project_root::PORTABLE_ROOT_MARKER_FILE));
+
+    assert_eq!(
+        effective_runtime_root(&source_root, &app_root),
+        source_root.join("runtime")
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
 fn unique_temp_dir(name: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)

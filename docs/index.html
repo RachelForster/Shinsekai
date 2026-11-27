@@ -1,9 +1,27 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shinsekai — AI Desktop Roleplay Assistant</title>
+    <title>Shinsekai — AI Desktop Companion &amp; Visual Novel Stage</title>
+    <meta
+      name="description"
+      content="Source-available AI desktop companion & interactive visual-novel stage with sprites, MMD, Live2D, local Qwen3-TTS voice cloning, Sherpa-ONNX ASR, screen perception, long-term memory, Pi Agent, and plugins."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://rachelforster.github.io/Shinsekai/" />
+    <meta
+      property="og:title"
+      content="Shinsekai — AI Desktop Companion &amp; Visual Novel Stage"
+    />
+    <meta
+      property="og:description"
+      content="Zero-setup multi-platform Portable Bundles (Windows / macOS / Linux) with Qwen3-TTS voice cloning, Sherpa-ONNX ASR, screen perception, hybrid ONNX memory, Pi Agent, and plugin / MCP support."
+    />
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/RachelForster/Shinsekai/main/assets/system/picture/shinsekai-github-banner.png"
+    />
     <style>
       :root {
         --sakura: #ffb7c5;
@@ -336,6 +354,83 @@
         background: #fff;
       }
 
+      .portable-card {
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(212, 120, 142, 0.3);
+        border-radius: 16px;
+        padding: 28px 32px;
+        text-align: center;
+        margin-bottom: 40px;
+        backdrop-filter: blur(12px);
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(212, 120, 142, 0.14);
+      }
+      .portable-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          var(--sakura),
+          var(--pink-deep),
+          var(--sakura),
+          transparent
+        );
+      }
+      .portable-card__eyebrow {
+        display: inline-block;
+        padding: 4px 14px;
+        border-radius: 999px;
+        background: rgba(240, 160, 192, 0.18);
+        border: 1px solid rgba(212, 120, 142, 0.28);
+        color: var(--pink-deep);
+        font-size: 0.82em;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-bottom: 10px;
+      }
+      .portable-card h2 {
+        font-size: 1.45em;
+        color: var(--text);
+        margin-bottom: 10px;
+      }
+      .portable-card__desc {
+        color: var(--muted);
+        font-size: 0.96em;
+        max-width: 660px;
+        margin: 0 auto 18px;
+      }
+      .portable-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .portable-actions .btn {
+        min-width: 220px;
+        margin: 0;
+      }
+      .portable-card__specs,
+      .portable-card__note {
+        color: var(--muted);
+        font-size: 0.88em;
+        max-width: 680px;
+        margin: 8px auto 0;
+      }
+      .portable-card code {
+        background: rgba(240, 160, 192, 0.15);
+        padding: 2px 7px;
+        border-radius: 4px;
+        font-size: 0.92em;
+        color: var(--pink-deep);
+      }
+
       section {
         margin-bottom: 40px;
         background: var(--card-bg);
@@ -427,6 +522,9 @@
           width: 100%;
           justify-content: center;
         }
+        .portable-actions .btn {
+          width: 100%;
+        }
       }
     </style>
   </head>
@@ -438,12 +536,12 @@
       </div>
 
       <header>
-        <h1>新世界 Shinsekai</h1>
+        <h1 data-i18n="site_title">Shinsekai</h1>
         <p>
           <span data-i18n="subtitle_line1"
-            >用大语言模型驱动角色对白，立绘与情绪联动</span
+            >AI desktop companion &amp; visual-novel stage with sprites, MMD, Live2D, and emotion sync</span
           ><br /><span data-i18n="subtitle_line2"
-            >可接入语音合成、语音识别与视觉工具扩展</span
+            >Built-in Qwen3-TTS voice cloning, Sherpa-ONNX ASR, screen perception, memory, Pi Agent &amp; plugins</span
           >
         </p>
       </header>
@@ -593,13 +691,68 @@
         </div>
       </div>
 
+      <div class="download-card portable-card">
+        <div class="portable-card__eyebrow" data-i18n="portable_eyebrow">
+          Zero-Setup All-in-One Portable
+        </div>
+        <h2 data-i18n="portable_title">All-in-One Portable Bundles</h2>
+        <p class="portable-card__desc" data-i18n="portable_desc">
+          Extract, enter your LLM API key, and launch — ships with embedded
+          Python, Qwen3-TTS 0.6B GGUF voice cloning (auto voice language),
+          Sherpa-ONNX streaming ASR, Qwen3-VL-2B GGUF + RapidOCR screen
+          perception, ONNX memory, and the official Pi Agent.
+        </p>
+        <div class="portable-actions">
+          <a
+            class="btn"
+            href="https://huggingface.co/RachelForster/shinsekai-portable"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm-3.2 7.5a1.3 1.3 0 1 1-1.3 1.3 1.3 1.3 0 0 1 1.3-1.3Zm6.4 0a1.3 1.3 0 1 1-1.3 1.3 1.3 1.3 0 0 1 1.3-1.3ZM12 17.5a5.5 5.5 0 0 1-4.8-2.85l1.55-.88a3.7 3.7 0 0 0 6.5 0l1.55.88A5.5 5.5 0 0 1 12 17.5Z"
+              />
+            </svg>
+            <span data-i18n="portable_hf">Hugging Face (Global)</span>
+          </a>
+          <a
+            class="btn btn-alt"
+            href="https://www.modelscope.cn/models/twillzxy/shinsekai-portable"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M12 3 3 8v8l9 5 9-5V8l-9-5Zm0 2.2 6.8 3.8L12 12.8 5.2 9 12 5.2Zm-7 5.5 6 3.35v6.45l-6-3.35v-6.45Zm8 9.8v-6.45l6-3.35v6.45l-6 3.35Z"
+              />
+            </svg>
+            <span data-i18n="portable_ms">ModelScope (China Mirror)</span>
+          </a>
+        </div>
+        <p class="portable-card__specs" data-i18n_html="portable_platforms">
+          Supported targets: <code>windows-x64</code> ·
+          <code>windows-arm64</code> · <code>macos-arm64</code> ·
+          <code>linux-x64</code> · <code>linux-arm64</code>
+        </p>
+        <p class="portable-card__note" data-i18n_html="portable_note">
+          Extract to an ASCII/English path; user configs, saves, and models stay
+          self-contained in <code>data/</code> (<code>.shinsekai-portable</code>).
+          On macOS, run <code>xattr -cr Shinsekai.app</code> if Gatekeeper
+          prompts. Windows ARM64 omits Sherpa-ONNX and RapidOCR due to upstream
+          wheel availability.
+        </p>
+      </div>
+
       <section>
         <h2 data-i18n="quick_start_title">快速开始</h2>
         <ol>
           <li>
             <strong data-i18n="qs_step1">下载对应系统版本</strong
-            ><span data-i18n="qs_step1_pick"
-              >（上方 Release 按钮或镜像任选）</span
+            ><span data-i18n_html="qs_step1_pick"
+              >（推荐直接下载 <a href="https://huggingface.co/RachelForster/shinsekai-portable" target="_blank" rel="noopener noreferrer">Portable 绿色整合包</a>，或使用上方 Release 按钮 / 网盘镜像）</span
             >：
             <p style="margin: 10px 0">
               <a
@@ -647,10 +800,10 @@
             </p>
           </li>
           <li data-i18n_html="qs_step2">
-            打开下载的安装包或可执行程序：Windows 运行
-            <code>Shinsekai.exe</code> / <code>.msi</code>，macOS 打开
-            <code>.dmg</code>，Linux 运行 <code>.AppImage</code> 或安装
-            <code>.deb</code>
+            解压或安装并运行：Portable 版请在纯英文路径启动
+            <code>shinsekai.exe</code>（Windows）、<code>Shinsekai.app</code>（macOS）或
+            <code>./shinsekai</code>（Linux）；标准安装包对应 <code>.msi</code> /
+            <code>.exe</code>、<code>.dmg</code>、<code>.AppImage</code> / <code>.deb</code>
           </li>
           <li data-i18n_html="qs_step3">
             启动 <strong>Shinsekai</strong> 后，在
@@ -658,8 +811,7 @@
             URL，保存
           </li>
           <li data-i18n_html="qs_step4">
-            如果需要角色说话，在 <strong>API 设定</strong> 的
-            <strong>TTS 整合包</strong> 下载语音引擎（Genie TTS / GPT-SoVITS）
+            Portable 整合包已预置并默认开启本地 <strong>Qwen3-TTS 0.6B GGUF</strong> 语音克隆（<code>auto</code> 自动识别语种）；也可在 <strong>API 设定 → 语音模块</strong> 下载 <strong>Genie TTS</strong> / <strong>GPT-SoVITS</strong>
           </li>
           <li data-i18n_html="qs_step5">
             在 <strong>角色管理</strong> 导入角色包（更多见
@@ -715,8 +867,10 @@ pnpm build
 cd ..</code></pre>
           </li>
           <li data-i18n_html="dev_step4">
-            优先运行 <code>python webui_react.py</code> 或平台对应的
-            <code>start-react.*</code>；Qt 设置页和聊天窗已退出
+            使用平台脚本启动：Windows 运行 <code>scripts\start.bat</code>（或
+            <code>scripts\start-tauri.bat</code>），macOS 运行
+            <code>scripts/start.command</code>，Linux 运行
+            <code>./scripts/start.sh</code>；Qt 设置页和聊天窗已退出
           </li>
           <li data-i18n_html="dev_step5">
             React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP
@@ -730,13 +884,13 @@ cd ..</code></pre>
       <section>
         <h2 data-i18n="features_title">核心能力</h2>
         <ul data-i18n_list="features">
-          <li>多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等</li>
-          <li>TTS 语音合成 — GPT-SoVITS / Genie TTS</li>
-          <li>ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT</li>
-          <li>文生图 — ComfyUI / Stable Diffusion</li>
-          <li>插件系统 — 扩展适配器、工具、UI 组件</li>
-          <li>MCP 协议 — 接入外部工具与检索服务</li>
-          <li>立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放</li>
+          <li>多 LLM 与三语界面 — DeepSeek / OpenAI / Claude / Gemini，全栈 简中 / EN / 日本語</li>
+          <li>本地语音克隆与 TTS — 内置 Qwen3-TTS 0.6B GGUF（auto 自动语种），支持 GPT-SoVITS / Genie TTS / CosyVoice 与口型同步</li>
+          <li>ASR 语音识别 — 默认 Sherpa-ONNX 双阶段流式识别（Zipformer + SenseVoiceSmall），兼容 Vosk / Whisper</li>
+          <li>多形态形象与舞台 — 静态 / MP4·WebM 透明立绘、MMD、Live2D、服装分组、全屏自适应 VN 对话与可插拔 XML 演出</li>
+          <li>屏幕感知与长期记忆 — Qwen3-VL-2B GGUF + RapidOCR 7 场景感知，SQLite + FTS5 + ONNX 混合记忆与 RAG 资料库</li>
+          <li>剧情画布、回放与导出 — AI 分支节点画布、原舞台回放、PNG 长图、MP4/WebM 录制与离线可游玩 VN 包导出</li>
+          <li>桌面助手与扩展生态 — Pi Agent 运行时、托盘日程语音提醒、ComfyUI / MiniMax H3、5 套皮肤、插件 SDK 与 MCP</li>
         </ul>
       </section>
 
@@ -744,32 +898,44 @@ cd ..</code></pre>
         <h2 data-i18n="docs_title">文档</h2>
         <ul data-i18n_list="docs">
           <li>
+            <a href="https://huggingface.co/RachelForster/shinsekai-portable"
+              >Portable Bundles (Hugging Face)</a
+            >
+            ·
+            <a href="https://www.modelscope.cn/models/twillzxy/shinsekai-portable"
+              >ModelScope (China Mirror)</a
+            >
+          </li>
+          <li>
+            <a href="https://github.com/RachelForster/Shinsekai/blob/main/README.md"
+              >English README</a
+            >
+            ·
+            <a href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_zh-CN.md"
+              >简体中文 README</a
+            >
+          </li>
+          <li>
             <a
               href="https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md"
-              >图形界面使用指南</a
+              >GUI User Guide (Chinese)</a
             >
           </li>
           <li>
             <a
               href="https://github.com/RachelForster/Shinsekai/blob/main/docs/CHAT_UI_THEME_GUIDE_zh-CN.md"
-              >聊天皮肤定义与制作指南</a
+              >Chat UI Theme Guide (Chinese)</a
             >
           </li>
           <li>
             <a
               href="https://github.com/RachelForster/Shinsekai/blob/main/docs/PLUGIN_DEVELOPER_GUIDE.md"
-              >插件开发者指南</a
-            >
-          </li>
-          <li>
-            <a
-              href="https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md"
-              >English README</a
+              >Plugin Developer Guide</a
             >
           </li>
           <li>
             <a href="https://github.com/RachelForster/Shinsekai-Plugin-Registry"
-              >插件索引仓库</a
+              >Plugin Registry</a
             >
           </li>
         </ul>
@@ -807,8 +973,11 @@ cd ..</code></pre>
 
       var L = {
         zh: {
-          subtitle_line1: "用大语言模型驱动角色对白，立绘与情绪联动",
-          subtitle_line2: "可接入语音合成、语音识别与视觉工具扩展",
+          site_title: "新世界 Shinsekai",
+          subtitle_line1:
+            "用大语言模型驱动角色对白、立绘 / MMD / Live2D 与情绪联动",
+          subtitle_line2:
+            "内置本地语音克隆、屏幕感知、长期记忆、桌面助手与插件 / MCP 扩展",
           loading_release: "正在获取最新版本…",
           repo_eyebrow: "GitHub 源码仓库",
           repo_stars: "{count} stars",
@@ -826,19 +995,64 @@ cd ..</code></pre>
           fallback_version: "🌸 最新发行版",
           extra_files: "其他发行文件：",
           community_resources: "浏览社区角色包 & 背景包资源",
+          portable_eyebrow: "零配置开箱即用 · Portable",
+          portable_title: "多平台绿色免安装整合包",
+          portable_desc:
+            "解压并填写大模型 API Key 即可运行 —— 已预置独立 Python 运行环境、Qwen3-TTS 0.6B GGUF 本地语音克隆（auto 自动语种）、Sherpa-ONNX 流式语音识别、Qwen3-VL-2B GGUF + RapidOCR 屏幕感知、ONNX 记忆模型与官方 Pi Agent 助手。",
+          portable_hf: "Hugging Face（海外推荐）",
+          portable_ms: "魔搭 ModelScope（国内高速镜像）",
+          portable_platforms: [
+            "支持平台：",
+            codeText("windows-x64"),
+            " · ",
+            codeText("windows-arm64"),
+            " · ",
+            codeText("macos-arm64"),
+            " · ",
+            codeText("linux-x64"),
+            " · ",
+            codeText("linux-arm64"),
+          ],
+          portable_note: [
+            "请解压到纯英文路径，配置、存档与模型全部保存在同级 ",
+            codeText("data/"),
+            " 目录内（",
+            codeText(".shinsekai-portable"),
+            "）。macOS 若提示“已损坏”请先在目录终端运行 ",
+            codeText("xattr -cr Shinsekai.app"),
+            "；Windows ARM64 因上游轮子限制暂不含 Sherpa-ONNX 与 RapidOCR。",
+          ],
           quick_start_title: "快速开始",
           qs_step1: "下载对应系统版本",
-          qs_step1_pick: "（上方 Release 按钮或镜像任选）",
-          qs_step2: [
-            "打开下载的安装包或可执行程序：Windows 运行 ",
-            codeText("Shinsekai.exe"),
+          qs_step1_pick: [
+            "（推荐直接下载 ",
+            richLink(
+              "https://www.modelscope.cn/models/twillzxy/shinsekai-portable",
+              "魔搭 ModelScope 绿色整合包",
+            ),
             " / ",
+            richLink(
+              "https://huggingface.co/RachelForster/shinsekai-portable",
+              "Hugging Face",
+            ),
+            "，或使用上方 Release 按钮 / 网盘镜像）",
+          ],
+          qs_step2: [
+            "解压或安装并运行：Portable 版请在纯英文路径启动 ",
+            codeText("shinsekai.exe"),
+            "（Windows）、",
+            codeText("Shinsekai.app"),
+            "（macOS）或 ",
+            codeText("./shinsekai"),
+            "（Linux）；标准安装包对应 ",
             codeText(".msi"),
-            "，macOS 打开 ",
+            " / ",
+            codeText(".exe"),
+            "、",
             codeText(".dmg"),
-            "，Linux 运行 ",
+            "、",
             codeText(".AppImage"),
-            " 或安装 ",
+            " / ",
             codeText(".deb"),
           ],
           qs_step3: [
@@ -849,11 +1063,16 @@ cd ..</code></pre>
             " 填写 LLM 供应商、模型 ID、API Key 与 Base URL，保存",
           ],
           qs_step4: [
-            "如果需要角色说话，在 ",
-            strongText("API 设定"),
-            " 的 ",
-            strongText("TTS 整合包"),
-            " 下载语音引擎（Genie TTS / GPT-SoVITS）",
+            "Portable 整合包已预置并默认开启本地 ",
+            strongText("Qwen3-TTS 0.6B GGUF"),
+            " 语音克隆（",
+            codeText("auto"),
+            " 自动识别语种）；也可在 ",
+            strongText("API 设定 → 语音模块"),
+            " 下载 ",
+            strongText("Genie TTS"),
+            " / ",
+            strongText("GPT-SoVITS"),
           ],
           qs_step5: [
             "在 ",
@@ -896,10 +1115,14 @@ cd ..</code></pre>
           dev_step2_desc: "（推荐使用 environment.yml）",
           dev_step3: "构建 React 前端",
           dev_step4: [
-            "优先运行 ",
-            codeText("python webui_react.py"),
-            " 或平台对应的 ",
-            codeText("start-react.*"),
+            "使用平台脚本启动：Windows 运行 ",
+            codeText("scripts\\start.bat"),
+            "（或 ",
+            codeText("scripts\\start-tauri.bat"),
+            "），macOS 运行 ",
+            codeText("scripts/start.command"),
+            "，Linux 运行 ",
+            codeText("./scripts/start.sh"),
             "；Qt 设置页和聊天窗已退出",
           ],
           dev_step5:
@@ -907,16 +1130,38 @@ cd ..</code></pre>
           dev_step6: "完成配置后按上面的「第一次对话」流程启动聊天",
           features_title: "核心能力",
           features: [
-            "多 LLM 支持 — DeepSeek / OpenAI / Claude / Gemini 等",
-            "TTS 语音合成 — GPT-SoVITS / Genie TTS",
-            "ASR 语音识别 — Vosk / Faster Whisper / RealtimeSTT",
-            "文生图 — ComfyUI / Stable Diffusion",
-            "插件系统 — 扩展适配器、工具、UI 组件",
-            "MCP 协议 — 接入外部工具与检索服务",
-            "立绘情绪联动 · 聊天历史回溯 · BGM / CG 播放",
+            "多 LLM 与三语界面 — DeepSeek / OpenAI / Claude / Gemini，全栈 简中 / EN / 日本語",
+            "本地语音克隆与 TTS — 内置 Qwen3-TTS 0.6B GGUF（auto 自动语种），支持 GPT-SoVITS / Genie TTS / CosyVoice 与口型同步",
+            "ASR 语音识别 — 默认 Sherpa-ONNX 双阶段流式识别（Zipformer + SenseVoiceSmall），兼容 Vosk / Whisper",
+            "多形态形象与舞台 — 静态 / MP4·WebM 透明立绘、MMD、Live2D、服装分组、全屏自适应 VN 对话与可插拔 XML 演出",
+            "屏幕感知与长期记忆 — Qwen3-VL-2B GGUF + RapidOCR 7 场景感知，SQLite + FTS5 + ONNX 混合记忆与 RAG 资料库",
+            "剧情画布、回放与导出 — AI 分支节点画布、原舞台回放、PNG 长图、MP4/WebM 录制与离线可游玩 VN 包导出",
+            "桌面助手与扩展生态 — Pi Agent 运行时、托盘日程语音提醒、ComfyUI / MiniMax H3、5 套皮肤、插件 SDK 与 MCP",
           ],
-          docs_title: "文档",
+          docs_title: "文档与资源",
           docs: [
+            [
+              richLink(
+                "https://www.modelscope.cn/models/twillzxy/shinsekai-portable",
+                "绿色整合包仓库（魔搭 ModelScope）",
+              ),
+              " · ",
+              richLink(
+                "https://huggingface.co/RachelForster/shinsekai-portable",
+                "Hugging Face",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/README_zh-CN.md",
+                "简体中文 README",
+              ),
+              " · ",
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/README.md",
+                "English README",
+              ),
+            ],
             [
               richLink(
                 "https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md",
@@ -937,12 +1182,6 @@ cd ..</code></pre>
             ],
             [
               richLink(
-                "https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md",
-                "English README",
-              ),
-            ],
-            [
-              richLink(
                 "https://github.com/RachelForster/Shinsekai-Plugin-Registry",
                 "插件索引仓库",
               ),
@@ -953,10 +1192,11 @@ cd ..</code></pre>
           google_drive: "Google Drive",
         },
         en: {
+          site_title: "Shinsekai",
           subtitle_line1:
-            "LLM-powered character dialogue with live2d-style sprite & emotion联动",
+            "AI desktop companion & visual-novel stage with sprites, MMD, Live2D, and emotion sync",
           subtitle_line2:
-            "TTS · ASR · T2I · plugins — all configurable locally",
+            "Built-in Qwen3-TTS voice cloning, Sherpa-ONNX ASR, screen perception, memory, Pi Agent & plugins",
           loading_release: "Fetching latest release…",
           repo_eyebrow: "GitHub repository",
           repo_stars: "{count} stars",
@@ -972,21 +1212,65 @@ cd ..</code></pre>
           all_versions: "View more release versions",
           fallback_version: "🌸 Latest Release",
           community_resources: "Browse Community Character & Background Packs",
+          portable_eyebrow: "Zero-Setup All-in-One Portable",
+          portable_title: "All-in-One Portable Bundles",
+          portable_desc:
+            "Extract, enter your LLM API key, and launch — ships with embedded Python, Qwen3-TTS 0.6B GGUF voice cloning (auto voice language), Sherpa-ONNX streaming ASR, Qwen3-VL-2B GGUF + RapidOCR screen perception, ONNX memory, and the official Pi Agent.",
+          portable_hf: "Hugging Face (Global)",
+          portable_ms: "ModelScope (China Mirror)",
+          portable_platforms: [
+            "Supported targets: ",
+            codeText("windows-x64"),
+            " · ",
+            codeText("windows-arm64"),
+            " · ",
+            codeText("macos-arm64"),
+            " · ",
+            codeText("linux-x64"),
+            " · ",
+            codeText("linux-arm64"),
+          ],
+          portable_note: [
+            "Extract to an ASCII/English path; user configs, saves, and models stay self-contained in ",
+            codeText("data/"),
+            " (",
+            codeText(".shinsekai-portable"),
+            "). On macOS, run ",
+            codeText("xattr -cr Shinsekai.app"),
+            " if Gatekeeper prompts. Windows ARM64 omits Sherpa-ONNX and RapidOCR due to upstream wheel availability.",
+          ],
           quick_start_title: "Quick Start",
           qs_step1: "Download the build for your system",
-          qs_step1_pick: "(use the Release buttons above or a mirror)",
-          qs_step2: [
-            "Open the downloaded installer or executable: run ",
-            codeText("Shinsekai.exe"),
+          qs_step1_pick: [
+            " (recommended: grab the ",
+            richLink(
+              "https://huggingface.co/RachelForster/shinsekai-portable",
+              "Hugging Face Portable Bundle",
+            ),
             " / ",
+            richLink(
+              "https://www.modelscope.cn/models/twillzxy/shinsekai-portable",
+              "ModelScope",
+            ),
+            ", or use the Release buttons / mirrors)",
+          ],
+          qs_step2: [
+            "Extract or install and launch: for Portable bundles, run ",
+            codeText("shinsekai.exe"),
+            " (Windows), ",
+            codeText("Shinsekai.app"),
+            " (macOS), or ",
+            codeText("./shinsekai"),
+            " (Linux) from an English path; standard installers use ",
             codeText(".msi"),
-            " on Windows, open the ",
+            " / ",
+            codeText(".exe"),
+            ", ",
             codeText(".dmg"),
-            " on macOS, or run the ",
+            ", or ",
             codeText(".AppImage"),
-            " / install the ",
+            " / ",
             codeText(".deb"),
-            " on Linux",
           ],
           qs_step3: [
             "Launch ",
@@ -995,10 +1279,16 @@ cd ..</code></pre>
             strongText("API Settings"),
           ],
           qs_step4: [
-            "If you want spoken dialogue, download a voice engine (Genie TTS / GPT-SoVITS) from ",
-            strongText("TTS integrated package"),
-            " in ",
-            strongText("API Settings"),
+            "Portable bundles already enable local ",
+            strongText("Qwen3-TTS 0.6B GGUF"),
+            " voice cloning (",
+            codeText("auto"),
+            " language); you can also download ",
+            strongText("Genie TTS"),
+            " / ",
+            strongText("GPT-SoVITS"),
+            " from ",
+            strongText("API Settings → Voice"),
           ],
           qs_step5: [
             "Import a character pack in ",
@@ -1018,7 +1308,7 @@ cd ..</code></pre>
             " → ",
             strongText("Update Software"),
           ],
-          qs_guide_prefix: "Detailed guide: ",
+          qs_guide_prefix: "Detailed guide (Chinese): ",
           qs_guide_link: "Shinsekai User Guide (Yuque)",
           dev_title: "Developer Setup (Source)",
           dev_step1: [
@@ -1040,11 +1330,15 @@ cd ..</code></pre>
           dev_step2_desc: " (environment.yml recommended)",
           dev_step3: "Build the React frontend",
           dev_step4: [
-            "Prefer ",
-            codeText("python webui_react.py"),
-            " or the platform-specific ",
-            codeText("start-react.*"),
-            "; the Qt settings and chat windows have been retired",
+            "Launch with the platform script: ",
+            codeText("scripts\\start.bat"),
+            " (or ",
+            codeText("scripts\\start-tauri.bat"),
+            ") on Windows, ",
+            codeText("scripts/start.command"),
+            " on macOS, or ",
+            codeText("./scripts/start.sh"),
+            " on Linux; the retired Qt windows are no longer available",
           ],
           dev_step5:
             "The React Settings Center manages API, characters, backgrounds, chat templates, tools, plugins, and MCP",
@@ -1052,16 +1346,38 @@ cd ..</code></pre>
             "After configuration, follow the first-conversation flow above to launch chat",
           features_title: "Features",
           features: [
-            "Multi-LLM — DeepSeek / OpenAI / Claude / Gemini & more",
-            "TTS — GPT-SoVITS / Genie TTS",
-            "ASR — Vosk / Faster Whisper / RealtimeSTT",
-            "T2I — ComfyUI / Stable Diffusion",
-            "Plugin system — extend adapters, tools & UI",
-            "MCP protocol — connect external tools & services",
-            "Sprite emotion sync · Chat history · BGM / CG playback",
+            "Multi-LLM & Tri-Lingual — DeepSeek / OpenAI / Claude / Gemini, full EN / ZH / JA UI & prompts",
+            "Local Voice Cloning & TTS — built-in Qwen3-TTS 0.6B GGUF (auto language), GPT-SoVITS / Genie TTS / CosyVoice & lip-sync",
+            "ASR — default dual-stage Sherpa-ONNX streaming (Zipformer + SenseVoiceSmall), Vosk & Whisper",
+            "Avatars & Stage — static / transparent MP4·WebM sprites, MMD, Live2D, outfit groups, adaptive fullscreen VN dialogs & pluggable XML",
+            "Perception & Long-Term Memory — Qwen3-VL-2B GGUF + RapidOCR across 7 adaptive scenes; SQLite + FTS5 + ONNX memory & RAG worldbooks",
+            "Story Canvas, Replay & Export — AI branching node graph, stage replay, PNG screenshots, MP4/WebM recording & offline playable VN export",
+            "Desktop Agent & Extensions — Pi Agent runtime, tray voice reminders, ComfyUI / MiniMax H3, 5 themes, Plugin SDK & MCP",
           ],
-          docs_title: "Docs",
+          docs_title: "Docs & Links",
           docs: [
+            [
+              richLink(
+                "https://huggingface.co/RachelForster/shinsekai-portable",
+                "Portable Bundles (Hugging Face)",
+              ),
+              " · ",
+              richLink(
+                "https://www.modelscope.cn/models/twillzxy/shinsekai-portable",
+                "ModelScope (China Mirror)",
+              ),
+            ],
+            [
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/README.md",
+                "English README",
+              ),
+              " · ",
+              richLink(
+                "https://github.com/RachelForster/Shinsekai/blob/main/docs/README_zh-CN.md",
+                "简体中文 README",
+              ),
+            ],
             [
               richLink(
                 "https://github.com/RachelForster/Shinsekai/blob/main/docs/GUI_USER_GUIDE_zh-CN.md",
@@ -1082,12 +1398,6 @@ cd ..</code></pre>
             ],
             [
               richLink(
-                "https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md",
-                "English README",
-              ),
-            ],
-            [
-              richLink(
                 "https://github.com/RachelForster/Shinsekai-Plugin-Registry",
                 "Plugin Registry",
               ),
@@ -1099,7 +1409,7 @@ cd ..</code></pre>
         },
       };
 
-      var lang = "zh";
+      var lang = "en";
       var repoStars = null;
 
       function t(key, vars) {
@@ -1215,7 +1525,9 @@ cd ..</code></pre>
 
       var saved = localStorage.getItem("shinsekai-lang");
       if (!saved) {
-        saved = navigator.language.startsWith("zh") ? "zh" : "en";
+        saved = (navigator.language || "").toLowerCase().startsWith("zh")
+          ? "zh"
+          : "en";
       }
       setLang(saved);
 

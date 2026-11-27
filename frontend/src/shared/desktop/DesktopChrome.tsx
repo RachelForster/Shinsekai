@@ -278,14 +278,24 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   }
 
   const detail = runtime.message || t("desktop.runtime.defaultDetail");
+  const runtimeCandidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];
+  const canInstallDeps = runtimeCandidate?.repairActions.includes("installRuntimeDeps") ?? false;
+  const canRetryStart = runtimeCandidate?.repairActions.includes("start") ?? false;
+  const isBridgeStartError = runtime.status === "error" && runtimeCandidate?.status === "ready" && !canInstallDeps;
+  const showRuntimeProgress =
+    Boolean(runtimeProgress) &&
+    (runtime.status === "checking" ||
+      runtime.status === "updating" ||
+      runtimeProgress?.phase === "installingDeps" ||
+      (runtimeProgress?.logLines?.length ?? 0) > 0);
   const title =
     runtime.status === "checking"
       ? t("desktop.runtime.checking")
       : runtime.status === "updating"
         ? t("desktop.runtime.updating")
-        : t("desktop.runtime.required");
-  const runtimeCandidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];
-  const canInstallDeps = runtimeCandidate?.repairActions.includes("installRuntimeDeps") ?? false;
+        : isBridgeStartError
+          ? t("desktop.runtime.startFailed")
+          : t("desktop.runtime.required");
 
   return (
     <main className="desktop-runtime">
@@ -298,7 +308,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
           </div>
         </div>
         <p className="desktop-runtime__message">{detail}</p>
-        {runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
+        {showRuntimeProgress && runtimeProgress ? <RuntimeProgressPanel progress={runtimeProgress} /> : null}
         {runtimeCandidate ? (
           <div className="desktop-runtime__runtime">
             <span>{t("desktop.runtime.candidatePath")}</span>
@@ -331,6 +341,16 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
               variant="primary"
             >
               {t("desktop.runtime.installDepsButton")}
+            </Button>
+          </div>
+        ) : runtimeCandidate && isBridgeStartError && canRetryStart ? (
+          <div className="desktop-runtime__actions">
+            <Button
+              disabled={busy}
+              onClick={() => handleRepairCandidate(runtimeCandidate.id, "start")}
+              variant="primary"
+            >
+              {t("desktop.runtime.retryStartButton")}
             </Button>
           </div>
         ) : null}

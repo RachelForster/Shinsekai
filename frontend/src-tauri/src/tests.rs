@@ -8,9 +8,9 @@ use std::{
 };
 
 use crate::bridge::{
-    send_bridge_agent_close, send_bridge_chat_close, send_bridge_runtime_shutdown,
+    port_pair_available, send_bridge_agent_close, send_bridge_chat_close,
+    send_bridge_runtime_shutdown, summarize_bridge_stderr,
 };
-use crate::process_guard::assign_child_to_job;
 use crate::frontend_protocol::{
     app_window_url, chat_window_url, live_chat_frontend_url, live_frontend_origin_for_platform,
     live_frontend_reload_targets, live_frontend_url, resolve_published_frontend_dist,
@@ -356,45 +356,6 @@ fn send_bridge_runtime_shutdown_posts_authenticated_shutdown() {
     assert!(request.ends_with("\r\n\r\n{}"));
 }
 
-#[cfg(all(windows, target_pointer_width = "64"))]
-#[test]
-fn windows_job_object_extended_limit_struct_matches_sdk_size() {
-    assert_eq!(crate::process_guard::extended_limit_info_size(), 144);
-}
-
-#[cfg(windows)]
-#[test]
-fn dropping_child_process_job_terminates_assigned_child_process() {
-    use std::os::windows::process::CommandExt;
-    use std::process::Command;
-    use std::time::{Duration, Instant};
-
-    let mut command = Command::new("cmd");
-    command
-        .args(["/C", "ping -n 30 127.0.0.1 >nul"])
-        .creation_flags(0x0800_0000);
-    let mut child = command.spawn().expect("spawn test child");
-    let job = assign_child_to_job(&child).expect("assign child to Job Object");
-    assert!(child.try_wait().unwrap().is_none());
-
-    drop(job);
-
-    let deadline = Instant::now() + Duration::from_secs(3);
-    let mut exited = false;
-    while Instant::now() < deadline {
-        if child.try_wait().unwrap().is_some() {
-            exited = true;
-            break;
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
-    if !exited {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-    assert!(exited, "expected Job Object close to terminate assigned child");
-}
-
 #[test]
 fn main_window_default_size_preserves_legacy_aspect_ratio() {
     let legacy_ratio = 1180.0_f64 / 780.0_f64;
@@ -424,6 +385,45 @@ fn main_window_initial_size_scales_proportionally_for_smaller_work_areas() {
         resolve_main_window_initial_size(Some((700.0, 500.0))),
         (MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
     );
+}
+
+#[test]
+fn is_portable_bundle_detects_portable_marker_file() {
+    let dir = temp_test_dir("portable-marker");
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(!crate::state::is_portable_bundle(&dir));
+
+    std::fs::write(
+        dir.join(crate::project_root::PORTABLE_ROOT_MARKER_FILE),
+        "portable\n",
+    )
+    .unwrap();
+    assert!(crate::state::is_portable_bundle(&dir));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn summarize_bridge_stderr_returns_final_non_empty_line_and_truncates_utf8() {
+    assert_eq!(summarize_bridge_stderr("   \n\r\n  "), None);
+    let traceback = "Traceback (most recent call last):\n  File \"frontend_bridge.py\", line 1\nRuntimeError: port busy  \n\n";
+    assert_eq!(
+        summarize_bridge_stderr(traceback).as_deref(),
+        Some("RuntimeError: port busy")
+    );
+    let long_utf8 = "错".repeat(260);
+    let summary = summarize_bridge_stderr(&long_utf8).unwrap();
+    assert!(summary.ends_with("..."));
+    assert_eq!(summary.chars().count(), 243);
+}
+
+#[test]
+fn port_pair_available_rejects_port_whose_websocket_neighbor_is_bound() {
+    let ws_listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+    let ws_port = ws_listener.local_addr().unwrap().port();
+    assert!(!port_pair_available(ws_port - 1));
+    assert!(!port_pair_available(u16::MAX));
+    drop(ws_listener);
 }
 
 fn runtime_scan_view(selected_candidate_id: Option<&str>) -> runtime::RuntimeScanView {

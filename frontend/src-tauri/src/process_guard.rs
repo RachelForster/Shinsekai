@@ -131,9 +131,51 @@ mod imp {
 }
 
 pub(crate) use imp::ChildProcessJob;
-#[cfg(all(test, windows))]
-pub(crate) use imp::extended_limit_info_size;
 
 pub(crate) fn assign_child_to_job(child: &Child) -> Result<ChildProcessJob, String> {
     ChildProcessJob::assign_child(child)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use super::{assign_child_to_job, imp};
+
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn windows_job_object_extended_limit_struct_matches_sdk_size() {
+        assert_eq!(imp::extended_limit_info_size(), 144);
+    }
+
+    #[test]
+    fn dropping_child_process_job_terminates_assigned_child_process() {
+        let mut command = Command::new("cmd");
+        command
+            .args(["/C", "ping -n 30 127.0.0.1 >nul"])
+            .creation_flags(0x0800_0000);
+        let mut child = command.spawn().expect("spawn test child");
+        let job = assign_child_to_job(&child).expect("assign child to Job Object");
+        assert!(child.try_wait().unwrap().is_none());
+
+        drop(job);
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut exited = false;
+        while Instant::now() < deadline {
+            if child.try_wait().unwrap().is_some() {
+                exited = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        if !exited {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        assert!(exited, "expected Job Object close to terminate assigned child");
+    }
 }

@@ -4,11 +4,13 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
+from core.messaging.formats.registry import resolve_dialog_format
 from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
 from sdk.types import RequirementSpec
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
+from ..format_context import build_dialog_format_prompt_context
 from ..patches import apply_requirement_patches
 from .field_requirements import build_field_requirements, removed_optional_fields
 
@@ -198,6 +200,29 @@ def build_requirement_sections(
             ("r_effect", 170, context.use_effect, None),
         )
     else:
+        fmt = resolve_dialog_format(format_id)
+        custom_specs = fmt.render_requirements(build_dialog_format_prompt_context(context))
+        if custom_specs:
+            custom_sections = [
+                _RequirementRuleSection(
+                    id=spec.id,
+                    priority=spec.order,
+                    enabled=spec.enabled,
+                    resolved_text=spec.text,
+                )
+                for spec in custom_specs
+            ]
+            if not any(spec.id == "r_user_display_name_tool" for spec in custom_specs):
+                custom_sections.append(
+                    _RequirementRuleSection(
+                        id="r_user_display_name_tool",
+                        priority=15,
+                        enabled=True,
+                        arguments=arguments.get("r_user_display_name_tool", {}),
+                    )
+                )
+            custom_sections.sort(key=lambda section: section.priority)
+            return tuple(custom_sections)
         definitions = (
             ("r_format", 10, True, "custom_r_format"),
             ("r_user_display_name_tool", 15, True, None),

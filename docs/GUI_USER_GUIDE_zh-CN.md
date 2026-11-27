@@ -114,7 +114,7 @@
 
 - **管理插件：** 看到一张张卡片，可 **启用/禁用**；修改清单后一般要 **关掉设置程序再重新打开** 才加载完整。  
 - **发现插件：** 从列表里 **下载** 扩展（需能上网）；按屏幕提示操作后同样建议 **重启** 程序。  
-- **MCP：** 给高级用户连接外部工具用；若提示安装额外软件或失败，可先跳过，或阅读项目 [`README.md`](../README.md) 里 MCP 小节。
+- **MCP：** 给高级用户连接外部工具用；若提示安装额外软件或失败，可先跳过，或阅读项目 [`README_zh-CN.md`](README_zh-CN.md) 里 MCP 小节。
 
 ---
 
@@ -141,7 +141,7 @@
 
 ## 11. 想了解更多
 
-- 项目总说明（功能列表、下载）：[`README.md`](../README.md)  
+- 项目总说明（功能列表、下载）：[`README_zh-CN.md`](README_zh-CN.md)  
 - 制作聊天皮肤：[`CHAT_UI_THEME_GUIDE_zh-CN.md`](CHAT_UI_THEME_GUIDE_zh-CN.md)
 - 插件开发（面向会编程的用户）：[`PLUGIN_DEVELOPER_GUIDE.md`](PLUGIN_DEVELOPER_GUIDE.md)
 
