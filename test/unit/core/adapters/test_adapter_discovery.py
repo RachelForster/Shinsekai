@@ -178,6 +178,7 @@ def test_all_five_domains_auto_discover_expected_builtins() -> None:
         "qwen3-tts-gguf",
         "index-tts",
         "cosyvoice",
+        "fish-audio-s2-pro",
     )
     assert t2i_reg.keys() == ("comfyui", "stable diffusion")
     assert asr_reg.keys() == ("sherpa_onnx", "vosk")

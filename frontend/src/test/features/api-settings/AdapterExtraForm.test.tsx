@@ -44,4 +44,31 @@ describe("AdapterExtraForm", () => {
     expect(screen.getByRole("checkbox")).not.toBeChecked();
     expect(screen.getByRole("combobox")).toBeDisabled();
   });
+
+  it("translates known labelKey entries across locales and falls back to label otherwise", () => {
+    const schema = {
+      base_url: {
+        default: "https://api.fish.audio",
+        label: "Fallback URL",
+        labelKey: "ops.api.tts.fishAudio.extra.baseUrl",
+      },
+      custom: { default: "", label: "Plugin Custom Option", labelKey: "unknown.plugin.field" },
+    };
+
+    const { rerender } = render(
+      <I18nProvider language="zh_CN">
+        <AdapterExtraForm onChange={vi.fn()} schema={schema} values={{}} />
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText("Fish Audio API / 本地服务地址")).toBeInTheDocument();
+    expect(screen.getByLabelText("Plugin Custom Option")).toBeInTheDocument();
+
+    rerender(
+      <I18nProvider language="ja">
+        <AdapterExtraForm onChange={vi.fn()} schema={schema} values={{}} />
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText("Fish Audio API / ローカルサーバー URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("Plugin Custom Option")).toBeInTheDocument();
+  });
 });

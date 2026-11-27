@@ -412,3 +412,18 @@ def test_recorder_tracks_ambient_effects_across_layer_and_stop(tmp_path):
     recorder.observe({"type": "ambient.stop", "key": "rain"})
     recorder.observe({"type": "dialog.end", "fullHtml": f"<p data-dialog-id='{'e' * 64}'>clear</p>"})
     assert store.read("e" * 64, "frame.json")["ambientEffects"] == []
+
+
+def test_replay_allows_reference_free_providers_when_character_lacks_refer_audio(replay):
+    service, _, _, _ = replay
+    character = service.state.config_manager.get_character_by_name("Mio")
+    character.refer_audio_path = ""
+
+    # GPT-SoVITS still requires a per-character reference audio path.
+    gpt_entries = service.prepare()["entries"]
+    assert [entry["canGenerate"] for entry in gpt_entries[1:]] == [False, False, False]
+
+    # Fish Audio S2 Pro supports reference-free / reference_id synthesis.
+    service.state.config_manager.get_gpt_sovits_config = lambda: ("https://api.fish.audio", "", "fish-audio-s2-pro")
+    fish_entries = service.prepare()["entries"]
+    assert [entry["canGenerate"] for entry in fish_entries[1:]] == [True, True, True]
