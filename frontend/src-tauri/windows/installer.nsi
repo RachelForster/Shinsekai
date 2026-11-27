@@ -96,6 +96,9 @@ Var HasExplicitNsisInstallDir
 Var LegacyMigrationDefaultInstallDir
 !define LEGACY_MIGRATION_KEY "Software\${BUNDLEID}\Migration"
 ; SHINSEKAI MSI->NSIS COMPAT END
+; SHINSEKAI PORTABLE UPDATE BEGIN
+Var PortableMode
+; SHINSEKAI PORTABLE UPDATE END
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -207,6 +210,11 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 Var ReinstallPageCheck
 Page custom PageReinstall PageLeaveReinstall
 Function PageReinstall
+  ; SHINSEKAI PORTABLE UPDATE BEGIN
+  ${If} $PortableMode = 1
+    Abort
+  ${EndIf}
+  ; SHINSEKAI PORTABLE UPDATE END
   ; SHINSEKAI MSI->NSIS COMPAT BEGIN
   ; Tauri NSIS's existing unnamed install-location value is authoritative. Do
   ; not enumerate stale MSI entries in that case: the normal NSIS maintenance
@@ -654,6 +662,19 @@ Function .onInit
     StrCpy $HasAuthoritativeNsisInstallDir 1
   ${EndIf}
   ; SHINSEKAI MSI->NSIS COMPAT END
+  ; SHINSEKAI PORTABLE UPDATE BEGIN
+  StrCpy $PortableMode 0
+  ${GetOptions} $CMDLINE "/PORTABLE" $R0
+  ${IfNot} ${Errors}
+    ${If} $HasExplicitNsisInstallDir = 1
+      StrCpy $PortableMode 1
+    ${EndIf}
+  ${EndIf}
+  ${If} $HasExplicitNsisInstallDir = 1
+  ${AndIf} ${FileExists} "$INSTDIR\.shinsekai-portable"
+    StrCpy $PortableMode 1
+  ${EndIf}
+  ; SHINSEKAI PORTABLE UPDATE END
 
   ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
     ; Set default install location
@@ -694,6 +715,11 @@ Function .onInit
   !if "${INSTALLMODE}" == "both"
     !insertmacro MULTIUSER_INIT
   !endif
+  ; SHINSEKAI PORTABLE UPDATE BEGIN
+  ${If} $PortableMode = 1
+    Goto shinsekai_oninit_done
+  ${EndIf}
+  ; SHINSEKAI PORTABLE UPDATE END
   ; SHINSEKAI MSI->NSIS COMPAT BEGIN
   ; NSIS does not execute custom-page callbacks under a true `/S` install, so
   ; PageReinstall cannot safely migrate/uninstall WiX in that mode. Fail closed
@@ -702,6 +728,9 @@ Function .onInit
     Call AbortSilentLegacyWixMigration
   ${EndIf}
   ; SHINSEKAI MSI->NSIS COMPAT END
+  ; SHINSEKAI PORTABLE UPDATE BEGIN
+  shinsekai_oninit_done:
+  ; SHINSEKAI PORTABLE UPDATE END
 FunctionEnd
 
 
@@ -840,6 +869,11 @@ Section Install
   {{#each binaries}}
     File /a "/oname={{this}}" "{{no-escape @key}}"
   {{/each}}
+  ; SHINSEKAI PORTABLE UPDATE BEGIN
+  ${If} $PortableMode = 1
+    Goto shinsekai_portable_install_done
+  ${EndIf}
+  ; SHINSEKAI PORTABLE UPDATE END
 
   ; Create file associations
   {{#each file_associations as |association| ~}}
@@ -915,6 +949,9 @@ Section Install
     !insertmacro NSIS_HOOK_POSTINSTALL
   !endif
 
+  ; SHINSEKAI PORTABLE UPDATE BEGIN
+  shinsekai_portable_install_done:
+  ; SHINSEKAI PORTABLE UPDATE END
   ; Auto close this page for passive mode
   ${If} $PassiveMode = 1
     SetAutoClose true

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, thread, time::Duration};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -282,20 +282,40 @@ fn start_runtime_candidate_for_state(
         return Err(message);
     }
 
-    let result = runtime::find_install_dir_python_runtime(&state.source_root)
+    let mut result = Err("failed to start Shinsekai Python bridge".to_string());
+    for attempt in 0..2 {
+        result = runtime::find_install_dir_python_runtime_for_app(
+            &state.source_root,
+            &state.app_root,
+        )
         .map_err(|error| error.to_string())
         .and_then(|runtime| {
             restart_debug_log(format!(
-                "start_runtime_candidate launching bridge runtime={} candidate_id={}",
+                "start_runtime_candidate launching bridge attempt={} runtime={} candidate_id={}",
+                attempt + 1,
                 runtime.description,
                 runtime.candidate_id.as_deref().unwrap_or("")
             ));
             start_bridge_for_state(state, runtime).map_err(|error| error.to_string())
         });
+        match &result {
+            Ok(()) => break,
+            Err(message)
+                if attempt == 0 && message.contains("exited before startup completed") =>
+            {
+                restart_debug_log(format!(
+                    "start_runtime_candidate retrying transient early exit error={message}"
+                ));
+                thread::sleep(Duration::from_millis(350));
+            }
+            Err(_) => break,
+        }
+    }
 
     match result {
         Ok(()) => {
-            let view = runtime::install_dir_runtime_view(&state.source_root);
+            let view =
+                runtime::install_dir_runtime_view_for_app(&state.source_root, &state.app_root);
             restart_debug_log("start_runtime_candidate ready");
             emit_runtime_progress(app, "ready", None, None, Some("Runtime is ready"));
             state.set_runtime(DesktopRuntimePhase::Ready { view: Some(view) });

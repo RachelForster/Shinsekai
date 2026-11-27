@@ -11,6 +11,7 @@ mod atomic_file;
 mod autostart;
 mod background;
 mod bridge;
+mod bridge_restart;
 mod desktop_files;
 mod frontend_protocol;
 mod paths;

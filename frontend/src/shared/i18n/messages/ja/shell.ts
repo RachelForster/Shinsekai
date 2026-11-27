@@ -90,6 +90,8 @@ export const shellJaMessages: Record<ShellMessageKey, string> = {
   "desktop.runtime.progressSpeed": "{speed}/s",
   "desktop.runtime.pipLogLabel": "pip 出力ログ",
   "desktop.runtime.required": "実行環境の更新が必要です",
+  "desktop.runtime.retryStartButton": "起動を再試行",
+  "desktop.runtime.startFailed": "ローカルサービスの起動に失敗しました",
   "desktop.runtime.status.brokenBridge": "Bridge チェック失敗",
   "desktop.runtime.status.brokenPython": "Python を使用できません",
   "desktop.runtime.status.missingCoreDeps": "必須依存関係が不足",
