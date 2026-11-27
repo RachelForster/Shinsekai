@@ -363,11 +363,28 @@ def _start_plugin_loader(state, logger) -> None:
             from ai.vision.fallback_registry import configure_registered_fallbacks
             from core.media.avatar.registry import configure_registered_formats
             from core.messaging.formats.registry import configure_registered_dialog_formats
-            from ai.asr.asr_manager import ASRAdapterFactory
-            from ai.llm.llm_manager import LLMAdapterFactory
+            from ai.asr.registry import (
+                configure_builtin_asr_adapters,
+                configure_registered_asr_adapters,
+            )
+            from ai.llm.registry import (
+                configure_builtin_llm_adapters,
+                configure_registered_llm_adapters,
+            )
             from ai.tools.tool_manager import ToolManager
-            from ai.t2i.t2i_manager import T2IAdapterFactory
-            from ai.tts.tts_manager import TTSAdapterFactory
+            from ai.t2i.registry import (
+                configure_builtin_t2i_adapters,
+                configure_registered_t2i_adapters,
+            )
+            from ai.tts.registry import (
+                configure_builtin_tts_adapters,
+                configure_registered_tts_adapters,
+            )
+
+            configure_builtin_llm_adapters()
+            configure_builtin_tts_adapters()
+            configure_builtin_asr_adapters()
+            configure_builtin_t2i_adapters()
 
             def register_mcp_tools(tool_manager) -> None:
                 from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
@@ -384,10 +401,10 @@ def _start_plugin_loader(state, logger) -> None:
             ensure_plugins_loaded(
                 state.config_manager,
                 runtime_bindings=PluginRuntimeBindings(
-                    llm_adapters=LLMAdapterFactory._adapters,
-                    tts_adapters=TTSAdapterFactory._adapters,
-                    asr_adapters=ASRAdapterFactory._adapters,
-                    t2i_adapters=T2IAdapterFactory._adapters,
+                    configure_llm_adapters=configure_registered_llm_adapters,
+                    configure_tts_adapters=configure_registered_tts_adapters,
+                    configure_asr_adapters=configure_registered_asr_adapters,
+                    configure_t2i_adapters=configure_registered_t2i_adapters,
                     create_tool_manager=ToolManager,
                     configure_vision_fallbacks=configure_registered_fallbacks,
                     configure_avatar_formats=configure_registered_formats,
