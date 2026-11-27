@@ -166,3 +166,16 @@ def test_cosyvoice_and_plugin_tts_registration_lifecycle(monkeypatch, tmp_path) 
         configure_registered_tts_adapters({})
 
     assert "plugin-tts" not in TTSAdapterFactory._adapters
+
+
+def test_plugin_can_override_builtin_tts_and_restore_on_clear() -> None:
+    default_order = get_tts_adapter_registry().keys()
+    try:
+        configure_registered_tts_adapters({"gpt-sovits": MockTTSAdapter})
+        assert get_tts_adapter_registry().keys() == default_order
+        created = TTSAdapterFactory.create_adapter("gpt-sovits")
+        assert isinstance(created, MockTTSAdapter)
+    finally:
+        configure_registered_tts_adapters({})
+
+    assert get_tts_adapter_registry().get("gpt-sovits") is GPTSoVitsAdapter

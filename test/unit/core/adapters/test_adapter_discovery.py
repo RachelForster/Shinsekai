@@ -215,3 +215,36 @@ def test_discovered_adapter_modules_defer_heavy_vendor_sdk_imports() -> None:
                     continue
                 overlap = imported & forbidden_top_level
                 assert not overlap, f"{path.relative_to(REPO_ROOT)} has heavy top-level import: {overlap}"
+
+
+def test_plugin_host_hooks_allow_overriding_builtins_across_all_plugin_domains() -> None:
+    from ai.asr.registry import configure_registered_asr_adapters
+    from ai.llm.registry import configure_registered_llm_adapters
+    from ai.t2i.registry import configure_registered_t2i_adapters
+    from ai.tts.registry import configure_registered_tts_adapters
+
+    class _OverrideAdapter:
+        def __init__(self, *args, **kwargs) -> None:
+            self.args = args
+            self.kwargs = kwargs
+
+    cases = (
+        (create_llm_adapter_registry, configure_registered_llm_adapters, "ChatGPT"),
+        (create_tts_adapter_registry, configure_registered_tts_adapters, "gpt-sovits"),
+        (create_asr_adapter_registry, configure_registered_asr_adapters, "sherpa_onnx"),
+        (create_t2i_adapter_registry, configure_registered_t2i_adapters, "comfyui"),
+    )
+    for create_reg, configure_plugins, key in cases:
+        reg = create_reg(include_builtins=True)
+        original_keys = reg.keys()
+        original_cls = reg.get(key)
+        assert original_cls is not None
+
+        configure_plugins({key: _OverrideAdapter}, registry=reg)
+        assert reg.keys() == original_keys
+        assert reg.get(key) is _OverrideAdapter
+        assert isinstance(reg.create(key), _OverrideAdapter)
+
+        configure_plugins({}, registry=reg)
+        assert reg.keys() == original_keys
+        assert reg.get(key) is original_cls

@@ -180,3 +180,21 @@ def test_configure_registered_llm_adapters_and_legacy_factory_delegation(
     assert "PluginLLM" not in LLMAdapterFactory._adapters
     with pytest.raises(ValueError, match="Unsupported LLM adapter"):
         LLMAdapterFactory.create_adapter("PluginLLM")
+
+
+def test_plugin_can_override_builtin_llm_and_restore_on_clear() -> None:
+    class _ChatGPTOverride(LLMAdapter):
+        def chat(self, messages: list, stream: bool = False, **kwargs):
+            return "override-chatgpt"
+
+    default_order = get_llm_adapter_registry().keys()
+    try:
+        configure_registered_llm_adapters({"ChatGPT": _ChatGPTOverride})
+        assert get_llm_adapter_registry().keys() == default_order
+        created = LLMAdapterFactory.create_adapter("ChatGPT")
+        assert isinstance(created, _ChatGPTOverride)
+        assert created.chat([]) == "override-chatgpt"
+    finally:
+        configure_registered_llm_adapters({})
+
+    assert get_llm_adapter_registry().get("ChatGPT") is OpenAIAdapter

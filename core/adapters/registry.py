@@ -284,6 +284,7 @@ class AdapterRegistry(Generic[T]):
                         raw_key,
                     )
                     continue
+                logger.info("%s plugin adapter %r overrides built-in adapter", self.domain, raw_key)
                 prepared_overrides[norm_key] = replace(
                     entry,
                     key=builtin_entry.key,

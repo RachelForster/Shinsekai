@@ -194,7 +194,25 @@ def test_plugin_host_supports_registry_configure_callbacks(monkeypatch, tmp_path
         configure_avatar_formats=lambda _v: None,
     )
 
-    service.ensure_plugins_loaded(object(), runtime_bindings=bindings)
+    from types import SimpleNamespace
+
+    fake_cfg = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=SimpleNamespace(
+                ui_language="zh_CN",
+                voice_language="ja",
+                base_font_size_px=56,
+                theme_color="rgba(50,50,50,200)",
+                live_room_id="",
+                huggingface_cache_dir=str(tmp_path / "hf"),
+            ),
+            api_config=SimpleNamespace(
+                llm_provider="ChatGPT",
+                tts_provider="gpt-sovits",
+            ),
+        )
+    )
+    service.ensure_plugins_loaded(fake_cfg, runtime_bindings=bindings)
     assert configured == {
         "llm": {"PluginLLM": object},
         "tts": {"plugin-tts": object},
@@ -295,4 +313,139 @@ def test_bind_model_assets_runtime_wires_and_unwires_sdk_dispatcher() -> None:
 
     with pytest.raises(RuntimeError, match="Model assets runtime is not bound"):
         inspect_huggingface_model("BAAI/bge-m3")
+
+
+def test_ensure_plugins_loaded_overrides_builtin_adapters_across_domains(
+    monkeypatch, tmp_path
+) -> None:
+    from ai.asr.registry import (
+        configure_registered_asr_adapters,
+        create_asr_adapter_registry,
+    )
+    from ai.llm.registry import (
+        configure_registered_llm_adapters,
+        create_llm_adapter,
+        create_llm_adapter_registry,
+    )
+    from ai.t2i.registry import (
+        configure_registered_t2i_adapters,
+        create_t2i_adapter,
+        create_t2i_adapter_registry,
+    )
+    from ai.tts.registry import (
+        configure_registered_tts_adapters,
+        create_tts_adapter,
+        create_tts_adapter_registry,
+    )
+    from sdk.adapters.asr import ASRAdapter
+    from sdk.adapters.llm import LLMAdapter
+    from sdk.adapters.t2i import T2IAdapter
+    from sdk.adapters.tts import TTSAdapter
+    from sdk.manager import PluginManager
+    from sdk.plugin import PluginBase
+
+    class _OverrideLLM(LLMAdapter):
+        def chat(self, messages, stream: bool = False, **kwargs):
+            return "plugin-chatgpt"
+
+    class _OverrideTTS(TTSAdapter):
+        def generate_speech(self, text, file_path=None, **kwargs):
+            return "plugin.wav"
+
+        def switch_model(self, model_info):
+            return None
+
+    class _OverrideASR(ASRAdapter):
+        def start(self) -> None:
+            return None
+
+        def stop(self) -> None:
+            return None
+
+        def get_status(self) -> str:
+            return "idle"
+
+        def pause(self) -> None:
+            return None
+
+        def resume(self) -> None:
+            return None
+
+    class _OverrideT2I(T2IAdapter):
+        def generate_image(self, prompt: str, file_path=None, **kwargs):
+            return "plugin.png"
+
+        def switch_model(self, model_info) -> None:
+            return None
+
+    class _OverridePlugin(PluginBase):
+        @property
+        def plugin_id(self) -> str:
+            return "test.builtin_override"
+
+        def initialize(self, register, plugin_root, host) -> None:
+            register.register_llm_adapter("ChatGPT", _OverrideLLM)
+            register.register_tts_adapter("gpt-sovits", _OverrideTTS)
+            register.register_asr_adapter("sherpa_onnx", _OverrideASR)
+            register.register_t2i_adapter("comfyui", _OverrideT2I)
+
+    llm_reg = create_llm_adapter_registry(include_builtins=True)
+    tts_reg = create_tts_adapter_registry(include_builtins=True)
+    asr_reg = create_asr_adapter_registry(include_builtins=True)
+    t2i_reg = create_t2i_adapter_registry(include_builtins=True)
+
+    mgr = PluginManager(plugin_data_root=tmp_path / "plugin_data")
+    mgr.register_plugin_class(_OverridePlugin)
+
+    monkeypatch.setattr(service, "_loaded", False)
+    monkeypatch.setattr(service, "_plugin_manager", None)
+    monkeypatch.setattr(service, "_MANIFEST", tmp_path / "missing.yaml")
+    monkeypatch.setattr(service, "PluginManager", lambda: mgr)
+    monkeypatch.setattr(service, "ensure_plugins_namespace_on_syspath", lambda: None)
+    monkeypatch.setattr(service, "ensure_plugin_site_packages_on_syspath", lambda: None)
+    monkeypatch.setattr("sdk.tool_registry.apply_registered_tools", lambda _tm: None)
+
+    bindings = PluginRuntimeBindings(
+        configure_llm_adapters=lambda values: configure_registered_llm_adapters(
+            values, registry=llm_reg
+        ),
+        configure_tts_adapters=lambda values: configure_registered_tts_adapters(
+            values, registry=tts_reg
+        ),
+        configure_asr_adapters=lambda values: configure_registered_asr_adapters(
+            values, registry=asr_reg
+        ),
+        configure_t2i_adapters=lambda values: configure_registered_t2i_adapters(
+            values, registry=t2i_reg
+        ),
+        create_tool_manager=object,
+        configure_vision_fallbacks=lambda _v: None,
+        configure_avatar_formats=lambda _v: None,
+    )
+
+    from types import SimpleNamespace
+
+    fake_cfg = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=SimpleNamespace(
+                ui_language="zh_CN",
+                voice_language="ja",
+                base_font_size_px=56,
+                theme_color="rgba(50,50,50,200)",
+                live_room_id="",
+                huggingface_cache_dir=str(tmp_path / "hf"),
+            ),
+            api_config=SimpleNamespace(
+                llm_provider="ChatGPT",
+                tts_provider="gpt-sovits",
+            ),
+        )
+    )
+    service.ensure_plugins_loaded(fake_cfg, runtime_bindings=bindings)
+
+    assert isinstance(create_llm_adapter("ChatGPT", registry=llm_reg), _OverrideLLM)
+    assert isinstance(create_tts_adapter("gpt-sovits", registry=tts_reg), _OverrideTTS)
+    assert isinstance(asr_reg.create("sherpa_onnx", language="zh", callback=lambda *_: None), _OverrideASR)
+    assert isinstance(create_t2i_adapter("comfyui", registry=t2i_reg), _OverrideT2I)
+
 

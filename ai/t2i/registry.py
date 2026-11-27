@@ -71,11 +71,12 @@ def register_t2i_adapter(
 def configure_registered_t2i_adapters(
     adapters: Mapping[str, Any],
     *,
+    allow_override_builtin: bool = True,
     registry: AdapterRegistry[T2IAdapter] | None = None,
 ) -> None:
     """Atomically replace plugin-provided T2I adapters (called by plugin host)."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    target.configure_plugins(adapters)
+    target.configure_plugins(adapters, allow_override_builtin=allow_override_builtin)
 
 
 def list_t2i_adapters(

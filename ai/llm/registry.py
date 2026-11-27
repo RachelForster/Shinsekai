@@ -71,11 +71,12 @@ def register_llm_adapter(
 def configure_registered_llm_adapters(
     adapters: Mapping[str, Any],
     *,
+    allow_override_builtin: bool = True,
     registry: AdapterRegistry[LLMAdapter] | None = None,
 ) -> None:
     """Atomically replace plugin-provided LLM adapters (called by plugin host)."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    target.configure_plugins(adapters)
+    target.configure_plugins(adapters, allow_override_builtin=allow_override_builtin)
 
 
 def list_llm_adapters(

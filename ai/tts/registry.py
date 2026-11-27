@@ -71,11 +71,12 @@ def register_tts_adapter(
 def configure_registered_tts_adapters(
     adapters: Mapping[str, Any],
     *,
+    allow_override_builtin: bool = True,
     registry: AdapterRegistry[TTSAdapter] | None = None,
 ) -> None:
     """Atomically replace plugin-provided TTS adapters (called by plugin host)."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    target.configure_plugins(adapters)
+    target.configure_plugins(adapters, allow_override_builtin=allow_override_builtin)
 
 
 def list_tts_adapters(

@@ -71,11 +71,12 @@ def register_asr_adapter(
 def configure_registered_asr_adapters(
     adapters: Mapping[str, Any],
     *,
+    allow_override_builtin: bool = True,
     registry: AdapterRegistry[ASRAdapter] | None = None,
 ) -> None:
     """Atomically replace plugin-provided ASR adapters (called by plugin host)."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    target.configure_plugins(adapters)
+    target.configure_plugins(adapters, allow_override_builtin=allow_override_builtin)
 
 
 def list_asr_adapters(
