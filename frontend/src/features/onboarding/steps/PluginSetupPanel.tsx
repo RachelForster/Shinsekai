@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, DownloadCloud, Eye, Globe2, Settings } from "lucide-react";
+import { CheckCircle2, DownloadCloud, Globe2, Heart, Settings, Smartphone } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { installMissingRuntimeDependency } from "../../../entities/chat/repository";
@@ -24,7 +24,7 @@ import { catalogInstallSource } from "../../plugin-manager/pluginUtils";
 import { reloadPluginService } from "../../plugin-manager/pluginReload";
 import { OnboardingPanelLayout, OnboardingTaskPanel } from "../OnboardingPanelLayout";
 
-type PluginPresetId = "browser" | "visual";
+type PluginPresetId = "heartbeat" | "chatPhone" | "browser";
 
 interface PluginPreset {
   body: string;
@@ -171,7 +171,7 @@ export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["visual", "browser"]);
+  const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["heartbeat", "chatPhone", "browser"]);
   const [dependencyTask, setDependencyTask] = useState<TaskSnapshot<RuntimeDependencyInstallResult> | null>(null);
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
   const [installedPlugins, setInstalledPlugins] = useState<Partial<Record<PluginPresetId, PluginManifest>>>({});
@@ -191,17 +191,26 @@ export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
   const presets = useMemo<PluginPreset[]>(
     () => [
       {
-        body: t("onboarding.plugins.visualBody"),
-        dependencies: ["openai", "PIL", "cv2"],
-        excludedKeywords: ["asr", "whisper", "speech", "voice", "microphone", "browser", "playwright"],
-        guide: t("onboarding.plugins.visualGuide"),
-        id: "visual",
-        keywords: splitKeywords(t("onboarding.plugins.keywords.visual")),
-        title: t("onboarding.plugins.visualTitle"),
+        body: t("onboarding.plugins.heartbeatBody"),
+        dependencies: [],
+        excludedKeywords: ["browser", "playwright", "chat_phone", "doki"],
+        guide: t("onboarding.plugins.heartbeatGuide"),
+        id: "heartbeat",
+        keywords: splitKeywords(t("onboarding.plugins.keywords.heartbeat")),
+        title: t("onboarding.plugins.heartbeatTitle"),
+      },
+      {
+        body: t("onboarding.plugins.chatPhoneBody"),
+        dependencies: [],
+        excludedKeywords: ["browser", "playwright", "heartbeat"],
+        guide: t("onboarding.plugins.chatPhoneGuide"),
+        id: "chatPhone",
+        keywords: splitKeywords(t("onboarding.plugins.keywords.chatPhone")),
+        title: t("onboarding.plugins.chatPhoneTitle"),
       },
       {
         body: t("onboarding.plugins.browserBody"),
-        dependencies: ["openai", "playwright"],
+        dependencies: ["playwright"],
         excludedKeywords: splitKeywords(t("onboarding.plugins.keywords.voiceExclude")),
         guide: t("onboarding.plugins.browserGuide"),
         id: "browser",
@@ -213,7 +222,6 @@ export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
   );
   const catalog = catalogQuery.data ?? [];
   const selectedPresets = presets.filter((preset) => selectedIds.includes(preset.id));
-  const selectedAiDependencyPresets = selectedPresets.filter((preset) => preset.id === "visual");
 
   const installMutation = useMutation({
     mutationFn: async () => {
@@ -296,15 +304,12 @@ export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
   } else {
     content = (
       <div className="onboarding-plugin-stack">
-        {selectedAiDependencyPresets.length ? (
-          <div className="onboarding-plugin-dependency-note">{t("onboarding.plugins.aiDependencyHint")}</div>
-        ) : null}
         <div className="onboarding-plugin-dependency-note">{t("onboarding.plugins.marketplaceHint")}</div>
         <div className="onboarding-plugin-choice-grid">
           {presets.map((preset) => {
             const plugin = findPluginMatch(catalog, preset);
             const selected = selectedIds.includes(preset.id);
-            const Icon = preset.id === "visual" ? Eye : Globe2;
+            const Icon = preset.id === "heartbeat" ? Heart : preset.id === "chatPhone" ? Smartphone : Globe2;
             const installedPlugin =
               installedPlugins[preset.id] ?? findInstalledPresetPlugin(pluginsQuery.data ?? [], preset);
             const hasConfig = pluginHasConfig(installedPlugin);
