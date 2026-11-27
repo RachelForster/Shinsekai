@@ -1802,6 +1802,9 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     },
     templates: {
       ...baseTemplates,
+      async listDialogFormats() {
+        return [{ id: "json_v1", label: "JSON", builtin: true }];
+      },
       async generate(input) {
         await ensureInitialized();
         const nextVoice = input.voiceLanguage?.trim();

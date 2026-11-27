@@ -8,6 +8,7 @@ from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORM
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
+from ..format_context import build_dialog_format_prompt_context
 from .field_requirements import removed_optional_fields
 
 
@@ -28,11 +29,23 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
 
         if format_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
             fmt = resolve_dialog_format(format_id)
-            custom_hint = fmt.render_schema_hint(
-                media_field="vibe" if context.uses_vibe else "sprite",
-                translate_required=bool(context.use_llm_translation and "translate" not in removed),
-                locale=context.locale,
+            prompt_ctx = build_dialog_format_prompt_context(context)
+            translate_required = bool(
+                context.use_llm_translation and "translate" not in removed
             )
+            try:
+                custom_hint = fmt.render_schema_hint(
+                    media_field=prompt_ctx.media_field,
+                    translate_required=translate_required,
+                    locale=context.locale,
+                    prompt_context=prompt_ctx,
+                )
+            except TypeError:
+                custom_hint = fmt.render_schema_hint(
+                    media_field=prompt_ctx.media_field,
+                    translate_required=translate_required,
+                    locale=context.locale,
+                )
             if isinstance(custom_hint, str) and custom_hint.strip():
                 return TextSection("head", text=custom_hint.rstrip() + "\n"), *self.children
 
