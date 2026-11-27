@@ -361,6 +361,15 @@ def _details(record: dict) -> dict:
         "novelDocId": novel_doc_id,
         "behaviorId": "novel_theater" if novel else "",
         "castEntries": list(launch.get("castEntries") or []) if novel else [],
+        "novelNameMode": (
+            (
+                "actor"
+                if str(launch.get("nameMode") or "").strip().lower() == "actor"
+                else "story"
+            )
+            if novel
+            else ""
+        ),
         "historyPath": path.as_posix(),
         "hasSettings": bool(launch) and not record.get("requiresCharacterSelection", False),
         "requiresCharacterSelection": bool(record.get("requiresCharacterSelection")),

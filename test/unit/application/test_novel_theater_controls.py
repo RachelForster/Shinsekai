@@ -105,6 +105,7 @@ def _setup_runtime(
         state,
         {
             "docId": detail["manifest"]["docId"],
+            "nameMode": "story",
             "casting": [{"sourceName": "Alice", "aliases": [], "targetCharacter": "Alice"}],
         },
     )

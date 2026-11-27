@@ -207,6 +207,7 @@ def attach_novel_theater_if_bound(
     def _rebuild_system_prompt(
         entries: Sequence[Mapping[str, Any]],
         bound_names: Sequence[str],
+        name_mode: str = "story",
     ) -> str:
         stub_state = SimpleNamespace(
             config_manager=config_manager,
@@ -217,6 +218,7 @@ def attach_novel_theater_if_bound(
             {
                 "castEntries": [dict(item) for item in entries if isinstance(item, Mapping)],
                 "characters": list(bound_names),
+                "nameMode": name_mode,
                 "backgroundName": str(getattr(getattr(context, "args", None), "background", "") or ""),
                 "mediaSelectionMode": media_mode,
                 "useEffect": False,
@@ -251,6 +253,7 @@ def attach_novel_theater_if_bound(
         "totalChunks": len(chunks),
         "totalChapters": len(toc_entries),
         "phase": "ready",
+        "nameMode": "story",
         "casting": {"bindings": []},
         "castEntries": [],
         "chapters": toc_entries,

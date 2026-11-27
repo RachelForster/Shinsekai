@@ -48,6 +48,14 @@ export const novelZhCNMessages = {
   "novel.cast.removeRow": "移除",
   "novel.cast.empty": "暂未添加选角映射。可点击「AI 提取主要角色」，手动添加，或跳过选角以纯对话演绎。",
   "novel.cast.description": "简介",
+  "novel.cast.nameModeLabel": "角色命名方式",
+  "novel.cast.nameModeHelpLabel": "角色命名方式说明",
+  "novel.cast.nameModeHelp":
+    "替换为演员名：将已绑定角色的姓名牌、旁白与台词统一改写为所选本地角色名（多人共用同一本地角色时会自动保留各自原文名）；未绑定路人保留原文名。保留原文名：保留小说原名，本地角色仅提供立绘与配音。",
+  "novel.cast.nameMode.actor": "替换为演员名",
+  "novel.cast.nameMode.story": "保留原文名",
+  "novel.cast.nameModeDuplicateHint":
+    "检测到多个小说角色绑定了同一个本地角色：为避免说话人混淆，共用同一本地角色的项仍会保留各自原文角色名。",
 
   "novel.settings.title": "小说剧场选角设置",
   "novel.settings.hint": "调整小说角色与本地立绘/配音角色的绑定关系；保存后会在下一段生成时生效。",

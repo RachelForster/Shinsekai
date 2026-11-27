@@ -40,6 +40,8 @@ export interface NovelDocumentDetail extends NovelDocumentSummary {
 
 export type NovelCastRole = "protagonist" | "supporting" | "antagonist";
 
+export type NovelNameMode = "actor" | "story";
+
 export interface NovelCastCandidate {
   name: string;
   aliases: string[];
@@ -71,6 +73,7 @@ export interface NovelCastBindingInput {
 export interface NovelLaunchRequest {
   docId: string;
   casting?: NovelCastBindingInput[];
+  nameMode?: NovelNameMode;
   startChapterIndex?: number;
   backgroundName?: string;
   conversationTitle?: string;
@@ -93,7 +96,11 @@ export interface NovelPlatform {
   getDocument: (docId: string) => Promise<NovelDocumentDetail>;
   deleteDocument: (docId: string) => Promise<{ ok: boolean; docId: string }>;
   extractCast: (docId: string) => Promise<NovelCastExtractionResult>;
-  saveCasting: (conversationId: string, bindings: NovelCastBindingInput[]) => Promise<ConversationSummary>;
+  saveCasting: (
+    conversationId: string,
+    bindings: NovelCastBindingInput[],
+    nameMode?: NovelNameMode,
+  ) => Promise<ConversationSummary>;
   prepareLaunchPayload: (input: NovelLaunchRequest) => Promise<ChatLaunchPayload>;
   jumpChapter: (input: NovelJumpChapterInput) => Promise<{ ok: boolean; chat: ChatSnapshot }>;
 }

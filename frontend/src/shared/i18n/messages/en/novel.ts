@@ -49,6 +49,14 @@ export const novelEnMessages = {
   "novel.cast.removeRow": "Remove",
   "novel.cast.empty": "No cast mappings yet. Run AI extraction, add rows manually, or skip casting for pure dialogue.",
   "novel.cast.description": "Notes",
+  "novel.cast.nameModeLabel": "Character naming",
+  "novel.cast.nameModeHelpLabel": "About character naming modes",
+  "novel.cast.nameModeHelp":
+    "Use actor names: Rewrites bound characters' nameplates, narration, and dialogue references to the chosen local character names (roles sharing one local actor fall back to novel names); unbound NPCs keep their original names. Keep novel names: Shows original story names while local characters supply sprites and voices.",
+  "novel.cast.nameMode.actor": "Use actor names",
+  "novel.cast.nameMode.story": "Keep novel names",
+  "novel.cast.nameModeDuplicateHint":
+    "Multiple novel roles share the same local character; those shared roles will still keep their original novel names to avoid speaker collisions.",
 
   "novel.settings.title": "Novel Theater casting",
   "novel.settings.hint": "Update bindings between novel roles and local characters; takes effect on upcoming beats.",

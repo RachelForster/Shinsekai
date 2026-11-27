@@ -16,11 +16,17 @@ import {
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
 import { useI18n } from "../../shared/i18n";
 import { formatPlatformError } from "../../shared/platform/errors";
-import type { ChatSnapshot, MediaSelectionMode, NovelCastBindingInput } from "../../shared/platform/types";
+import type {
+  ChatSnapshot,
+  MediaSelectionMode,
+  NovelCastBindingInput,
+  NovelNameMode,
+} from "../../shared/platform/types";
 import { Button, IconButton, Select, TextInput } from "../../shared/ui";
 import type { ChatInitializationService } from "../chat-startup/useChatInitialization";
 import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
 import { CastMappingTable, candidatesToCastRows, rowsToCastBindings, type CastMappingRow } from "./CastMappingTable";
+import { NovelNameModeField, hasDuplicateCastTargets } from "./NovelNameModeField";
 import "./NovelTheaterWizardPage.css";
 
 const MAX_TOC_PREVIEW_ITEMS = 30;
@@ -44,6 +50,7 @@ export function NovelTheaterWizardPage({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedDocId, setSelectedDocId] = useState("");
   const [castRows, setCastRows] = useState<CastMappingRow[]>([]);
+  const [nameMode, setNameMode] = useState<NovelNameMode>("actor");
   const [titleOverride, setTitleOverride] = useState(conversationTitle);
   const [startChapterIndex, setStartChapterIndex] = useState(0);
   const [backgroundName, setBackgroundName] = useState("");
@@ -123,6 +130,8 @@ export function NovelTheaterWizardPage({
     return names.join(" · ");
   }, [castRows]);
 
+  const hasDuplicateTargets = useMemo(() => hasDuplicateCastTargets(castRows), [castRows]);
+
   const handleLaunch = async (bindingsOverride?: NovelCastBindingInput[]) => {
     if (!activeDocId || launching) return;
     setErrorText("");
@@ -132,6 +141,7 @@ export function NovelTheaterWizardPage({
       const payload = await prepareNovelLaunchPayload({
         docId: activeDocId,
         casting: bindings,
+        nameMode,
         startChapterIndex,
         backgroundName,
         conversationTitle: resolveConversationTitle(titleOverride) || undefined,
@@ -315,6 +325,13 @@ export function NovelTheaterWizardPage({
               {extractMutation.isPending ? t("novel.wizard.extractingCast") : t("novel.wizard.extractCast")}
             </Button>
           </div>
+
+          <NovelNameModeField
+            disabled={launching}
+            hasDuplicateTargets={hasDuplicateTargets}
+            onChange={setNameMode}
+            value={nameMode}
+          />
 
           <CastMappingTable
             characters={charactersQuery.data ?? []}

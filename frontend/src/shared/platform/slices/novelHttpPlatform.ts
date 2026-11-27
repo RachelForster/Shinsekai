@@ -27,10 +27,14 @@ export function createNovelHttpPlatform(transport: HttpTransport): NovelPlatform
         method: "POST",
         body: "{}",
       }),
-    async saveCasting(conversationId, bindings) {
+    async saveCasting(conversationId, bindings, nameMode) {
       const res = await requestJson<{ conversation: ConversationSummary }>("/api/novel/casting", {
         method: "POST",
-        body: JSON.stringify({ conversationId, bindings }),
+        body: JSON.stringify({
+          conversationId,
+          bindings,
+          ...(nameMode ? { nameMode } : {}),
+        }),
       });
       return res.conversation;
     },

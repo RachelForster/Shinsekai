@@ -208,6 +208,7 @@ def test_prepare_launch_bound_cast_library_and_save_casting(
         state,
         {
             "docId": doc_id,
+            "nameMode": "story",
             "casting": [
                 {
                     "sourceName": "YeWenjie",
@@ -230,6 +231,7 @@ def test_prepare_launch_bound_cast_library_and_save_casting(
         state,
         {
             "docId": doc_id,
+            "nameMode": "story",
             "casting": [
                 {
                     "sourceName": "Miss Lin",

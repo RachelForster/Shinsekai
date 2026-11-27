@@ -6,7 +6,7 @@ import type { ChatBehaviorChoiceOption, ChatBehaviorState } from "./behaviorType
 import type { PlayerPortrait, PortraitCrop, SpriteTransitionMedia } from "./characterTypes";
 import type { PerceptionRuntimeState } from "./perceptionTypes";
 import type { PluginPagePresentation } from "./pluginTypes";
-import type { NovelCastBindingInput } from "./novelTypes";
+import type { NovelCastBindingInput, NovelNameMode } from "./novelTypes";
 import type { StoryGenerationInput, StoryGenerationStage, StoryGenerationTask, StoryLibraryEntry } from "./storyTypes";
 import type { RuntimeDependencyError, TaskProgressOptions, TaskSnapshot } from "./taskTypes";
 import type {
@@ -44,6 +44,7 @@ export interface ConversationSummary {
   novelDocId?: string;
   behaviorId?: string;
   castEntries?: NovelCastBindingInput[];
+  novelNameMode?: NovelNameMode | "";
   historyPath: string;
   hasSettings: boolean;
   requiresCharacterSelection?: boolean;
@@ -56,6 +57,7 @@ export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   behaviorId?: string;
   novelDocId?: string;
+  nameMode?: NovelNameMode;
   casting?: Record<string, unknown>;
   castEntries?: NovelCastBindingInput[];
   characterPromptMode?: CharacterPromptMode;

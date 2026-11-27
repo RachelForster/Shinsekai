@@ -145,8 +145,21 @@ def test_novel_document_routes_end_to_end_and_error_guards(tmp_path: Path) -> No
     )
     payload = launched.data["payload"]
     assert payload["behaviorId"] == "novel_theater"
+    assert payload["nameMode"] == "actor"
     assert payload["system"]
     assert payload["showInitialSprite"] is False
+
+    launched_story = launch_match.route.handler(
+        ApiRequest(
+            state=state,
+            method="POST",
+            path="/api/novel/launch-payload",
+            query={},
+            params={},
+            body={"docId": doc_id, "casting": [], "nameMode": "story"},
+        )
+    )
+    assert launched_story.data["payload"]["nameMode"] == "story"
 
     # Preparing launch payload alone must not lock the document on disk.
     session_dir = chat_history_session_dir(payload["historyPath"])
@@ -197,9 +210,13 @@ def test_jump_chapter_and_casting_validation(monkeypatch) -> None:
         "frontend_bridge_core.routes.novel_routes._chat_snapshot",
         lambda _state: {"status": "idle"},
     )
+    cast_calls: list[str | None] = []
     monkeypatch.setattr(
         "frontend_bridge_core.routes.novel_routes.save_novel_casting",
-        lambda _state, cid, bindings: {"id": cid, "castEntries": bindings},
+        lambda _state, cid, bindings, name_mode=None: (
+            cast_calls.append(name_mode),
+            {"id": cid, "castEntries": bindings, "novelNameMode": name_mode or "story"},
+        )[1],
     )
 
     jump_match = router.match("POST", "/api/novel/jump-chapter")
@@ -251,3 +268,21 @@ def test_jump_chapter_and_casting_validation(monkeypatch) -> None:
         )
     )
     assert cast_resp.data["conversation"]["id"] == "c1"
+    assert cast_calls[-1] is None
+
+    cast_actor_resp = cast_match.route.handler(
+        ApiRequest(
+            state=SimpleNamespace(),
+            method="POST",
+            path="/api/novel/casting",
+            query={},
+            params={},
+            body={
+                "conversationId": "c1",
+                "bindings": [{"sourceName": "Lin", "targetCharacter": "Alice"}],
+                "nameMode": "actor",
+            },
+        )
+    )
+    assert cast_actor_resp.data["conversation"]["novelNameMode"] == "actor"
+    assert cast_calls[-1] == "actor"

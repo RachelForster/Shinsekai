@@ -15,6 +15,10 @@ from application.chat.conversation_library import (
 )
 from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.templates import _compose_runtime_template
+from application.novel_theater.casting import (
+    NOVEL_NAME_MODE_STORY,
+    normalize_novel_name_mode,
+)
 from application.novel_theater.prepare_launch import (
     NOVEL_THEATER_BEHAVIOR_ID,
     build_novel_system_template,
@@ -58,13 +62,18 @@ def build_novel_runtime_system_prompt(
     effective_locale = locale or resolve_template_locale(config_manager)
     raw_entries = launch_fields.get("castEntries") or ()
     cast_entries = [dict(item) for item in raw_entries if isinstance(item, Mapping)]
+    name_mode = normalize_novel_name_mode(
+        launch_fields.get("nameMode"),
+        default=NOVEL_NAME_MODE_STORY,
+    )
     director_scenario = render_novel_director_prompt(
         cast_entries,
+        name_mode=name_mode,
         locale=effective_locale,
     )
     system_template = build_novel_system_template(
         state,
-        {**dict(launch_fields), "scenario": director_scenario},
+        {**dict(launch_fields), "nameMode": name_mode, "scenario": director_scenario},
     )
     use_effect = bool(launch_fields.get("useEffect", True))
     raw_effects = launch_fields.get("effectNames")
@@ -104,6 +113,7 @@ def _dispatch_live_casting_update(
     casting_payload: dict[str, Any],
     cast_entries: list[dict[str, Any]],
     runtime_system_prompt: str,
+    name_mode: str = NOVEL_NAME_MODE_STORY,
 ) -> bool:
     """Send live ``update_casting`` command and wait for confirmation; return False only if inactive."""
     from application.chat.composition import _chat_process_running, _handle_chat_command
@@ -118,6 +128,7 @@ def _dispatch_live_casting_update(
             "payload": {
                 "casting": casting_payload,
                 "castEntries": cast_entries,
+                "nameMode": name_mode,
                 "systemPrompt": runtime_system_prompt,
             },
         },
@@ -176,6 +187,8 @@ def save_novel_casting(
     state: Any,
     conversation_id: str,
     raw_bindings: Sequence[Mapping[str, Any]],
+    *,
+    name_mode: str | None = None,
 ) -> dict[str, Any]:
     """Commit updated cast & prompt to live runtime or SQLite first, then update metadata."""
     clean_id = str(conversation_id or "").strip()
@@ -189,18 +202,29 @@ def save_novel_casting(
             http_status=404,
         ) from exc
 
+    existing_launch = (
+        dict(record.get("launch")) if isinstance(record.get("launch"), Mapping) else {}
+    )
+    existing_mode = normalize_novel_name_mode(
+        existing_launch.get("nameMode"),
+        default=NOVEL_NAME_MODE_STORY,
+    )
+    effective_name_mode = (
+        normalize_novel_name_mode(name_mode, default=existing_mode)
+        if isinstance(name_mode, str) and name_mode.strip()
+        else existing_mode
+    )
     casting_map, bound_characters, cast_entries = normalize_cast_bindings(
         raw_bindings,
         getattr(state, "config_manager", None),
-    )
-    existing_launch = (
-        dict(record.get("launch")) if isinstance(record.get("launch"), Mapping) else {}
+        name_mode=effective_name_mode,
     )
     merged_launch = {
         **existing_launch,
         "casting": casting_map.to_dict(),
         "castEntries": cast_entries,
         "characters": bound_characters,
+        "nameMode": effective_name_mode,
     }
     director_scenario, system_template, runtime_system_prompt = (
         build_novel_runtime_system_prompt(state, merged_launch)
@@ -224,6 +248,7 @@ def save_novel_casting(
                 casting_payload=casting_map.to_dict(),
                 cast_entries=cast_entries,
                 runtime_system_prompt=runtime_system_prompt,
+                name_mode=effective_name_mode,
             )
 
     if not live_committed:
@@ -237,6 +262,7 @@ def save_novel_casting(
                         **latest.state,
                         "casting": casting_map.to_dict(),
                         "castEntries": cast_entries,
+                        "nameMode": effective_name_mode,
                     }
                     try:
                         behavior_store.commit_behavior_turn(
@@ -264,6 +290,7 @@ def save_novel_casting(
             "casting": casting_map.to_dict(),
             "castEntries": cast_entries,
             "characters": bound_characters,
+            "nameMode": effective_name_mode,
             "scenario": director_scenario,
             "system": system_template,
         },

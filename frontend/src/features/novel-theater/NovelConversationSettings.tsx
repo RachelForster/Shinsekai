@@ -6,7 +6,7 @@ import { conversationsQueryKey, listConversations, prepareConversation } from ".
 import { extractNovelCast, saveNovelCasting } from "../../entities/novel/repository";
 import { useI18n } from "../../shared/i18n";
 import { formatPlatformError } from "../../shared/platform/errors";
-import type { ConversationSummary } from "../../shared/platform/types";
+import type { ConversationSummary, NovelNameMode } from "../../shared/platform/types";
 import { Button } from "../../shared/ui";
 import {
   CastMappingTable,
@@ -15,6 +15,7 @@ import {
   rowsToCastBindings,
   type CastMappingRow,
 } from "./CastMappingTable";
+import { NovelNameModeField, hasDuplicateCastTargets } from "./NovelNameModeField";
 
 export function NovelConversationSettings({
   conversationId,
@@ -40,6 +41,9 @@ export function NovelConversationSettings({
   });
 
   const [rows, setRows] = useState<CastMappingRow[]>(() => bindingsToCastRows(current?.castEntries));
+  const [nameMode, setNameMode] = useState<NovelNameMode>(() =>
+    current?.novelNameMode === "actor" ? "actor" : "story",
+  );
   const [resolvedDocId, setResolvedDocId] = useState(() => current?.novelDocId ?? "");
   const [savedNotice, setSavedNotice] = useState(false);
   const [errorText, setErrorText] = useState("");
@@ -48,6 +52,9 @@ export function NovelConversationSettings({
     if (!current?.id) return;
     if (current.novelDocId) {
       setResolvedDocId(current.novelDocId);
+    }
+    if (current.novelNameMode === "actor" || current.novelNameMode === "story") {
+      setNameMode(current.novelNameMode);
     }
     if (current.castEntries?.length) {
       setRows(bindingsToCastRows(current.castEntries));
@@ -58,6 +65,9 @@ export function NovelConversationSettings({
       .then((launch) => {
         if (!active) return;
         if (launch.novelDocId) setResolvedDocId(launch.novelDocId);
+        if (launch.nameMode === "actor" || launch.nameMode === "story") {
+          setNameMode(launch.nameMode);
+        }
         if (launch.castEntries?.length) {
           setRows(bindingsToCastRows(launch.castEntries));
         }
@@ -66,7 +76,7 @@ export function NovelConversationSettings({
     return () => {
       active = false;
     };
-  }, [current?.id, current?.novelDocId, current?.castEntries]);
+  }, [current?.id, current?.novelDocId, current?.novelNameMode, current?.castEntries]);
 
   const extractMutation = useMutation({
     mutationFn: (docId: string) => extractNovelCast(docId),
@@ -81,8 +91,15 @@ export function NovelConversationSettings({
   });
 
   const saveMutation = useMutation({
-    mutationFn: ({ id, bindings }: { id: string; bindings: ReturnType<typeof rowsToCastBindings> }) =>
-      saveNovelCasting(id, bindings),
+    mutationFn: ({
+      id,
+      bindings,
+      nextNameMode,
+    }: {
+      id: string;
+      bindings: ReturnType<typeof rowsToCastBindings>;
+      nextNameMode: NovelNameMode;
+    }) => saveNovelCasting(id, bindings, nextNameMode),
     onMutate() {
       setErrorText("");
       setSavedNotice(false);
@@ -106,6 +123,7 @@ export function NovelConversationSettings({
   });
 
   const busy = extractMutation.isPending || saveMutation.isPending;
+  const hasDuplicateTargets = hasDuplicateCastTargets(rows);
 
   return (
     <section className="section">
@@ -138,6 +156,15 @@ export function NovelConversationSettings({
           ) : (
             <p className="novel-wizard__hint">{t("novel.settings.missingDoc")}</p>
           )}
+          <NovelNameModeField
+            disabled={busy}
+            hasDuplicateTargets={hasDuplicateTargets}
+            onChange={(next) => {
+              setSavedNotice(false);
+              setNameMode(next);
+            }}
+            value={nameMode}
+          />
           <CastMappingTable
             characters={charactersQuery.data ?? []}
             disabled={busy}
@@ -150,7 +177,9 @@ export function NovelConversationSettings({
           <div className="novel-wizard__actions">
             <Button
               disabled={busy}
-              onClick={() => saveMutation.mutate({ id: current.id, bindings: rowsToCastBindings(rows) })}
+              onClick={() =>
+                saveMutation.mutate({ id: current.id, bindings: rowsToCastBindings(rows), nextNameMode: nameMode })
+              }
               type="button"
               variant="primary"
             >

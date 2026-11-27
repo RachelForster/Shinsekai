@@ -92,13 +92,14 @@ export function createNovelPreviewPlatform(ctx?: BrowserPreviewContext): NovelPl
       }));
       return delay({ docId, characters: [], availableCharacters }, 80);
     },
-    async saveCasting(conversationId, bindings) {
+    async saveCasting(conversationId, bindings, nameMode) {
       const entry = ctx?.conversations.get(conversationId);
       if (!entry) {
         throw new PlatformRequestError("Conversation not found.", 404, "novel.conversation_not_found", {
           conversationId,
         });
       }
+      const resolvedNameMode = nameMode ?? (entry.summary.novelNameMode || "story");
       const boundNames = [
         ...new Set(
           bindings.map((item) => item.targetCharacter?.trim()).filter((name): name is string => Boolean(name)),
@@ -108,11 +109,13 @@ export function createNovelPreviewPlatform(ctx?: BrowserPreviewContext): NovelPl
         ...entry.summary,
         characters: boundNames,
         castEntries: clone(bindings),
+        novelNameMode: resolvedNameMode,
       };
       entry.payload = {
         ...entry.payload,
         characters: boundNames,
         castEntries: clone(bindings),
+        nameMode: resolvedNameMode,
       };
       return delay(entry.summary, 40);
     },
@@ -133,6 +136,7 @@ export function createNovelPreviewPlatform(ctx?: BrowserPreviewContext): NovelPl
         {
           behaviorId: "novel_theater",
           novelDocId: found.manifest.docId,
+          nameMode: input.nameMode ?? "actor",
           castEntries: clone(bindings),
           characters: boundNames,
           backgroundName: input.backgroundName ?? "",
@@ -143,7 +147,7 @@ export function createNovelPreviewPlatform(ctx?: BrowserPreviewContext): NovelPl
           useEffect: input.useEffect ?? true,
           useTranslation: input.useTranslation ?? true,
           memoryMode: "isolated",
-          showInitialSprite: boundNames.length > 0,
+          showInitialSprite: false,
           historyPath: input.historyPath || `preview/novel-${found.manifest.docId}.json`,
           conversationTitle: input.conversationTitle || found.manifest.title,
           templateId: "",

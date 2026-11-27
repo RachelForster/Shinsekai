@@ -6,7 +6,13 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from ai.llm.template.session.novel_theater import render_novel_compact_instruction
-from application.novel_theater.casting import casting_map_from_novel_state
+from application.novel_theater.casting import (
+    NOVEL_NAME_MODE_STORY,
+    casting_map_from_novel_state,
+    count_cast_targets,
+    effective_cast_display_name,
+    normalize_novel_name_mode,
+)
 from application.novel_theater.prepare_launch import (
     NOVEL_THEATER_BEHAVIOR_ID,
     resolve_chapter_index_for_chunk,
@@ -262,6 +268,16 @@ class NovelTheaterBehavior(SessionBehavior):
                 if isinstance(next_entries, list)
                 else list(state.get("castEntries") or [])
             )
+            existing_mode = normalize_novel_name_mode(
+                state.get("nameMode"),
+                default=NOVEL_NAME_MODE_STORY,
+            )
+            raw_next_mode = command.payload.get("nameMode")
+            next_name_mode = (
+                normalize_novel_name_mode(raw_next_mode, default=existing_mode)
+                if isinstance(raw_next_mode, str) and raw_next_mode.strip()
+                else existing_mode
+            )
             system_prompt = str(command.payload.get("systemPrompt") or "").strip()
             if not system_prompt and callable(self._rebuild_system_prompt):
                 casting_map = CastingMap.from_dict(next_casting)
@@ -270,9 +286,15 @@ class NovelTheaterBehavior(SessionBehavior):
                     for b in casting_map.bindings
                     if str(b.character_name or "").strip()
                 ]
-                system_prompt = str(
-                    self._rebuild_system_prompt(resolved_entries, bound_names) or ""
-                ).strip()
+                try:
+                    rebuilt = self._rebuild_system_prompt(
+                        resolved_entries,
+                        bound_names,
+                        next_name_mode,
+                    )
+                except TypeError:
+                    rebuilt = self._rebuild_system_prompt(resolved_entries, bound_names)
+                system_prompt = str(rebuilt or "").strip()
             if system_prompt:
                 queue_prompt = getattr(
                     self._turn_runner, "queue_system_prompt_update", None
@@ -285,6 +307,7 @@ class NovelTheaterBehavior(SessionBehavior):
                     )
             updated = {
                 **state,
+                "nameMode": next_name_mode,
                 "casting": dict(next_casting),
                 "castEntries": resolved_entries,
             }
@@ -342,11 +365,16 @@ class NovelTheaterBehavior(SessionBehavior):
         state: Mapping[str, Any],
     ) -> None:
         raw_entries = state.get("castEntries") or ()
+        entries_list = [entry for entry in raw_entries if isinstance(entry, Mapping)]
+        name_mode = normalize_novel_name_mode(
+            state.get("nameMode"),
+            default=NOVEL_NAME_MODE_STORY,
+        )
+        target_counts = count_cast_targets(entries_list)
         parts: list[str] = []
-        for entry in raw_entries:
-            if not isinstance(entry, Mapping):
-                continue
+        for entry in entries_list:
             src = str(entry.get("sourceName") or "").strip()
+            target = str(entry.get("targetCharacter") or "").strip()
             aliases = [
                 str(a).strip()
                 for a in (entry.get("aliases") or ())
@@ -354,7 +382,24 @@ class NovelTheaterBehavior(SessionBehavior):
             ]
             if not src:
                 continue
-            label = src if not aliases else f"{src} ({'/'.join(aliases)})"
+            display = (
+                effective_cast_display_name(
+                    src,
+                    target,
+                    name_mode=name_mode,
+                    target_counts=target_counts,
+                )
+                if target
+                else src
+            )
+            known_aliases = list(
+                dict.fromkeys(
+                    item
+                    for item in ([src, *aliases] if display != src else aliases)
+                    if item and item != display
+                )
+            )
+            label = display if not known_aliases else f"{display} ({'/'.join(known_aliases)})"
             parts.append(label)
         cast_summary = "; ".join(parts[:12])
         instruction = render_novel_compact_instruction(

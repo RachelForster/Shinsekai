@@ -18,6 +18,14 @@ from application.chat.history.paths import (
     _state_project_root,
     resolve_history_path_for_project,
 )
+from application.novel_theater.casting import (
+    DEFAULT_NOVEL_NAME_MODE,
+    NOVEL_NAME_MODE_STORY,
+    count_cast_targets,
+    effective_cast_display_name,
+    normalize_novel_name_mode,
+    novel_prompt_character_entries,
+)
 from application.novel_theater.import_document import build_chapter_toc_entries
 from application.session_behavior.casting import CastBinding, CastingMap
 from core.chat_history.behavior_state_store import BehaviorStateStore
@@ -75,10 +83,15 @@ def resolve_chapter_index_for_chunk(
 def normalize_cast_bindings(
     raw_bindings: Sequence[Mapping[str, Any]],
     config_manager: Any,
+    *,
+    name_mode: str = NOVEL_NAME_MODE_STORY,
 ) -> tuple[CastingMap, list[str], list[dict[str, Any]]]:
     """Validate and convert UI cast rows into ``CastingMap`` and metadata entries."""
+    resolved_mode = normalize_novel_name_mode(
+        name_mode,
+        default=NOVEL_NAME_MODE_STORY,
+    )
     entries: list[dict[str, Any]] = []
-    bindings: list[CastBinding] = []
     seen_targets: set[str] = set()
     target_order: list[str] = []
 
@@ -120,23 +133,6 @@ def normalize_cast_bindings(
             if canonical_target not in seen_targets:
                 seen_targets.add(canonical_target)
                 target_order.append(canonical_target)
-            merged_aliases = tuple(
-                dict.fromkeys(
-                    item
-                    for item in (source_name, *aliases)
-                    if item and item != canonical_target
-                )
-            )
-            bindings.append(
-                CastBinding(
-                    character_name=canonical_target,
-                    display_name=source_name,
-                    aliases=merged_aliases,
-                    role=role,
-                    silhouette_until_revealed=silhouette,
-                    revealed=not silhouette,
-                )
-            )
 
         entries.append(
             {
@@ -148,51 +144,38 @@ def normalize_cast_bindings(
             }
         )
 
+    target_counts = count_cast_targets(entries)
+    bindings: list[CastBinding] = []
+    for entry in entries:
+        canonical_target = entry["targetCharacter"]
+        if not canonical_target:
+            continue
+        source_name = entry["sourceName"]
+        display_name = effective_cast_display_name(
+            source_name,
+            canonical_target,
+            name_mode=resolved_mode,
+            target_counts=target_counts,
+        )
+        merged_aliases = tuple(
+            dict.fromkeys(
+                item
+                for item in (source_name, *entry["aliases"])
+                if item and item != canonical_target
+            )
+        )
+        bindings.append(
+            CastBinding(
+                character_name=canonical_target,
+                display_name=display_name,
+                aliases=merged_aliases,
+                role=entry["role"],
+                silhouette_until_revealed=bool(entry["silhouetteUntilRevealed"]),
+                revealed=not bool(entry["silhouetteUntilRevealed"]),
+            )
+        )
+
     return CastingMap(bindings), target_order, entries
-
-
-def _novel_character_entries(
-    payload: Mapping[str, Any],
-    characters: Sequence[str],
-) -> list[tuple[str, str]]:
-    """Build ``(novel_display_name, local_actor_name)`` pairs for prompt generation."""
-    pairs: list[tuple[str, str]] = []
-    seen_display: set[str] = set()
-    raw_entries = payload.get("castEntries")
-    if isinstance(raw_entries, Sequence) and not isinstance(raw_entries, (str, bytes)):
-        for item in raw_entries:
-            if not isinstance(item, Mapping):
-                continue
-            target = str(
-                item.get("targetCharacter") or item.get("target_character") or ""
-            ).strip()
-            if not target:
-                continue
-            display = str(
-                item.get("sourceName") or item.get("source_name") or target
-            ).strip() or target
-            if display not in seen_display:
-                seen_display.add(display)
-                pairs.append((display, target))
-        if pairs:
-            return pairs
-    raw_casting = payload.get("casting")
-    if isinstance(raw_casting, Mapping):
-        raw_bindings = raw_casting.get("bindings")
-        if isinstance(raw_bindings, Sequence) and not isinstance(raw_bindings, (str, bytes)):
-            for item in raw_bindings:
-                if not isinstance(item, Mapping):
-                    continue
-                target = str(item.get("characterName") or "").strip()
-                if not target:
-                    continue
-                display = str(item.get("displayName") or target).strip() or target
-                if display not in seen_display:
-                    seen_display.add(display)
-                    pairs.append((display, target))
-            if pairs:
-                return pairs
-    return [(name, name) for name in characters if str(name or "").strip()]
 
 
 def build_novel_system_template(
@@ -216,7 +199,7 @@ def build_novel_system_template(
         if str(payload.get("mediaSelectionMode") or "").strip().lower() == "semantic"
         else "indexed"
     )
-    character_entries = _novel_character_entries(payload, characters)
+    character_entries = novel_prompt_character_entries(payload, characters)
     content, _ = generator.generate_chat_template(
         characters,
         str(payload.get("backgroundName") or ""),
@@ -290,12 +273,16 @@ def _resolve_cast_from_payload(
     body: Mapping[str, Any],
     config_manager: Any,
 ) -> tuple[CastingMap, list[str], list[dict[str, Any]]]:
+    name_mode = normalize_novel_name_mode(
+        body.get("nameMode"),
+        default=NOVEL_NAME_MODE_STORY,
+    )
     raw_entries = body.get("castEntries")
     if isinstance(raw_entries, Sequence) and not isinstance(raw_entries, (str, bytes)):
-        return normalize_cast_bindings(raw_entries, config_manager)
+        return normalize_cast_bindings(raw_entries, config_manager, name_mode=name_mode)
     raw_casting = body.get("casting")
     if isinstance(raw_casting, Sequence) and not isinstance(raw_casting, (str, bytes)):
-        return normalize_cast_bindings(raw_casting, config_manager)
+        return normalize_cast_bindings(raw_casting, config_manager, name_mode=name_mode)
     if isinstance(raw_casting, Mapping):
         raw_bindings = raw_casting.get("bindings")
         if isinstance(raw_bindings, Sequence) and not isinstance(raw_bindings, (str, bytes)):
@@ -315,8 +302,8 @@ def _resolve_cast_from_payload(
                 for item in raw_bindings
                 if isinstance(item, Mapping)
             ]
-            return normalize_cast_bindings(synthesized, config_manager)
-    return normalize_cast_bindings((), config_manager)
+            return normalize_cast_bindings(synthesized, config_manager, name_mode=name_mode)
+    return normalize_cast_bindings((), config_manager, name_mode=name_mode)
 
 
 def prepare_novel_launch(
@@ -331,10 +318,15 @@ def prepare_novel_launch(
     )
 
     config_manager = getattr(state, "config_manager", None)
+    name_mode = normalize_novel_name_mode(
+        body.get("nameMode"),
+        default=DEFAULT_NOVEL_NAME_MODE,
+    )
     raw_casting = body.get("casting") or ()
     casting_map, bound_characters, cast_entries = normalize_cast_bindings(
         raw_casting if isinstance(raw_casting, Sequence) else (),
         config_manager,
+        name_mode=name_mode,
     )
 
     layout = StorageLayout(_state_project_root(state))
@@ -348,7 +340,11 @@ def prepare_novel_launch(
     history_path = resolve_history_path_for_project(state, target_raw)
 
     locale = resolve_template_locale(config_manager)
-    director_scenario = render_novel_director_prompt(cast_entries, locale=locale)
+    director_scenario = render_novel_director_prompt(
+        cast_entries,
+        name_mode=name_mode,
+        locale=locale,
+    )
     media_mode = (
         "semantic"
         if str(body.get("mediaSelectionMode") or "").strip().lower() == "semantic"
@@ -361,6 +357,7 @@ def prepare_novel_launch(
         "behaviorId": NOVEL_THEATER_BEHAVIOR_ID,
         "novelDocId": doc_id,
         "startChapterIndex": resolved_chap_idx,
+        "nameMode": name_mode,
         "casting": casting_map.to_dict(),
         "castEntries": cast_entries,
         "characters": bound_characters,
@@ -430,6 +427,10 @@ def materialize_novel_session_binding(
             "totalChunks": total_chunks,
             "totalChapters": len(toc),
             "phase": "ready",
+            "nameMode": normalize_novel_name_mode(
+                body.get("nameMode"),
+                default=NOVEL_NAME_MODE_STORY,
+            ),
             "casting": casting_map.to_dict(),
             "castEntries": cast_entries,
             "chapters": toc,
@@ -465,13 +466,15 @@ def save_novel_casting(
     state: Any,
     conversation_id: str,
     raw_bindings: Sequence[Mapping[str, Any]],
+    *,
+    name_mode: str | None = None,
 ) -> dict[str, Any]:
     """Delegate to ``application.novel_theater.save_casting.save_novel_casting``."""
     from application.novel_theater.save_casting import (
         save_novel_casting as _save_novel_casting,
     )
 
-    return _save_novel_casting(state, conversation_id, raw_bindings)
+    return _save_novel_casting(state, conversation_id, raw_bindings, name_mode=name_mode)
 
 
 __all__ = [

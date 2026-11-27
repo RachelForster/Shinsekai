@@ -2,19 +2,40 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from queue import Queue
 import threading
 from types import SimpleNamespace
 from typing import Any
 
+from ai.llm.template_generator import TemplateGenerator
+from application.chat.conversation_library import list_conversations, remember_conversation
 from application.chat.presentation.handlers.character_media import CharacterMediaHandler
 from application.chat.presentation.handlers.presentation import CharacterDialogUiHandler
 from application.chat.presentation.updates import StreamingUIUpdateManager
+from application.novel_theater import (
+    build_novel_system_template,
+    import_novel_document,
+    materialize_novel_session_binding,
+    prepare_novel_launch,
+    save_novel_casting,
+)
+from application.novel_theater.behavior import NovelTheaterBehavior
 from application.novel_theater.casting import casting_map_from_novel_state
 from application.novel_theater.narration_pacing import split_long_narration_dialogs
 from application.novel_theater.turn_delivery import deliver_dialogs_to_stage
 from application.session_behavior.casting import CastBinding, CastingMap
+from config.config_manager import ConfigManager
+from config.schema import ApiConfig, AppConfig, SystemConfig
+from core.chat_history.behavior_state_store import BehaviorStateStore
+from core.chat_history.sqlite_session_store import close_all_session_stores
+from core.chat_history.storage import (
+    chat_history_session_dir,
+    legacy_active_history_branch,
+    open_session_store,
+)
 from core.messaging.chat_turn_service import ChatTurnService
+from sdk.hooks import BeforeCompactContext
 from sdk.messages import LLMDialogMessage, PresentationMessage
 
 
@@ -258,3 +279,215 @@ def test_legacy_behavior_state_hydrates_display_names_from_cast_entries() -> Non
     assert hydrated.resolve_display_name("程心", cheng) == "程心"
 
     assert hydrated.bound_speaker_names() == ("叶文洁", "小叶", "程心")
+
+
+def test_actor_mode_replaces_1to1_and_falls_back_on_shared_actors(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    cfg = object.__new__(ConfigManager)
+    cfg._config = AppConfig(
+        characters=[],
+        background_list=[],
+        api_config=ApiConfig(),
+        system_config=SystemConfig(ui_language="zh_CN"),
+    )
+    cfg._characters_revision = ""
+    cfg._API_CONFIG_PATH = Path("nonexistent-test-api.yaml")
+
+    def _actor(name: str, lore: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            name=name,
+            character_brief=f"Brief {name}",
+            character_setting=lore,
+            personality="Calm",
+            speaking_style="Direct",
+            relationship="",
+            color="#33aaff",
+            speech_volume=1.0,
+            sprites=[{"path": f"{name.lower()}.png"}],
+            sprite_groups={},
+            portrait_crop=None,
+        )
+
+    host_zero = _actor("HostActorZero", "Unrelated RPG Lore Zero")
+    alice = _actor("Alice", "Unrelated RPG Lore Alice")
+    char_map = {"HostActorZero": host_zero, "Alice": alice}
+    monkeypatch.setattr(cfg.config, "characters", [host_zero, alice])
+    monkeypatch.setattr(cfg, "get_character_by_name", lambda name: char_map.get(name))
+    monkeypatch.setattr("ai.llm.template_generator.config_manager", cfg)
+
+    novel_path = tmp_path / "three_body_sample.txt"
+    novel_path.write_text(
+        "第一章 红岸基地\n\nYeWenjie 在天线旁记录信号。ChengXin 和 WangMiao 看着屏幕。",
+        encoding="utf-8",
+    )
+    tpl_dir = tmp_path / "templates"
+    tpl_dir.mkdir(parents=True, exist_ok=True)
+    hist_dir = tmp_path / "chat_history"
+    hist_dir.mkdir(parents=True, exist_ok=True)
+    state = SimpleNamespace(
+        project_root_dir=str(tmp_path),
+        template_dir_path=str(tpl_dir),
+        history_dir=str(hist_dir),
+        config_manager=cfg,
+        template_generator=TemplateGenerator(),
+        chat_session={},
+    )
+
+    detail = import_novel_document(state, novel_path)
+    doc_id = detail["manifest"]["docId"]
+
+    # Default nameMode is "actor": 1-to-1 binding replaces with actor name; shared Alice falls back.
+    payload = prepare_novel_launch(
+        state,
+        {
+            "docId": doc_id,
+            "casting": [
+                {"sourceName": "YeWenjie", "aliases": ["Ye"], "targetCharacter": "HostActorZero"},
+                {"sourceName": "ChengXin", "aliases": ["CX"], "targetCharacter": "Alice"},
+                {"sourceName": "WangMiao", "aliases": [], "targetCharacter": "Alice"},
+                {"sourceName": "Guard", "aliases": [], "targetCharacter": ""},
+            ],
+        },
+    )
+    assert payload["nameMode"] == "actor"
+
+    casting_map = casting_map_from_novel_state(payload)
+    ye_binding = casting_map.resolve("Ye")
+    assert ye_binding is not None
+    assert ye_binding.character_name == "HostActorZero"
+    assert ye_binding.display_name == "HostActorZero"
+    assert "YeWenjie" in ye_binding.aliases
+
+    cx_binding = casting_map.resolve("ChengXin")
+    wm_binding = casting_map.resolve("WangMiao")
+    assert cx_binding is not None and cx_binding.display_name == "ChengXin"
+    assert wm_binding is not None and wm_binding.display_name == "WangMiao"
+
+    system_tpl = build_novel_system_template(state, payload)
+    assert "HostActorZero" in system_tpl
+    assert "ChengXin" in system_tpl
+    assert "WangMiao" in system_tpl
+    assert "YeWenjie" not in system_tpl
+    assert "Unrelated RPG Lore Zero" not in system_tpl
+    assert "-> 替换为演员名：HostActorZero" in payload["scenario"]
+    assert "-> 替换为演员名：Alice" not in payload["scenario"]
+
+    # Persist, compact, and toggle via save_novel_casting
+    history_path = Path(payload["historyPath"])
+    materialize_novel_session_binding(state, payload, history_path)
+    remember_conversation(state, history_path, payload)
+    try:
+        convs = list_conversations(state)
+        assert convs[0]["novelNameMode"] == "actor"
+        conv_id = convs[0]["id"]
+
+        compact_ctx = BeforeCompactContext(
+            messages=[], older_messages=[], recent_messages=[]
+        )
+        behavior = NovelTheaterBehavior(
+            manifest=SimpleNamespace(title="Test", total_chunks=1, total_chapters=1),
+            chapters=(),
+            chunks=(),
+            toc_entries=(),
+            turn_runner=SimpleNamespace(),  # type: ignore[arg-type]
+        )
+        behavior.on_before_compact(compact_ctx, state=payload)
+        assert "HostActorZero (YeWenjie/Ye)" in compact_ctx.extra_instructions[0]
+
+        saved_story = save_novel_casting(
+            state,
+            conv_id,
+            payload["castEntries"],
+            name_mode="story",
+        )
+        assert saved_story["novelNameMode"] == "story"
+        session_dir = chat_history_session_dir(history_path)
+        store = open_session_store(history_path)
+        latest = BehaviorStateStore(store, session_dir).get_latest_state(
+            legacy_active_history_branch(history_path)
+        )
+        assert latest is not None and latest.state["nameMode"] == "story"
+        hydrated_story = casting_map_from_novel_state(latest.state)
+        assert hydrated_story.resolve("YeWenjie").display_name == "YeWenjie"
+    finally:
+        close_all_session_stores()
+
+
+def test_actor_mode_alias_renders_actor_name_on_stage(monkeypatch) -> None:
+    casting = CastingMap(
+        (
+            CastBinding(
+                character_name="HostActorZero",
+                display_name="HostActorZero",
+                aliases=("YeWenjie", "Ye"),
+            ),
+        )
+    )
+    host_cfg = SimpleNamespace(
+        name="HostActorZero",
+        color="#33aaff",
+        speech_volume=1.0,
+        sprites=[{"path": "sprites/host_0.png"}],
+        sprite_groups={},
+        portrait_crop=None,
+    )
+    emitted: list[dict[str, Any]] = []
+    pres_queue: Queue[PresentationMessage] = Queue()
+    ui = StreamingUIUpdateManager(
+        SimpleNamespace(emit=emitted.append),
+        resource_urls=SimpleNamespace(
+            media_url=lambda p: f"/media?p={p}",
+            avatar_url=lambda m, p: f"/avatar?m={m}&p={p}",
+        ),
+    )
+    rt = SimpleNamespace(
+        opencc=SimpleNamespace(convert=lambda s: s),
+        config=SimpleNamespace(
+            refresh_media_catalogs=lambda: None,
+            get_character_by_name=lambda n: host_cfg if n == "HostActorZero" else None,
+            config=SimpleNamespace(effect_list=[]),
+        ),
+        presentation_queue=pres_queue,
+        ui_update_manager=ui,
+        ui_playback=SimpleNamespace(
+            playback_controller=SimpleNamespace(wait_interruptibly=lambda _s: None),
+            task_done_requested=threading.Event(),
+        ),
+        tts_manager=None,
+        player_character="",
+        read_player_speech=False,
+    )
+    monkeypatch.setattr("application.chat.presentation.handlers.character_media.get_app_runtime", lambda: rt)
+    monkeypatch.setattr("application.chat.presentation.handlers.presentation.get_app_runtime", lambda: rt)
+    monkeypatch.setattr(
+        "application.chat.presentation.handlers.presentation.get_character_by_name",
+        lambda n: host_cfg if n == "HostActorZero" else None,
+    )
+    monkeypatch.setattr(
+        "application.chat.presentation.updates.get_character_by_name",
+        lambda n: host_cfg if n == "HostActorZero" else None,
+    )
+    monkeypatch.setattr(
+        "application.chat.presentation.updates.resolve_character_visual",
+        lambda _c, _i, _u: SimpleNamespace(
+            event_fields=lambda: {"identityKey": "h0", "url": "/media?p=h.png", "scale": 1.0, "x": 0.0, "y": 0.0}
+        ),
+    )
+    media_handler = CharacterMediaHandler(
+        tts_generation_strategy=SimpleNamespace(generate=lambda _r: ("",)),
+        sprite_resolver=SimpleNamespace(
+            candidates=lambda _c: (SimpleNamespace(asset_id="0", tags="calm", path="sprites/host_0.png"),),
+            resolve=lambda _c, _k, _r: SimpleNamespace(found=True, asset_id="1", voice_type="", voice_path="", voice_text=""),
+        ),
+        casting_map_provider=lambda: casting,
+    )
+    media_handler.handle(LLMDialogMessage(character_name="Ye", speech="Signal received.", sprite="1"))
+    out = pres_queue.get_nowait()
+    CharacterDialogUiHandler().handle(out)
+
+    sprite_events = [e for e in emitted if e.get("type") == "sprite.show"]
+    dialog_events = [e for e in emitted if e.get("type") == "dialog.end"]
+    assert sprite_events and sprite_events[-1]["characterName"] == "HostActorZero"
+    assert dialog_events and dialog_events[-1]["speaker"] == "HostActorZero"

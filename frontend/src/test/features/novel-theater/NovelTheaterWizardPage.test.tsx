@@ -127,6 +127,42 @@ describe("NovelTheaterWizardPage", () => {
     await waitFor(() => expect(mocks.extractNovelCast).toHaveBeenCalledWith("doc-abc"));
     expect(await screen.findByLabelText("Novel character 1")).toHaveValue("Alice");
     expect(screen.getByRole("combobox", { name: "Local character 1" })).toHaveTextContent("Alice");
+
+    // Naming mode defaults to "actor", offers a ? help tooltip, and can switch to "story"
+    const actorRadio = screen.getByRole("radio", { name: "Use actor names" });
+    const storyRadio = screen.getByRole("radio", { name: "Keep novel names" });
+    expect(actorRadio).toBeChecked();
+    expect(storyRadio).not.toBeChecked();
+
+    const helpButton = screen.getByRole("button", { name: "About character naming modes" });
+    const tooltipId = helpButton.getAttribute("aria-describedby") ?? "";
+    expect(tooltipId).toBeTruthy();
+    const tooltip = document.getElementById(tooltipId);
+    expect(tooltip).toHaveAttribute("role", "tooltip");
+    expect(tooltip).toHaveTextContent(/Use actor names:/i);
+    fireEvent.click(helpButton);
+    expect(helpButton).toHaveAttribute("aria-expanded", "true");
+
+    // Duplicate local target warning appears when two rows share a local character in actor mode
+    fireEvent.click(screen.getByRole("button", { name: "Add binding" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Local character 2" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Alice" }));
+    expect(screen.getByRole("note")).toHaveTextContent(/share the same local character/i);
+
+    fireEvent.click(storyRadio);
+    expect(storyRadio).toBeChecked();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start Novel Theater" }));
+    await waitFor(() =>
+      expect(mocks.prepareNovelLaunchPayload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          docId: "doc-abc",
+          nameMode: "story",
+        }),
+      ),
+    );
   });
 
   it("supports one-click skip-casting pure dialogue launch", async () => {

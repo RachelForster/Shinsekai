@@ -26,6 +26,7 @@ class NovelDirectorCastEntry:
 @dataclass(frozen=True)
 class NovelDirectorContext(TemplateContext):
     cast_entries: tuple[NovelDirectorCastEntry, ...] = ()
+    name_mode: str = "story"
 
 
 @dataclass(frozen=True)
@@ -48,20 +49,50 @@ def _render_cast_roster(context: NovelDirectorContext) -> str:
     if not context.cast_entries:
         return context.tr("session.novel_director_cast_empty")
     arrow = context.tr("session.novel_director_cast_actor_arrow")
+    replace_arrow = context.tr("session.novel_director_cast_replace_arrow")
     unbound = context.tr("session.novel_director_cast_unbound")
     aliases_label = context.tr("session.novel_director_cast_aliases_label")
     comma = context.tr("session.list_sep_comma")
+    target_counts: dict[str, int] = {}
+    for entry in context.cast_entries:
+        key = str(entry.target_character or "").strip().casefold()
+        if key:
+            target_counts[key] = target_counts.get(key, 0) + 1
+    replace_actors = context.name_mode == "actor"
     lines: list[str] = []
     for entry in context.cast_entries:
         line = f"- {entry.source_name}"
         if entry.aliases:
             line += f" ({aliases_label}{comma.join(entry.aliases)})"
-        if entry.target_character:
-            line += arrow
+        target = str(entry.target_character or "").strip()
+        if target:
+            if replace_actors and target_counts.get(target.casefold(), 0) == 1:
+                line += f"{replace_arrow}{target}"
+            else:
+                line += arrow
         else:
             line += unbound
         lines.append(line)
     return "\n".join(lines)
+
+
+class _DirectorRulesSection(Section[NovelDirectorContext]):
+    def _resolve_children(
+        self,
+        context: NovelDirectorContext,
+    ) -> tuple[Section[NovelDirectorContext], ...]:
+        key = (
+            "session.novel_director_rules_actor"
+            if context.name_mode == "actor"
+            else "session.novel_director_rules"
+        )
+        return (
+            I18nSection(
+                id="rules",
+                priority=10,
+                key=key,
+            ),
+        )
 
 
 class _ChunkLookaheadSection(Section[NovelChunkFeedContext]):
@@ -126,10 +157,9 @@ def build_novel_director_section() -> Section[NovelDirectorContext]:
                         priority=10,
                         key="session.novel_director_heading",
                     ),
-                    I18nSection(
+                    _DirectorRulesSection(
                         id="rules",
                         priority=20,
-                        key="session.novel_director_rules",
                     ),
                 ),
             ),
@@ -308,9 +338,13 @@ def render_novel_pure_dialog_system(*, locale: str | None = None) -> str:
 def render_novel_director_prompt(
     cast_entries: Sequence[Mapping[str, Any]],
     *,
+    name_mode: str = "story",
     locale: str | None = None,
 ) -> str:
     """Render the system scenario instructions for Novel Theater direction."""
+    resolved_mode = (
+        "actor" if str(name_mode or "").strip().lower() == "actor" else "story"
+    )
     entries: list[NovelDirectorCastEntry] = []
     for raw in cast_entries:
         source_name = str(raw.get("sourceName") or raw.get("source_name") or "").strip()
@@ -335,6 +369,7 @@ def render_novel_director_prompt(
     context = NovelDirectorContext(
         locale=normalize_lang(locale),
         cast_entries=tuple(entries),
+        name_mode=resolved_mode,
     )
     return NOVEL_DIRECTOR_SPEC.render_user(context)
 

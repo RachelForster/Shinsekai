@@ -65,7 +65,22 @@ def _save_casting(request: ApiRequest) -> JsonResponse:
             fallback_message="conversationId and bindings are required.",
             http_status=400,
         )
-    summary = save_novel_casting(request.state, conversation_id, bindings)
+    raw_name_mode = body.get("nameMode")
+    name_mode = (
+        raw_name_mode.strip()
+        if isinstance(raw_name_mode, str) and raw_name_mode.strip()
+        else None
+    )
+    summary = (
+        save_novel_casting(
+            request.state,
+            conversation_id,
+            bindings,
+            name_mode=name_mode,
+        )
+        if name_mode is not None
+        else save_novel_casting(request.state, conversation_id, bindings)
+    )
     return JsonResponse({"conversation": summary})
 
 

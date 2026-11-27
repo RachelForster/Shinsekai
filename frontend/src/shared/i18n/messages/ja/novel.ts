@@ -50,6 +50,14 @@ export const novelJaMessages = {
   "novel.cast.removeRow": "削除",
   "novel.cast.empty": "配役はまだありません。「AI で主要人物を抽出」を実行するか、手動追加、またはスキップできます。",
   "novel.cast.description": "概要",
+  "novel.cast.nameModeLabel": "登場人物の名前表示",
+  "novel.cast.nameModeHelpLabel": "名前表示モードの説明",
+  "novel.cast.nameModeHelp":
+    "キャスト名に置換：紐付けた登場人物の名札・地の文・セリフ内の呼称をローカルキャラクター名に統一します（同じローカルキャラを複数人で共有する場合は原作名を維持）。未紐付けの脇役は原作名のままです。原作名を維持：作中の名前をそのまま使い、立ち絵と音声のみ割り当てます。",
+  "novel.cast.nameMode.actor": "キャスト名に置換",
+  "novel.cast.nameMode.story": "原作名を維持",
+  "novel.cast.nameModeDuplicateHint":
+    "複数の作中人物が同じローカルキャラクターに紐付けられています。混同を防ぐため、共有されている人物は原作名のまま表示されます。",
 
   "novel.settings.title": "小説シアター配役設定",
   "novel.settings.hint":

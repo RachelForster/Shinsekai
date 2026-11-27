@@ -1,5 +1,10 @@
 import { getPlatform } from "../../shared/platform/platform";
-import type { NovelCastBindingInput, NovelJumpChapterInput, NovelLaunchRequest } from "../../shared/platform/types";
+import type {
+  NovelCastBindingInput,
+  NovelJumpChapterInput,
+  NovelLaunchRequest,
+  NovelNameMode,
+} from "../../shared/platform/types";
 
 export const novelDocumentsQueryKey = ["novel", "documents"] as const;
 
@@ -23,8 +28,8 @@ export function extractNovelCast(docId: string) {
   return getPlatform().novel.extractCast(docId);
 }
 
-export function saveNovelCasting(conversationId: string, bindings: NovelCastBindingInput[]) {
-  return getPlatform().novel.saveCasting(conversationId, bindings);
+export function saveNovelCasting(conversationId: string, bindings: NovelCastBindingInput[], nameMode?: NovelNameMode) {
+  return getPlatform().novel.saveCasting(conversationId, bindings, nameMode);
 }
 
 export function prepareNovelLaunchPayload(input: NovelLaunchRequest) {
