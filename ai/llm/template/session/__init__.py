@@ -49,12 +49,20 @@ from ai.llm.template.session.reminder import (
     build_reminder_system_section,
     build_reminder_user_section,
 )
+from ai.llm.template.session.tts_style import (
+    ALL_TTS_STYLE_CONTEXT_MARKERS,
+    TTS_STYLE_CONTEXT_MARKER,
+    TTS_STYLE_CONTEXT_SPEC,
+    TtsStyleContextPromptContext,
+    build_tts_style_context_section,
+)
 
 __all__ = [
     "ALL_KNOWLEDGE_CONTEXT_MARKERS",
     "ALL_MEMORY_CONTEXT_MARKERS",
     "ALL_OUTFIT_CONTEXT_MARKERS",
     "ALL_RELATION_CONTEXT_MARKERS",
+    "ALL_TTS_STYLE_CONTEXT_MARKERS",
     "COMPACT_PROMPT_SPEC",
     "CompactPromptContext",
     "CompactTranscriptTurn",
@@ -79,6 +87,9 @@ __all__ = [
     "REMINDER_PROMPT_SPEC",
     "RelationContextPromptContext",
     "ReminderContext",
+    "TTS_STYLE_CONTEXT_MARKER",
+    "TTS_STYLE_CONTEXT_SPEC",
+    "TtsStyleContextPromptContext",
     "build_compact_system_section",
     "build_compact_user_section",
     "build_dialog_repair_user_section",
@@ -88,6 +99,7 @@ __all__ = [
     "build_relation_context_section",
     "build_reminder_system_section",
     "build_reminder_user_section",
+    "build_tts_style_context_section",
     "contains_any_context_marker",
     "render_compact_failure_fallback",
     "render_omitted_history_notice",

@@ -357,3 +357,108 @@ def normalize_prosody_speed(raw_speed: Any) -> float | None:
         return None
     clamped = max(0.5, min(2.0, speed))
     return round(clamped, 3) if abs(clamped - 1.0) > 1e-3 else None
+
+
+def build_fish_audio_config_schema() -> dict[str, dict[str, Any]]:
+    """Build API-settings metadata for ``FishAudioS2ProAdapter``."""
+    return {
+        "base_url": {
+            "type": "str",
+            "label": "Fish Audio API / Local Server URL",
+            "default": DEFAULT_FISH_AUDIO_URL,
+        },
+        "api_key": {
+            "type": "str",
+            "label": "Fish Audio API Key",
+            "default": "",
+            "secret": True,
+        },
+        "model": {
+            "type": "str",
+            "label": "Fish Audio Model (e.g. s2-pro)",
+            "default": DEFAULT_FISH_AUDIO_MODEL,
+        },
+        "reference_id": {
+            "type": "str",
+            "label": "Default Reference Voice ID (leave blank for character audio cloning)",
+            "default": "",
+        },
+        "character_reference_ids": {
+            "type": "str",
+            "label": "Per-character Reference IDs (JSON or Name=ID lines, optional)",
+            "default": "",
+        },
+        "enable_inline_tags": {
+            "type": "bool",
+            "label": "Enable Inline Voice Tags ([laugh], [soft whisper], etc.)",
+            "default": True,
+        },
+        "latency": {
+            "type": "str",
+            "label": "Latency Mode",
+            "default": "normal",
+            "choices": ["normal", "balanced"],
+        },
+        "chunk_length": {
+            "type": "int",
+            "label": "Chunk Length",
+            "default": 200,
+            "min": 100,
+            "max": 300,
+            "step": 10,
+        },
+        "temperature": {
+            "type": "float",
+            "label": "Temperature",
+            "default": 0.7,
+            "min": 0.1,
+            "max": 1.0,
+            "step": 0.05,
+        },
+        "top_p": {
+            "type": "float",
+            "label": "Top-P",
+            "default": 0.7,
+            "min": 0.1,
+            "max": 1.0,
+            "step": 0.05,
+        },
+        "normalize": {
+            "type": "bool",
+            "label": "Normalize Text",
+            "default": True,
+        },
+        "request_timeout": {
+            "type": "float",
+            "label": "Request Timeout (seconds)",
+            "default": 120.0,
+            "min": 5.0,
+            "max": 600.0,
+            "step": 5.0,
+        },
+        "fish_speech_dir": {
+            "type": "str",
+            "label": "Local fish-speech Directory (optional, for localhost auto-start)",
+            "default": "",
+        },
+        "llama_checkpoint_path": {
+            "type": "str",
+            "label": "Local S2 Pro Checkpoint Dir (optional)",
+            "default": "",
+        },
+        "decoder_checkpoint_path": {
+            "type": "str",
+            "label": "Local Codec Checkpoint (optional)",
+            "default": "",
+        },
+        "python_path": {
+            "type": "str",
+            "label": "Local Python Executable (optional)",
+            "default": "",
+        },
+        "extra_args": {
+            "type": "str",
+            "label": "Extra Local api_server.py Arguments",
+            "default": "",
+        },
+    }

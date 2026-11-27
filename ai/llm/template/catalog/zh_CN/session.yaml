@@ -73,3 +73,18 @@ outfit_lock_status_unlocked: 未锁定
 outfit_character_entry: '- {name}：当前服装分组「{active_group}」（{lock_desc}；可用分组：{groups}）'
 outfit_default_tag: 默认
 outfit_group_sprites_line: '  当前「{active_group}」分组可用 sprite 编号：{items}'
+tts_style_header: 当前语音合成引擎支持的表现力控制能力：
+tts_style_inline_tags_rule: |-
+  内联语音标签：可在需要表现情绪、语气或副语言动作的位置插入自然语言方括号标签（如 [laugh]、[sigh]、[soft whisper]、[laughing nervously]、[excited]），可置于句首或句中；请克制自然地使用，无特殊表现需要时不要强行添加。
+tts_style_inline_tags_channel_json: |-
+  输出位置要求：方括号语音标签只能写在 `translate` 字段中供语音合成使用，`speech` 字段必须保持干净可读，绝对不要把 `[...]` 标签写进 `speech`。即使台词与配音语言相同，也仅在需要使用标签的条目中把带标签的朗读文本写入 `translate`。
+tts_style_inline_tags_channel_xml: |-
+  输出位置要求：方括号语音标签只能写在 `<tr>...</tr>` 标签内供语音合成使用，`<say>` 主体台词必须保持干净可读，绝对不要把 `[...]` 标签写进主台词。即使台词与配音语言相同，也仅在需要使用标签的条目中补充带标签的 `<tr>...</tr>`。
+tts_style_inline_tags_channel_custom: |-
+  输出位置要求：方括号语音标签只能写在供语音合成使用的翻译/朗读通道（`translate`）中，保持展示给用户的台词正文干净，不要混入 `[...]` 标签。
+tts_style_voice_instruct_json: |-
+  自然语言演绎指导：可在角色对话条目中按需添加可选字段 `voice_instruct`（简短自然语言短语，描述语气、情绪或语速，例如 "低声轻笑、语速偏慢" 或 "soft teasing whisper"），不要复述台词本身；常规中性语气时省略该字段。
+tts_style_voice_instruct_xml: |-
+  自然语言演绎指导：可在 `<say>` 标签上按需添加可选属性 `voice_instruct="..."`（简短自然语言短语，描述语气、情绪或语速，例如 `voice_instruct="低声轻笑、语速偏慢"`），不要复述台词本身；常规中性语气时省略该属性。
+tts_style_voice_instruct_custom: |-
+  自然语言演绎指导：若当前输出格式支持扩展字段，可在角色台词条目提供可选的 `voice_instruct` 字段描述语气、情绪或语速；常规中性语气时省略。

@@ -19,6 +19,7 @@ from ai.tts.adapters.fish_audio_protocol import (
     DEFAULT_FISH_AUDIO_MODEL,
     DEFAULT_FISH_AUDIO_URL,
     FISH_AUDIO_CLOUD_HOSTS,
+    build_fish_audio_config_schema,
     build_fish_speech_server_cmd,
     find_fish_speech_server_script,
     normalize_prosody_speed,
@@ -59,6 +60,7 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         top_p: float = 0.7,
         repetition_penalty: float | None = None,
         normalize: bool = True,
+        enable_inline_tags: bool = True,
         request_timeout: float = 120.0,
         llama_checkpoint_path: str = "",
         decoder_checkpoint_path: str = "",
@@ -93,6 +95,7 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
             else max(0.9, min(2.0, float(repetition_penalty)))
         )
         self.normalize = bool(normalize)
+        self.enable_inline_tags = bool(enable_inline_tags)
         self.request_timeout = max(5.0, float(request_timeout))
 
         self.work_path = str(fish_speech_dir or "").strip() or None
@@ -116,102 +119,12 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
     @classmethod
     def get_config_schema(cls) -> dict[str, dict[str, Any]]:
         """Return configurable Fish Audio S2 Pro adapter fields for API settings."""
-        return {
-            "base_url": {
-                "type": "str",
-                "label": "Fish Audio API / Local Server URL",
-                "default": DEFAULT_FISH_AUDIO_URL,
-            },
-            "api_key": {
-                "type": "str",
-                "label": "Fish Audio API Key",
-                "default": "",
-                "secret": True,
-            },
-            "model": {
-                "type": "str",
-                "label": "Fish Audio Model (e.g. s2-pro)",
-                "default": DEFAULT_FISH_AUDIO_MODEL,
-            },
-            "reference_id": {
-                "type": "str",
-                "label": "Default Reference Voice ID (leave blank for character audio cloning)",
-                "default": "",
-            },
-            "character_reference_ids": {
-                "type": "str",
-                "label": "Per-character Reference IDs (JSON or Name=ID lines, optional)",
-                "default": "",
-            },
-            "latency": {
-                "type": "str",
-                "label": "Latency Mode",
-                "default": "normal",
-                "choices": ["normal", "balanced"],
-            },
-            "chunk_length": {
-                "type": "int",
-                "label": "Chunk Length",
-                "default": 200,
-                "min": 100,
-                "max": 300,
-                "step": 10,
-            },
-            "temperature": {
-                "type": "float",
-                "label": "Temperature",
-                "default": 0.7,
-                "min": 0.1,
-                "max": 1.0,
-                "step": 0.05,
-            },
-            "top_p": {
-                "type": "float",
-                "label": "Top-P",
-                "default": 0.7,
-                "min": 0.1,
-                "max": 1.0,
-                "step": 0.05,
-            },
-            "normalize": {
-                "type": "bool",
-                "label": "Normalize Text",
-                "default": True,
-            },
-            "request_timeout": {
-                "type": "float",
-                "label": "Request Timeout (seconds)",
-                "default": 120.0,
-                "min": 5.0,
-                "max": 600.0,
-                "step": 5.0,
-            },
-            "fish_speech_dir": {
-                "type": "str",
-                "label": "Local fish-speech Directory (optional, for localhost auto-start)",
-                "default": "",
-            },
-            "llama_checkpoint_path": {
-                "type": "str",
-                "label": "Local S2 Pro Checkpoint Dir (optional)",
-                "default": "",
-            },
-            "decoder_checkpoint_path": {
-                "type": "str",
-                "label": "Local Codec Checkpoint (optional)",
-                "default": "",
-            },
-            "python_path": {
-                "type": "str",
-                "label": "Local Python Executable (optional)",
-                "default": "",
-            },
-            "extra_args": {
-                "type": "str",
-                "label": "Extra Local api_server.py Arguments",
-                "default": "",
-            },
-        }
+        return build_fish_audio_config_schema()
+
+    @property
+    def supports_inline_voice_tags(self) -> bool:
+        """Whether Fish Audio S2 Pro advertises inline ``[...]`` tag guidance."""
+        return self.enable_inline_tags
 
     @property
     def owns_server_process(self) -> bool:
@@ -396,6 +309,9 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         clean_text = str(text or "").strip()
         if not clean_text:
             return None
+        voice_instruct = str(kwargs.get("voice_instruct") or "").strip().strip("[]").strip()
+        if voice_instruct and not clean_text.startswith("["):
+            clean_text = f"[{voice_instruct}] {clean_text}"
         if self._is_official_cloud_url() and not self.api_key:
             logger.warning("Fish Audio API key is empty.")
             return None
