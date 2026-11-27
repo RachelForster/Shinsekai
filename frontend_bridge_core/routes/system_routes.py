@@ -116,6 +116,12 @@ def _cancel_task(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_request_task_cancel(request.state, request.params["task_id"]))
 
 
+def _shutdown_runtime(request: ApiRequest) -> JsonResponse:
+    from application.runtime.stop_managed_services import stop_managed_services
+
+    return JsonResponse(stop_managed_services(request.state, reason="bridge shutdown"))
+
+
 SYSTEM_ROUTES = (
     Route(
         methods=frozenset({"GET"}),
@@ -187,5 +193,11 @@ SYSTEM_ROUTES = (
         pattern="/api/tasks/{task_id}/cancel",
         handler=_cancel_task,
         name="tasks.cancel",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/runtime/shutdown",
+        handler=_shutdown_runtime,
+        name="runtime.shutdown",
     ),
 )

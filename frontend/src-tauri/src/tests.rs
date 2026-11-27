@@ -8,7 +8,8 @@ use std::{
 };
 
 use crate::bridge::{
-    port_pair_available, send_bridge_agent_close, send_bridge_chat_close, summarize_bridge_stderr,
+    port_pair_available, send_bridge_agent_close, send_bridge_chat_close,
+    send_bridge_runtime_shutdown, summarize_bridge_stderr,
 };
 use crate::frontend_protocol::{
     app_window_url, chat_window_url, live_chat_frontend_url, live_frontend_origin_for_platform,
@@ -331,6 +332,27 @@ fn send_bridge_agent_close_posts_authenticated_runtime_shutdown() {
     let request = handle.join().unwrap();
     assert!(request.starts_with("POST /api/agent/runtime/stop HTTP/1.1\r\n"));
     assert!(request.contains("X-Shinsekai-Bridge-Token: agent-token\r\n"));
+    assert!(request.ends_with("\r\n\r\n{}"));
+}
+
+#[test]
+fn send_bridge_runtime_shutdown_posts_authenticated_shutdown() {
+    let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buffer = [0_u8; 1024];
+        let read = stream.read(&mut buffer).unwrap();
+        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+            .unwrap();
+        request
+    });
+    send_bridge_runtime_shutdown(port, "shutdown-token").unwrap();
+    let request = handle.join().unwrap();
+    assert!(request.starts_with("POST /api/runtime/shutdown HTTP/1.1\r\n"));
+    assert!(request.contains("X-Shinsekai-Bridge-Token: shutdown-token\r\n"));
     assert!(request.ends_with("\r\n\r\n{}"));
 }
 

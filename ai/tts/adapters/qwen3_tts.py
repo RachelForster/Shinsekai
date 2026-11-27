@@ -29,6 +29,7 @@ from ai.tts.adapters.qwen3_tts_discovery import (
 from core.adapters import builtin_adapter
 from core.storage.layout import StorageLayout
 from sdk.adapters import TTSAdapter
+from sdk.process_guard import get_process_registry, subprocess_isolation_kwargs
 
 DEFAULT_QWEN3_TTS_URL = "http://127.0.0.1:9882/"
 
@@ -255,11 +256,13 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
             "bufsize": 1,
             "cwd": str(Path(llama_server).parent),
         }
-        if os.name == "nt":
-            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        popen_kwargs.update(subprocess_isolation_kwargs(hide_window=True))
 
         proc = subprocess.Popen(cmd, **popen_kwargs)
         self._server_process = proc
+        get_process_registry().register(
+            proc, name="qwen3-tts-gguf", kind="tts", scope="host", name_hint="llama-server"
+        )
         threading.Thread(
             target=self._drain_logs,
             args=(proc,),
@@ -298,16 +301,8 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
             pass
         proc = self._server_process
         if proc is not None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except Exception:
-                try:
-                    proc.kill()
-                    proc.wait(timeout=2)
-                except Exception:
-                    pass
             self._server_process = None
+            get_process_registry().stop_process(proc, timeout=5.0)
 
     def _encode_ref_audio(self, ref_audio_path: str) -> str:
         path = Path(ref_audio_path).expanduser().resolve()

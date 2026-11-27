@@ -4,8 +4,9 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::Path,
-    process::Command,
-    time::Duration,
+    process::{Child, Command},
+    thread,
+    time::{Duration, Instant},
 };
 
 #[cfg(unix)]
@@ -17,7 +18,9 @@ use tauri::{AppHandle, Manager};
 
 use crate::state::{restart_debug_log, restart_debug_log_path, DesktopState, BRIDGE_HOST};
 
-const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(6);
+const BRIDGE_RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(7);
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -59,6 +62,109 @@ pub(crate) fn send_bridge_agent_close(port: u16, auth_token: &str) -> Result<(),
         "/api/agent/runtime/stop",
         Duration::from_secs(7),
     )
+}
+
+pub(crate) fn send_bridge_runtime_shutdown(port: u16, auth_token: &str) -> Result<(), String> {
+    send_bridge_close_request(
+        port,
+        auth_token,
+        "/api/runtime/shutdown",
+        BRIDGE_RUNTIME_SHUTDOWN_TIMEOUT,
+    )
+}
+
+pub(crate) fn stop_bridge_child_process(mut child: Child, bridge_port: u16, auth_token: &str) {
+    restart_debug_log(format!("bridge stop requested child_pid={}", child.id()));
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            restart_debug_log(format!(
+                "bridge stop skipped; child already exited status={status}"
+            ));
+            return;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            restart_debug_log(format!(
+                "bridge stop initial status failed error={error}"
+            ));
+        }
+    }
+    match send_bridge_agent_close(bridge_port, auth_token) {
+        Ok(()) => restart_debug_log("bridge stop closed Agent runtime"),
+        Err(error) => {
+            restart_debug_log(format!("bridge stop Agent close failed error={error}"))
+        }
+    }
+    match send_bridge_chat_close(bridge_port, auth_token) {
+        Ok(()) => restart_debug_log(format!(
+            "bridge stop closed active chat port={bridge_port}"
+        )),
+        Err(error) => restart_debug_log(format!(
+            "bridge stop chat close failed port={bridge_port} error={error}"
+        )),
+    }
+    match send_bridge_runtime_shutdown(bridge_port, auth_token) {
+        Ok(()) => restart_debug_log(format!(
+            "bridge stop shutdown managed runtime port={bridge_port}"
+        )),
+        Err(error) => restart_debug_log(format!(
+            "bridge stop runtime shutdown failed port={bridge_port} error={error}"
+        )),
+    }
+    let mut forced_kill_sent = match request_bridge_child_stop(&mut child) {
+        Ok(forced) => forced,
+        Err(error) => {
+            restart_debug_log(format!("bridge stop terminate failed error={error}"));
+            false
+        }
+    };
+    let graceful_deadline = Instant::now() + Duration::from_secs(1);
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                restart_debug_log(format!("bridge stop completed status={status}"));
+                break;
+            }
+            Ok(None) if !forced_kill_sent && Instant::now() >= graceful_deadline => {
+                if let Err(error) = child.kill() {
+                    restart_debug_log(format!("bridge stop kill failed error={error}"));
+                }
+                forced_kill_sent = true;
+            }
+            Ok(None) if started.elapsed() < BRIDGE_STOP_TIMEOUT => {
+                thread::sleep(Duration::from_millis(50));
+            }
+            Ok(None) => {
+                restart_debug_log(format!(
+                    "bridge stop timed out child_pid={} elapsed_ms={}",
+                    child.id(),
+                    started.elapsed().as_millis()
+                ));
+                break;
+            }
+            Err(error) => {
+                restart_debug_log(format!("bridge stop wait failed error={error}"));
+                break;
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
+    let result = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
+    if result == 0 {
+        Ok(false)
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
+#[cfg(windows)]
+fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
+    child.kill().map_err(|error| error.to_string())?;
+    Ok(true)
 }
 
 fn send_bridge_close_request(

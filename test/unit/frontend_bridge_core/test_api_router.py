@@ -152,6 +152,7 @@ def test_registered_system_route_contracts_remain_stable() -> None:
         ("POST", "/api/config/comfyui-connection-test"),
         ("POST", "/api/config/llm-models"),
         ("POST", "/api/config/system"),
+        ("POST", "/api/runtime/shutdown"),
         ("POST", "/api/tasks/{task_id}/cancel"),
         ("PUT", "/api/config/api"),
         ("PUT", "/api/config/system"),

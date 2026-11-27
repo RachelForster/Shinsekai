@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import copy
-import ipaddress
 import os
 from pathlib import Path
-import shlex
 import subprocess
 import time
 from typing import Any, Dict, Optional
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode
 
 import requests
 
 from ai.t2i.comfyui_connection import probe_comfyui_connection
+from ai.t2i.comfyui_server import start_comfyui_server, stop_comfyui_server
 from ai.t2i.comfyui_workflow import (
     apply_sampler_seed,
     find_ksampler_conditioning_node_id,
@@ -100,8 +99,18 @@ class ComfyUIT2IAdapter(T2IAdapter):
         self.match_reference_aspect = match_reference_aspect
         self.last_video_path: Optional[str] = None
         self.last_video_frame_time: Any = None
+        self._server_process: Any | None = None
         self.workflow_template = self._load_workflow_template()
         self._start_server_process()
+
+    @property
+    def owns_server_process(self) -> bool:
+        return getattr(self, "_server_process", None) is not None
+
+    def stop_server(self) -> None:
+        proc = getattr(self, "_server_process", None)
+        self._server_process = None
+        stop_comfyui_server(proc)
 
     def _is_server_ready(self) -> bool:
         return probe_comfyui_connection(
@@ -120,57 +129,16 @@ class ComfyUIT2IAdapter(T2IAdapter):
 
     def _start_server_process(self) -> None:
         """Start the configured portable ComfyUI installation if it is not running."""
-        if self._is_server_ready():
-            print("ComfyUI server is already running.")
-            return
-
-        if not getattr(self, "auto_start", bool(self.work_path.strip())):
-            raise RuntimeError(
-                "无法连接 ComfyUI API。请先用秋叶／绘世等自带启动器或原有方式启动 ComfyUI，"
-                "等待网页可用，再将相同的服务根地址（含实际端口，不含 /prompt）填入 API 设定。"
-                "整合包无需填写 ComfyUI 目录，也无需开启自动启动。"
-            )
-
-        host = urlsplit(self.api_url).hostname or ""
-        try:
-            local = host.lower() == "localhost" or ipaddress.ip_address(host).is_loopback
-        except ValueError:
-            local = False
-        if not local:
-            raise ValueError(
-                "自动启动仅支持本机 ComfyUI；连接其他电脑时请关闭自动启动并在服务端启动 ComfyUI。"
-            )
-
-        os_path = self.work_path
-        embeded_python_path = os.path.join(os_path, "python_embeded", "python.exe")
-        api_path = os.path.join(os_path, "ComfyUI", "main.py")
-        if not os.path.isfile(embeded_python_path) or not os.path.isfile(api_path):
-            raise ValueError(
-                "自动启动目录必须是官方 Windows 便携版根目录，包含 python_embeded/python.exe "
-                "和 ComfyUI/main.py。秋叶／绘世、桌面版或其他安装方式请关闭自动启动，"
-                "使用自己的启动器启动后连接。"
-            )
-
-        port = urlsplit(self.api_url).port or 8188
-        subprocess.Popen(
-            [
-                embeded_python_path,
-                "-s",
-                api_path,
-                "--port",
-                str(port),
-                *shlex.split(self.startup_args),
-            ],
-            cwd=os_path,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        proc = start_comfyui_server(
+            api_url=getattr(self, "api_url", "http://127.0.0.1:8188"),
+            work_path=self.work_path,
+            startup_args=getattr(self, "startup_args", "--windows-standalone-build"),
+            auto_start=getattr(self, "auto_start", bool(self.work_path.strip())),
+            is_server_ready=self._is_server_ready,
+            wait_for_ready=self._wait_for_server_ready,
+            popen=subprocess.Popen,
         )
-        print("ComfyUI server starting...")
-        if self._wait_for_server_ready():
-            print("ComfyUI server is ready.")
-        else:
-            raise RuntimeError(
-                "ComfyUI 启动后仍无法连接 API，请检查 ComfyUI 启动日志和 API 地址中的端口。"
-            )
+        self._server_process = proc
 
     def _load_workflow_template(self) -> Dict[str, Any]:
         """加载 ComfyUI 工作流 JSON 文件作为模板。"""
