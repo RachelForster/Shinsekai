@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from core.messaging.formats.registry import (
-    _reset_for_tests,
+from types import SimpleNamespace
+
+from ai.llm.formats import (
+    XmlTagsStreamParser,
     configure_builtin_dialog_formats,
     configure_registered_dialog_formats,
 )
-from core.messaging.formats.xml_tags_parser import XmlTagsStreamParser
+from core.messaging.formats.registry import _reset_for_tests
 from frontend_bridge_core.routes.memory_routes import MEMORY_ROUTES
 from frontend_bridge_core.routes.router import ApiRequest, JsonResponse, Router
 from frontend_bridge_core.routes.template_routes import TEMPLATE_ROUTES
@@ -139,10 +141,30 @@ def test_dialog_formats_endpoint_returns_bare_array() -> None:
 
         assert isinstance(response, JsonResponse)
         assert isinstance(response.data, list)
+        assert [row["id"] for row in response.data[:4]] == [
+            "xml_v1",
+            "renpy_v1",
+            "json_v1",
+            "route_custom_v1",
+        ]
         by_id = {row["id"]: row for row in response.data}
-        assert "xml_v1" in by_id and by_id["xml_v1"]["builtin"] is True
-        assert "json_v1" in by_id and by_id["json_v1"]["builtin"] is True
-        assert "route_custom_v1" in by_id and by_id["route_custom_v1"]["builtin"] is False
+        assert by_id["xml_v1"]["builtin"] is True
+        assert by_id["renpy_v1"]["builtin"] is True
+        assert by_id["json_v1"]["builtin"] is True
+        assert by_id["route_custom_v1"]["builtin"] is False
+
+        en_state = SimpleNamespace(
+            config_manager=SimpleNamespace(
+                config=SimpleNamespace(system_config=SimpleNamespace(ui_language="en"))
+            )
+        )
+        en_req = _request(router, en_state, "GET", "/api/templates/dialog-formats")
+        en_resp = matched.route.handler(en_req)
+        assert isinstance(en_resp, JsonResponse)
+        en_by_id = {row["id"]: row for row in en_resp.data}
+        assert "transitions & motions" in en_by_id["xml_v1"]["label"]
+        assert "transitions & motions" in en_by_id["renpy_v1"]["label"]
+        assert "classic compatible" in en_by_id["json_v1"]["label"]
     finally:
         _reset_for_tests()
         configure_builtin_dialog_formats()

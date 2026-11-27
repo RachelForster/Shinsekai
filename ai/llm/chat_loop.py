@@ -12,7 +12,7 @@ from ai.llm.template.integrations.localization import LocaleInput
 from ai.llm.tool_session import ToolSession
 from core.chat_history.identity import CHAT_OUTPUT_FORMAT
 from core.messaging.dialog_output import has_valid_dialog_output
-from core.messaging.formats.registry import resolve_dialog_format
+from ai.llm.formats import resolve_dialog_format
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
 from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.adapters.llm import LLMAdapter

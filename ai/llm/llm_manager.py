@@ -25,7 +25,7 @@ from core.chat_history.identity import CHAT_TURN_ID
 from core.chat_history.models import CHUNK_FEED_SOURCE
 from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.adapters.llm import LLMAdapter
-from core.messaging.formats.registry import resolve_dialog_format
+from ai.llm.formats import resolve_dialog_format
 from sdk.hooks import PluginHookDispatcher
 from sdk.llm_runtime import get_llm_host_runtime
 from sdk.logging import get_logger

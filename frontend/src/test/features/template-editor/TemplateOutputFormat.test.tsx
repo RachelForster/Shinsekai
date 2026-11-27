@@ -118,8 +118,9 @@ describe("TemplateEditorPage outputFormat selector", () => {
       updateRuntimeStatusFromSnapshot: mockUpdateRuntimeStatusFromSnapshot,
     });
     mockListDialogFormats.mockResolvedValue([
-      { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
-      { id: "json_v1", label: "JSON", builtin: true },
+      { id: "xml_v1", label: "XML / HTML Tags (transitions & motions)", builtin: true },
+      { id: "renpy_v1", label: "Ren'Py Script DSL (transitions & motions)", builtin: true },
+      { id: "json_v1", label: "JSON (classic compatible)", builtin: true },
       { id: "custom_dsl", label: "Custom Plugin DSL", builtin: false },
     ]);
     mockListTemplates.mockResolvedValue([]);
@@ -223,7 +224,7 @@ describe("TemplateEditorPage outputFormat selector", () => {
   });
 
   it("enforces json_v1 for fresh createOnly drafts when listDialogFormats exposes only json_v1", async () => {
-    mockListDialogFormats.mockResolvedValue([{ id: "json_v1", label: "JSON", builtin: true }]);
+    mockListDialogFormats.mockResolvedValue([{ id: "json_v1", label: "JSON (classic compatible)", builtin: true }]);
 
     renderEditor({ createOnly: true });
 
@@ -243,7 +244,7 @@ describe("TemplateEditorPage outputFormat selector", () => {
   });
 
   it("normalizes restored xml_v1 template and launch session to json_v1 when xml_v1 is unavailable", async () => {
-    mockListDialogFormats.mockResolvedValue([{ id: "json_v1", label: "JSON", builtin: true }]);
+    mockListDialogFormats.mockResolvedValue([{ id: "json_v1", label: "JSON (classic compatible)", builtin: true }]);
     mockGetTemplateSession.mockResolvedValue({
       background: "Room",
       outputFormat: "xml_v1",
@@ -276,5 +277,51 @@ describe("TemplateEditorPage outputFormat selector", () => {
 
     fireEvent.click(formatCombo);
     expect(screen.queryByRole("option", { name: /XML/ })).not.toBeInTheDocument();
+  });
+
+  it("displays built-in renpy_v1 format with backend-supplied localized label and updates selection", async () => {
+    mockGetTemplateSession.mockResolvedValue({
+      background: "Room",
+      outputFormat: "xml_v1",
+      selectedCharacters: ["Nanami"],
+    });
+    mockListTemplates.mockResolvedValue([
+      {
+        content: "Starter scenario\n\nStarter rules",
+        id: "starter.txt",
+        name: "Starter",
+        outputFormat: "xml_v1",
+        path: "/templates/starter.txt",
+        scenario: "Starter scenario",
+        system: "Starter rules",
+        updatedAt: "2026-11-26",
+      },
+    ]);
+    renderEditor();
+
+    const editSystemBtn = await screen.findByRole("button", { name: "Edit system prompt" });
+    await act(async () => {
+      fireEvent.click(editSystemBtn);
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Edit system prompt & generation rules" });
+    const formatCombo = within(dialog).getByRole("combobox", { name: "Output format" });
+
+    fireEvent.click(formatCombo);
+    const renpyOption = await screen.findByRole("option", {
+      name: /Ren'Py Script DSL \(transitions & motions\)/,
+    });
+    fireEvent.click(renpyOption);
+    expect(formatCombo).toHaveTextContent("Ren'Py Script DSL (transitions & motions)");
+
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Regenerate" }));
+    });
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ outputFormat: "renpy_v1" })),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect(screen.getByText(/Format: Ren'Py Script DSL \(transitions & motions\)/)).toBeInTheDocument(),
+    );
   });
 });

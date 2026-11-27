@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai.llm.template.core import PROMPT_CATALOG
-from core.messaging.formats.registry import (
+from ai.llm.formats import (
     get_dialog_format,
     is_builtin_dialog_format,
     registered_dialog_formats,
     resolve_dialog_format,
 )
+from ai.llm.template.core import PROMPT_CATALOG
+from i18n import current_language
 from sdk.adapters.dialog_format import (
     DEFAULT_DIALOG_FORMAT_ID,
     DialogOutfitHintContext,
-    XML_DIALOG_FORMAT_ID,
 )
 from sdk.lang import normalize_lang
 
@@ -42,31 +42,30 @@ def resolve_outfit_format_hint(
     example_character: str = "",
     example_target_group: str = "",
 ) -> tuple[str, str]:
-    """Resolve optional outfit-switch instructions via DialogOutputFormat hooks."""
+    """Resolve outfit-switch instructions uniformly via DialogOutputFormat hooks."""
     fmt_id = str(output_format or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-    if not fmt_id or fmt_id in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
-        return "", ""
     fmt = resolve_dialog_format(fmt_id)
-    if fmt.format_id in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
-        return "", ""
     resolved_locale = normalize_lang(locale)
-    hint = fmt.render_outfit_hint(
-        DialogOutfitHintContext(
+    hint_ctx = DialogOutfitHintContext(
+        locale=resolved_locale,
+        media_selection_mode=media_selection_mode,
+        auto_switch_enabled=bool(auto_switch_enabled),
+        example_character=example_character,
+        example_target_group=example_target_group,
+        example_vibe=PROMPT_CATALOG.translate(
+            "session.outfit_example_vibe",
             locale=resolved_locale,
-            media_selection_mode=media_selection_mode,
-            auto_switch_enabled=bool(auto_switch_enabled),
-            example_character=example_character,
-            example_target_group=example_target_group,
-            example_vibe=PROMPT_CATALOG.translate(
-                "session.outfit_example_vibe",
-                locale=resolved_locale,
-            ),
-            example_speech=PROMPT_CATALOG.translate(
-                "session.outfit_example_speech",
-                locale=resolved_locale,
-            ),
-        )
+        ),
+        example_speech=PROMPT_CATALOG.translate(
+            "session.outfit_example_speech",
+            locale=resolved_locale,
+        ),
     )
+    hint = fmt.render_outfit_hint(hint_ctx)
+    if hint is None and fmt.format_id != DEFAULT_DIALOG_FORMAT_ID:
+        hint = resolve_dialog_format(DEFAULT_DIALOG_FORMAT_ID).render_outfit_hint(
+            hint_ctx
+        )
     if hint is None or not str(hint.rule_text or "").strip():
         return "", ""
     rule_text = hint.rule_text.strip()
@@ -85,13 +84,23 @@ def resolve_outfit_format_hint(
     return rule_text, rendered_example
 
 
-def list_dialog_formats() -> list[dict[str, Any]]:
+def list_dialog_formats(*, locale: str | None = None) -> list[dict[str, Any]]:
     """Return UI-consumable descriptors for all registered dialog output formats."""
-    return [
-        {
-            "id": fmt.format_id,
-            "label": fmt.label or fmt.format_id,
-            "builtin": is_builtin_dialog_format(fmt.format_id),
-        }
-        for fmt in registered_dialog_formats()
-    ]
+    resolved_locale = normalize_lang(locale or current_language())
+    rows: list[dict[str, Any]] = []
+    for fmt in registered_dialog_formats():
+        label = ""
+        render_label = getattr(fmt, "render_label", None)
+        if callable(render_label):
+            try:
+                label = str(render_label(locale=resolved_locale) or "").strip()
+            except TypeError:
+                label = str(render_label() or "").strip()
+        rows.append(
+            {
+                "id": fmt.format_id,
+                "label": label or fmt.label or fmt.format_id,
+                "builtin": is_builtin_dialog_format(fmt.format_id),
+            }
+        )
+    return rows

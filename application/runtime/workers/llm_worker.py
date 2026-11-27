@@ -13,7 +13,7 @@ from application.chat.capabilities import (
 from core.chat_history.identity import DialogIdentities
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
-from core.messaging.formats.registry import resolve_dialog_format
+from ai.llm.formats import resolve_dialog_format
 from core.messaging.stream_events import (
     STREAM_DIALOG_REPAIR_KEY,
     STREAM_REASONING_DELTA_KEY,

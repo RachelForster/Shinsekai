@@ -297,6 +297,9 @@ def pytest_configure(config):
         "markers",
         "ui: mark test as requiring a real Qt UI (deselect with '-m \"not ui\"')",
     )
+    from ai.llm.formats import configure_builtin_dialog_formats
+
+    configure_builtin_dialog_formats()
 
 
 def pytest_collection_modifyitems(config, items):

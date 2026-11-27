@@ -1,6 +1,5 @@
-"""Pluggable LLM dialog output formats (`json_v1`, `xml_v1`, and plugin formats)."""
+"""Format-agnostic runtime registry for LLM dialog output formats."""
 
-from core.messaging.formats.json_format import JsonDialogFormat
 from core.messaging.formats.registry import (
     configure_builtin_dialog_formats,
     configure_registered_dialog_formats,
@@ -11,13 +10,10 @@ from core.messaging.formats.registry import (
     register_dialog_format,
     registered_dialog_formats,
     resolve_dialog_format,
+    set_builtin_dialog_formats_registrar,
 )
-from core.messaging.formats.xml_tags_format import XmlTagsDialogFormat, XmlTagsStreamParser
 
 __all__ = [
-    "JsonDialogFormat",
-    "XmlTagsDialogFormat",
-    "XmlTagsStreamParser",
     "configure_builtin_dialog_formats",
     "configure_registered_dialog_formats",
     "detect_dialog_format",
@@ -27,4 +23,5 @@ __all__ = [
     "register_dialog_format",
     "registered_dialog_formats",
     "resolve_dialog_format",
+    "set_builtin_dialog_formats_registrar",
 ]
