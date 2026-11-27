@@ -12,6 +12,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.history.state import canonical_user_turn_payload
@@ -46,6 +47,29 @@ def replay_user_text(entry, body, users):
 
 def revision(entries):
     return digest([(e.get("id"), e.get("role"), e.get("text"), e.get("dialogId")) for e in entries])
+
+
+def _provider_requires_ref_audio(provider: str, kwargs: dict[str, Any]) -> bool:
+    clean_provider = str(provider or "").strip()
+    if not clean_provider or clean_provider.lower() == "none":
+        return True
+    try:
+        from ai.tts.registry import get_tts_adapter_registry
+
+        registration = get_tts_adapter_registry().get_registration(clean_provider)
+        adapter_cls = registration.resolve_class() if registration is not None else None
+    except Exception:
+        return True
+    if adapter_cls is None:
+        return True
+    checker = getattr(adapter_cls, "requires_ref_audio_for_config", None)
+    if callable(checker):
+        try:
+            return bool(checker(**kwargs))
+        except Exception:
+            pass
+    raw_flag = getattr(adapter_cls, "requires_ref_audio", True)
+    return raw_flag if isinstance(raw_flag, bool) else True
 
 
 class ChatReplayService:
@@ -92,6 +116,7 @@ class ChatReplayService:
         kwargs = copy.deepcopy(config.merged_tts_factory_kwargs(
             provider, {"gpt_sovits_work_path": work_path, "tts_server_url": url}
         )) if provider and provider != "none" else {}
+        needs_ref_audio = _provider_requires_ref_audio(provider, kwargs)
         settings = {"provider": provider, "kwargs": kwargs, "url": url,
                     "language": str(config.config.system_config.voice_language or "ja")}
         plan_id = uuid.uuid4().hex
@@ -123,8 +148,14 @@ class ChatReplayService:
             speech = speech_by_id.get(dialog_id) or speech_by_text.get((speaker, body)) or recorded_text or body
             speech_key = digest(speech)
             character = copy.deepcopy(config.get_character_by_name(speaker)) if raw.get("role") == "assistant" else None
-            can_generate = bool(character and provider and provider != "none" and
-                                str(getattr(character, "refer_audio_path", "") or "").strip() and speech.strip())
+            has_ref_audio = bool(str(getattr(character, "refer_audio_path", "") or "").strip())
+            can_generate = bool(
+                character
+                and provider
+                and provider != "none"
+                and (not needs_ref_audio or has_ref_audio)
+                and speech.strip()
+            )
             paths, origin, voice_label = [], "", ""
             voice_id = raw.get("voiceId") or (archive.voice_for_dialog(dialog_id) if dialog_id else "")
             if voice_id:

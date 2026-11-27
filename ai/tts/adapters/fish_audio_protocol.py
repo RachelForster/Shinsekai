@@ -274,14 +274,15 @@ def resolve_local_fish_speech_launch(
             work_dir / "checkpoints" / "s2-pro",
             layout.model_dir("fish-audio-s2-pro"),
         )
-        llama_ckpt = next(
+        found_ckpt = next(
             (cand.resolve() for cand in candidates if _looks_like_checkpoint_dir(cand)),
-            Path(),
+            None,
         )
-        if not llama_ckpt or not llama_ckpt.is_dir():
+        if found_ckpt is None or not found_ckpt.is_dir():
             raise FileNotFoundError(
                 f"Fish Audio S2 Pro weights not found (checked {candidates[0]} and {candidates[1]})."
             )
+        llama_ckpt = found_ckpt
 
     raw_decoder = str(decoder_checkpoint_path or "").strip()
     decoder_ckpt: Path | None = None
@@ -319,14 +320,19 @@ def build_fish_speech_server_cmd(
 ) -> list[str]:
     """Assemble the subprocess command line for ``tools/api_server.py``."""
     parsed = urlparse(server_url)
-    host = (parsed.hostname or "").strip().lower()
-    bind_host = "0.0.0.0" if host == "0.0.0.0" else "127.0.0.1"
+    host = (parsed.hostname or "").strip().strip("[]").lower()
     port = int(parsed.port or 8080)
+    if host == "0.0.0.0":
+        listen_addr = f"0.0.0.0:{port}"
+    elif ":" in host:
+        listen_addr = f"[{host}]:{port}"
+    else:
+        listen_addr = f"127.0.0.1:{port}"
     cmd = [
         python_exe,
         str(api_script),
         "--listen",
-        f"{bind_host}:{port}",
+        listen_addr,
         "--llama-checkpoint-path",
         str(llama_ckpt),
     ]
@@ -345,6 +351,96 @@ def build_fish_speech_server_cmd(
     return cmd
 
 
+def _schema_option(
+    field_type: str,
+    label: str,
+    label_key: str,
+    default: Any,
+    **extra: Any,
+) -> dict[str, Any]:
+    return {
+        "type": field_type,
+        "label": label,
+        "labelKey": label_key,
+        "default": default,
+        **extra,
+    }
+
+
+def build_fish_audio_config_schema() -> dict[str, dict[str, Any]]:
+    """Return configurable Fish Audio S2 Pro adapter fields for API settings."""
+    p = "ops.api.tts.fishAudio.extra"
+    return {
+        "base_url": _schema_option(
+            "str", "Fish Audio API / Local Server URL", f"{p}.baseUrl", DEFAULT_FISH_AUDIO_URL
+        ),
+        "api_key": _schema_option(
+            "str", "Fish Audio API Key", f"{p}.apiKey", "", secret=True
+        ),
+        "model": _schema_option(
+            "str", "Fish Audio Model (e.g. s2-pro)", f"{p}.model", DEFAULT_FISH_AUDIO_MODEL
+        ),
+        "reference_id": _schema_option(
+            "str",
+            "Default Reference Voice ID (leave blank for character audio cloning)",
+            f"{p}.referenceId",
+            "",
+        ),
+        "character_reference_ids": _schema_option(
+            "str",
+            "Per-character Reference IDs (JSON or Name=ID lines, optional)",
+            f"{p}.characterReferenceIds",
+            "",
+        ),
+        "enable_inline_tags": _schema_option(
+            "bool",
+            "Enable Inline Voice Tags (e.g. [laugh], [soft whisper])",
+            f"{p}.enableInlineTags",
+            True,
+        ),
+        "latency": _schema_option(
+            "str", "Latency Mode", f"{p}.latency", "normal", choices=["normal", "balanced"]
+        ),
+        "chunk_length": _schema_option(
+            "int", "Chunk Length", f"{p}.chunkLength", 200, min=100, max=300, step=10
+        ),
+        "temperature": _schema_option(
+            "float", "Temperature", f"{p}.temperature", 0.7, min=0.1, max=1.0, step=0.05
+        ),
+        "top_p": _schema_option(
+            "float", "Top-P", f"{p}.topP", 0.7, min=0.1, max=1.0, step=0.05
+        ),
+        "normalize": _schema_option("bool", "Normalize Text", f"{p}.normalize", True),
+        "request_timeout": _schema_option(
+            "float",
+            "Request Timeout (seconds)",
+            f"{p}.requestTimeout",
+            120.0,
+            min=5.0,
+            max=600.0,
+            step=5.0,
+        ),
+        "fish_speech_dir": _schema_option(
+            "str",
+            "Local fish-speech Directory (optional, for localhost auto-start)",
+            f"{p}.fishSpeechDir",
+            "",
+        ),
+        "llama_checkpoint_path": _schema_option(
+            "str", "Local S2 Pro Checkpoint Dir (optional)", f"{p}.llamaCheckpointPath", ""
+        ),
+        "decoder_checkpoint_path": _schema_option(
+            "str", "Local Codec Checkpoint (optional)", f"{p}.decoderCheckpointPath", ""
+        ),
+        "python_path": _schema_option(
+            "str", "Local Python Executable (optional)", f"{p}.pythonPath", ""
+        ),
+        "extra_args": _schema_option(
+            "str", "Extra Local api_server.py Arguments", f"{p}.extraArgs", ""
+        ),
+    }
+
+
 def normalize_prosody_speed(raw_speed: Any) -> float | None:
     """Return a clamped speech speed multiplier when it differs materially from 1.0."""
     if raw_speed is None or raw_speed == "":
@@ -357,108 +453,3 @@ def normalize_prosody_speed(raw_speed: Any) -> float | None:
         return None
     clamped = max(0.5, min(2.0, speed))
     return round(clamped, 3) if abs(clamped - 1.0) > 1e-3 else None
-
-
-def build_fish_audio_config_schema() -> dict[str, dict[str, Any]]:
-    """Build API-settings metadata for ``FishAudioS2ProAdapter``."""
-    return {
-        "base_url": {
-            "type": "str",
-            "label": "Fish Audio API / Local Server URL",
-            "default": DEFAULT_FISH_AUDIO_URL,
-        },
-        "api_key": {
-            "type": "str",
-            "label": "Fish Audio API Key",
-            "default": "",
-            "secret": True,
-        },
-        "model": {
-            "type": "str",
-            "label": "Fish Audio Model (e.g. s2-pro)",
-            "default": DEFAULT_FISH_AUDIO_MODEL,
-        },
-        "reference_id": {
-            "type": "str",
-            "label": "Default Reference Voice ID (leave blank for character audio cloning)",
-            "default": "",
-        },
-        "character_reference_ids": {
-            "type": "str",
-            "label": "Per-character Reference IDs (JSON or Name=ID lines, optional)",
-            "default": "",
-        },
-        "enable_inline_tags": {
-            "type": "bool",
-            "label": "Enable Inline Voice Tags ([laugh], [soft whisper], etc.)",
-            "default": True,
-        },
-        "latency": {
-            "type": "str",
-            "label": "Latency Mode",
-            "default": "normal",
-            "choices": ["normal", "balanced"],
-        },
-        "chunk_length": {
-            "type": "int",
-            "label": "Chunk Length",
-            "default": 200,
-            "min": 100,
-            "max": 300,
-            "step": 10,
-        },
-        "temperature": {
-            "type": "float",
-            "label": "Temperature",
-            "default": 0.7,
-            "min": 0.1,
-            "max": 1.0,
-            "step": 0.05,
-        },
-        "top_p": {
-            "type": "float",
-            "label": "Top-P",
-            "default": 0.7,
-            "min": 0.1,
-            "max": 1.0,
-            "step": 0.05,
-        },
-        "normalize": {
-            "type": "bool",
-            "label": "Normalize Text",
-            "default": True,
-        },
-        "request_timeout": {
-            "type": "float",
-            "label": "Request Timeout (seconds)",
-            "default": 120.0,
-            "min": 5.0,
-            "max": 600.0,
-            "step": 5.0,
-        },
-        "fish_speech_dir": {
-            "type": "str",
-            "label": "Local fish-speech Directory (optional, for localhost auto-start)",
-            "default": "",
-        },
-        "llama_checkpoint_path": {
-            "type": "str",
-            "label": "Local S2 Pro Checkpoint Dir (optional)",
-            "default": "",
-        },
-        "decoder_checkpoint_path": {
-            "type": "str",
-            "label": "Local Codec Checkpoint (optional)",
-            "default": "",
-        },
-        "python_path": {
-            "type": "str",
-            "label": "Local Python Executable (optional)",
-            "default": "",
-        },
-        "extra_args": {
-            "type": "str",
-            "label": "Extra Local api_server.py Arguments",
-            "default": "",
-        },
-    }

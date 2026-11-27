@@ -120,7 +120,6 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
     def get_config_schema(cls) -> dict[str, dict[str, Any]]:
         """Return configurable Fish Audio S2 Pro adapter fields for API settings."""
         return build_fish_audio_config_schema()
-
     @property
     def supports_inline_voice_tags(self) -> bool:
         """Whether Fish Audio S2 Pro advertises inline ``[...]`` tag guidance."""

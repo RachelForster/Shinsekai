@@ -13,9 +13,11 @@ import requests
 
 from ai.tts.adapters.fish_audio_protocol import (
     DEFAULT_FISH_AUDIO_URL,
+    build_fish_speech_server_cmd,
     pack_msgpack,
     parse_character_reference_ids,
     resolve_fish_audio_endpoints,
+    resolve_local_fish_speech_launch,
 )
 from ai.tts.adapters.fish_audio_s2_pro import FishAudioS2ProAdapter
 from ai.tts.tts_manager import TTSManager
@@ -389,3 +391,35 @@ def test_local_server_already_running_and_missing_path_errors(tmp_path, monkeypa
     )
     with pytest.raises(RuntimeError, match=r"code 2.*CUDA OOM"):
         failing.wait_until_ready(timeout_seconds=0.5, poll_interval_seconds=0.01)
+
+
+def test_missing_weights_raises_ipv6_listen_and_schema_i18n_keys(tmp_path) -> None:
+    fish_dir = tmp_path / "fish-empty-weights"
+    (fish_dir / "tools").mkdir(parents=True)
+    api_script = fish_dir / "tools" / "api_server.py"
+    api_script.write_text("# stub", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError, match="Fish Audio S2 Pro weights not found"):
+        resolve_local_fish_speech_launch(
+            work_path=str(fish_dir),
+            llama_checkpoint_path="",
+            decoder_checkpoint_path="",
+            python_path="",
+            project_root=tmp_path,
+        )
+
+    cmd = build_fish_speech_server_cmd(
+        python_exe="python",
+        api_script=api_script,
+        server_url="http://[::1]:8085",
+        llama_ckpt=tmp_path / "ckpt",
+        decoder_ckpt=None,
+        decoder_config_name="modded_dac_vq",
+    )
+    listen_idx = cmd.index("--listen")
+    assert cmd[listen_idx + 1] == "[::1]:8085"
+
+    schema = FishAudioS2ProAdapter.get_config_schema()
+    assert len(schema) == 17
+    for field_name, meta in schema.items():
+        assert str(meta.get("labelKey") or "").startswith("ops.api.tts.fishAudio.extra."), field_name

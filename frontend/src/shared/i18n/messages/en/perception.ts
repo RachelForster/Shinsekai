@@ -27,6 +27,25 @@ export const perceptionEnMessages: Record<PerceptionMessageKey, string> = {
   "chat.perception.frameUploadFailed": "Frame upload failed. Retrying.",
   "chat.perception.blackFrame": "The shared screen is black. Check the selected window.",
   "chat.perception.shareUnsupported": "Screen sharing is unavailable.",
+  "chat.perception.preflight.title": "Preparing Live Reactions",
+  "chat.perception.preflight.checking": "Checking live reaction service status...",
+  "chat.perception.preflight.checkingDesc":
+    "Checking whether the vision service is ready before screen sharing, and starting it automatically if needed.",
+  "chat.perception.preflight.setupNeededDesc":
+    "Dependencies and the vision model must be ready first. The local server will start automatically once prepared.",
+  "chat.perception.preflight.startingDesc":
+    "Starting the local live reaction server automatically. Choose a window to share once ready.",
+  "chat.perception.preflight.readyTitle": "Live reaction service is ready",
+  "chat.perception.preflight.readyDesc":
+    "The service is running and ready. Click below to choose a window or screen to share.",
+  "chat.perception.preflight.errorHint":
+    "You can check model and server settings under API Settings -> Live Reactions, or share your screen anyway.",
+  "chat.perception.preflight.checkFailed": "Failed to check the live reaction service",
+  "chat.perception.preflight.checkTimeout": "Timed out checking the live reaction service",
+  "chat.perception.preflight.selectWindow": "Choose window to share",
+  "chat.perception.preflight.shareWhileLoading": "Choose window now",
+  "chat.perception.preflight.skipAndShare": "Share screen anyway",
+  "chat.perception.preflight.retry": "Check again",
   "api.perception.title": "Live Perception & Game Reactions",
   "api.perception.shareHint": "Screen sharing activates perception automatically.",
   "api.perception.enabled": "Game & plugin input",

@@ -6,6 +6,7 @@ import type {
   AppliedUserPromptPreset,
   ChatLaunchPayload,
   ChatSnapshot,
+  DialogFormatOption,
   DialogOutputFormatId,
   InitialOutfitValue,
   MediaSelectionMode,
@@ -18,6 +19,27 @@ import type {
 
 export const DEFAULT_NEW_OUTPUT_FORMAT: DialogOutputFormatId = "xml_v1";
 export const LEGACY_OUTPUT_FORMAT: DialogOutputFormatId = "json_v1";
+
+export function resolveSupportedOutputFormat(
+  candidate: DialogOutputFormatId | null | undefined,
+  dialogFormats: readonly DialogFormatOption[] | undefined,
+  fallback: DialogOutputFormatId = LEGACY_OUTPUT_FORMAT,
+): DialogOutputFormatId {
+  const preferred = candidate || fallback;
+  if (!dialogFormats?.length) {
+    return preferred;
+  }
+  if (dialogFormats.some((item) => item.id === preferred)) {
+    return preferred;
+  }
+  if (dialogFormats.some((item) => item.id === fallback)) {
+    return fallback;
+  }
+  if (dialogFormats.some((item) => item.id === DEFAULT_NEW_OUTPUT_FORMAT)) {
+    return DEFAULT_NEW_OUTPUT_FORMAT;
+  }
+  return dialogFormats[0].id;
+}
 
 export const templateVoiceLanguages = [
   { labelKey: "system.asr.langAuto", value: "auto" },
