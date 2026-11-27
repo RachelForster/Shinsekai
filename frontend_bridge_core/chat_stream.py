@@ -576,7 +576,19 @@ class ChatStreamService:
         self._loop = loop
         asyncio.set_event_loop(loop)
         try:
-            self._server = loop.run_until_complete(asyncio.start_server(self._handle_client, self.host, self.ws_port))
+            try:
+                self._server = loop.run_until_complete(asyncio.start_server(self._handle_client, self.host, self.ws_port))
+            except OSError:
+                self._server = loop.run_until_complete(asyncio.start_server(self._handle_client, self.host, 0))
+            sockets = getattr(self._server, "sockets", None) or ()
+            if sockets:
+                bound_port = int(sockets[0].getsockname()[1])
+                if bound_port != self.ws_port:
+                    self.ws_port = bound_port
+                    self.ws_base = _ws_base(self.host, self.ws_port)
+                    with self._lock:
+                        for session in self._sessions.values():
+                            session.snapshot["wsUrl"] = self.ws_base
         except Exception as exc:  # pragma: no cover - startup failure path
             self._start_error = exc
             self._ready.set()
