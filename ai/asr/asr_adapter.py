@@ -232,13 +232,17 @@ class VoskAdapter(ASRAdapter):
             self._pause_event.set()
 
 
-def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
-    """按 system_config.asr_provider 创建 ASR；Whisper 等由插件注册进 ``ASRAdapterFactory._adapters``。"""
-    from ai.asr.asr_manager import ASRAdapterFactory
-
+def create_default_asr_adapter(
+    callback: TranscriptionCallback,
+    *,
+    registry: Any | None = None,
+) -> ASRAdapter:
+    """按 system_config.asr_provider 创建 ASR；Whisper 等由插件注册进 ASR ``AdapterRegistry``。"""
+    from ai.asr.registry import get_asr_adapter_registry
     from config.adapter_extra_kwargs import filter_kwargs_for_ctor
     from config.config_manager import ConfigManager
 
+    active_registry = registry if registry is not None else get_asr_adapter_registry()
     sys_cfg = ConfigManager().config.system_config
     lang = system_config_to_asr_lang(sys_cfg)
     prov = (sys_cfg.asr_provider or "sherpa_onnx").strip().lower().replace("-", "_")
@@ -254,10 +258,10 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
         ct,
     )
 
-    adapter_cls = ASRAdapterFactory._adapters.get(storage_key)
+    adapter_cls = active_registry.get(storage_key)
 
     if adapter_cls is None:
-        fallback_key = "sherpa_onnx" if "sherpa_onnx" in ASRAdapterFactory._adapters else "vosk"
+        fallback_key = "sherpa_onnx" if "sherpa_onnx" in active_registry else "vosk"
         if storage_key != fallback_key:
             _log.warning(
                 "ASR provider %r not registered (e.g. enable Whisper ASR plugin); "
@@ -266,20 +270,20 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
                 fallback_key,
             )
         storage_key = fallback_key
-        adapter_cls = ASRAdapterFactory._adapters.get(fallback_key, VoskAdapter)
+        adapter_cls = active_registry.get(fallback_key) or VoskAdapter
 
     if adapter_cls is VoskAdapter:
         _kw = filter_kwargs_for_ctor(VoskAdapter, extras)
         model_path = str(_kw.get("model_path") or VOSK_MODEL_PATH)
         return VoskAdapter(language=lang, callback=callback, model_path=model_path)
 
-    _kw = filter_kwargs_for_ctor(adapter_cls, extras)
+    _kw = filter_kwargs_for_ctor(adapter_cls, extras) if isinstance(adapter_cls, type) else {}
     if storage_key == "sherpa_onnx":
         _kw.setdefault("explicit_language", str(getattr(sys_cfg, "asr_language", "") or "").strip())
         try:
             return adapter_cls(lang, callback, **_kw)
         except ModuleNotFoundError as exc:
-            if exc.name != "sherpa_onnx" or "vosk" not in ASRAdapterFactory._adapters:
+            if exc.name != "sherpa_onnx" or "vosk" not in active_registry:
                 raise
             vosk_kw = filter_kwargs_for_ctor(
                 VoskAdapter,

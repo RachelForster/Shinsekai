@@ -125,6 +125,129 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
     }
 
 
+def test_plugin_host_supports_registry_configure_callbacks(monkeypatch, tmp_path) -> None:
+    configured: dict[str, object] = {}
+
+    class FakePluginManager:
+        capabilities = object()
+
+        def instantiate_all(self) -> None:
+            return None
+
+        def load_own_config_all(self, *, app_config) -> None:
+            return None
+
+        def apply_llm_providers(self, target) -> None:
+            target["PluginLLM"] = object
+
+        def apply_tts_providers(self, target) -> None:
+            target["plugin-tts"] = object
+
+        def apply_asr_providers(self, target) -> None:
+            target["plugin_asr"] = object
+
+        def apply_t2i_providers(self, target) -> None:
+            target["plugin-t2i"] = object
+
+        def collect_vision_fallbacks(self):
+            return []
+
+        def apply_llm_tools(self, manager) -> None:
+            return None
+
+        def collect_message_handlers(self):
+            return [], []
+
+        def collect_dag_yaml_paths(self):
+            return []
+
+        def collect_workflow_contributions(self):
+            return []
+
+        def collect_output_contract_patches(self):
+            return []
+
+        def collect_avatar_formats(self):
+            return []
+
+        def collect_dialog_formats(self):
+            return []
+
+        def collect_model_assets(self):
+            return []
+
+    monkeypatch.setattr(service, "_loaded", False)
+    monkeypatch.setattr(service, "_plugin_manager", None)
+    monkeypatch.setattr(service, "_MANIFEST", tmp_path / "missing.yaml")
+    monkeypatch.setattr(service, "PluginManager", lambda: FakePluginManager())
+    monkeypatch.setattr(service, "ensure_plugins_namespace_on_syspath", lambda: None)
+    monkeypatch.setattr(service, "ensure_plugin_site_packages_on_syspath", lambda: None)
+    monkeypatch.setattr("sdk.tool_registry.apply_registered_tools", lambda _tm: None)
+
+    bindings = PluginRuntimeBindings(
+        configure_llm_adapters=lambda values: configured.setdefault("llm", values),
+        configure_tts_adapters=lambda values: configured.setdefault("tts", values),
+        configure_asr_adapters=lambda values: configured.setdefault("asr", values),
+        configure_t2i_adapters=lambda values: configured.setdefault("t2i", values),
+        create_tool_manager=object,
+        configure_vision_fallbacks=lambda _v: None,
+        configure_avatar_formats=lambda _v: None,
+    )
+
+    service.ensure_plugins_loaded(object(), runtime_bindings=bindings)
+    assert configured == {
+        "llm": {"PluginLLM": object},
+        "tts": {"plugin-tts": object},
+        "asr": {"plugin_asr": object},
+        "t2i": {"plugin-t2i": object},
+    }
+
+
+def test_frontend_bridge_wires_registry_adapter_bindings() -> None:
+    import ast
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[3] / "frontend_bridge.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    called_names = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    for builtin_call in (
+        "configure_builtin_llm_adapters",
+        "configure_builtin_tts_adapters",
+        "configure_builtin_asr_adapters",
+        "configure_builtin_t2i_adapters",
+    ):
+        assert builtin_call in called_names
+
+    expected_kw = {
+        "configure_llm_adapters": "configure_registered_llm_adapters",
+        "configure_tts_adapters": "configure_registered_tts_adapters",
+        "configure_asr_adapters": "configure_registered_asr_adapters",
+        "configure_t2i_adapters": "configure_registered_t2i_adapters",
+    }
+    has_runtime_binding = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "PluginRuntimeBindings"
+        and all(
+            any(
+                kw.arg == arg_name
+                and isinstance(kw.value, ast.Name)
+                and kw.value.id == fn_name
+                for kw in node.keywords
+            )
+            for arg_name, fn_name in expected_kw.items()
+        )
+        for node in ast.walk(tree)
+    )
+    assert has_runtime_binding
+
+
 def test_frontend_bridge_wires_dialog_format_bindings() -> None:
     import ast
     from pathlib import Path
