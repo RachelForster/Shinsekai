@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+import copy
 import logging
 import threading
 from typing import Any
@@ -17,9 +18,14 @@ from application.session_behavior.casting import CastingMap
 from application.session_behavior.prefetch import SpeculativePrefetchCoordinator
 from application.session_behavior.runtime_binding import (
     BehaviorTurnContextProvider,
+    after_behavior_transition_committed,
+    auto_attach_bound_behavior,
+    handle_behavior_history_mutated,
+    notify_behavior_session_ready,
     resolve_character_media_handler,
     resolve_opencc,
     resolve_ui_worker,
+    sync_casting_media_policy,
 )
 from application.session_behavior.protocol import (
     BehaviorCommand,
@@ -31,6 +37,7 @@ from application.session_behavior.protocol import (
     parse_behavior_command,
 )
 from core.chat_history.behavior_state_models import (
+    BehaviorCommitResult,
     BehaviorStateSnapshot,
     BehaviorVersionConflictError,
 )
@@ -69,7 +76,13 @@ class SessionBehaviorCapability(BaseSessionCapability):
         self._idempotency = CommandIdempotencyCache(max_entries=128)
         self._compact_hook_registered = False
         self._last_envelope: BehaviorStateEnvelope | None = None
+        self._history_argument = ""
+        self._initial_state: dict[str, Any] = {}
+        self._last_state: dict[str, Any] | None = None
         self._turn_provider = BehaviorTurnContextProvider(self)
+
+    def set_history_argument(self, history_arg: str) -> None:
+        self._history_argument = str(history_arg or "").strip()
 
     @property
     def behavior(self) -> SessionBehavior | None:
@@ -124,35 +137,20 @@ class SessionBehaviorCapability(BaseSessionCapability):
             ui_worker.set_on_playback_idle(self.on_playback_idle)
 
     def _sync_media_policy(self, state: Mapping[str, Any] | None) -> None:
+        self._last_state = copy.deepcopy(dict(state)) if state is not None else None
         behavior = self._behavior
         casting = (
             behavior.get_casting_map(state)
             if behavior is not None and state is not None
             else None
         )
-        llm_mgr = self._llm_manager
-        if llm_mgr is not None and hasattr(llm_mgr, "set_speaker_media_policy"):
-            if casting is not None:
-                def _speaker_requires_media(
-                    speaker_name: str,
-                    _casting: CastingMap = casting,
-                ) -> bool:
-                    return _casting.speaker_requires_media(
-                        speaker_name,
-                        cc=resolve_opencc(self._runtime_components, self._app_runtime),
-                    )
-
-                llm_mgr.set_speaker_media_policy(
-                    _speaker_requires_media,
-                    casting.bound_speaker_names(),
-                )
-            else:
-                llm_mgr.set_speaker_media_policy(None, ())
-        handler = self._resolve_character_media_handler()
-        if handler is not None and hasattr(handler, "casting_map_provider"):
-            handler.casting_map_provider = (
-                self._active_casting_map if casting is not None else None
-            )
+        sync_casting_media_policy(
+            self._llm_manager,
+            casting,
+            media_handler=self._resolve_character_media_handler(),
+            opencc_provider=lambda: resolve_opencc(self._runtime_components, self._app_runtime),
+            active_casting_provider=self._active_casting_map,
+        )
 
     def _ensure_compact_hook(self) -> None:
         if self._compact_hook_registered or self._hook_dispatcher is None:
@@ -176,6 +174,7 @@ class SessionBehaviorCapability(BaseSessionCapability):
         with self._lock:
             self._behavior = behavior
             self._state_store = state_store
+            self._initial_state = copy.deepcopy(dict(initial_state))
             self._idempotency.clear_branch()
             self._ensure_compact_hook()
             state_store.recover_pending()
@@ -213,10 +212,11 @@ class SessionBehaviorCapability(BaseSessionCapability):
             emit_fn = getattr(context.transport, "emit", None)
             if callable(emit_fn):
                 self._emit_event = emit_fn
-        if self._branch_id_provider is None:
-            history_arg = str(getattr(context.args, "history", "") or "")
-            if history_arg:
-                self._branch_id_provider = lambda: legacy_active_history_branch(history_arg)
+        history_arg = str(getattr(context.args, "history", "") or "").strip()
+        if history_arg:
+            self._history_argument = history_arg
+            if self._branch_id_provider is None:
+                self._branch_id_provider = lambda h=history_arg: legacy_active_history_branch(h)
         if self._llm_manager is None:
             self._llm_manager = getattr(startup, "llm_manager", None)
         self._resolve_character_media_handler()
@@ -225,6 +225,8 @@ class SessionBehaviorCapability(BaseSessionCapability):
                 getattr(startup, "llm_manager", None), "hook_dispatcher", None
             )
         self._bind_ui_worker()
+        if self._behavior is None:
+            auto_attach_bound_behavior(self, context)
         if self._behavior is not None:
             self._ensure_compact_hook()
             if self._state_store is not None:
@@ -247,6 +249,9 @@ class SessionBehaviorCapability(BaseSessionCapability):
             latest = self._state_store.get_latest_state(self._current_branch())
             if latest is not None:
                 self._sync_media_policy(latest.state)
+
+    def on_session_ready(self) -> None:
+        notify_behavior_session_ready(self)
 
     def is_free_text_allowed(self) -> bool:
         with self._lock:
@@ -297,20 +302,22 @@ class SessionBehaviorCapability(BaseSessionCapability):
         branch_id: str,
         expected_state_version: int,
         transition: BehaviorTransition,
-    ) -> BehaviorStateEnvelope:
+    ) -> tuple[BehaviorStateEnvelope, BehaviorCommitResult]:
         result = store.commit_behavior_turn(
             branch_id=branch_id,
             behavior_id=behavior.behavior_id,
             expected_state_version=expected_state_version,
             next_state=transition.next_state,
             messages=transition.messages_to_commit,
+            reset_branch_turns=bool(transition.reset_history_context),
         )
         if transition.invalidate_prefetch and self._prefetch is not None:
             self._prefetch.invalidate_all()
         self._sync_media_policy(result.snapshot.state)
-        return transition.envelope or behavior.describe_state(
+        envelope = transition.envelope or behavior.describe_state(
             result.snapshot.state, result.snapshot.state_version
         )
+        return envelope, result
 
     def handle_behavior_command(self, raw_payload: object) -> CommandResolution:
         """Execute one behavior command with idempotency dedupe and OCC enforcement."""
@@ -367,7 +374,7 @@ class SessionBehaviorCapability(BaseSessionCapability):
                 return outcome
 
             try:
-                envelope = self._commit_transition(
+                envelope, commit_result = self._commit_transition(
                     behavior=behavior,
                     store=store,
                     branch_id=branch_id,
@@ -393,6 +400,12 @@ class SessionBehaviorCapability(BaseSessionCapability):
             accepted = CommandResolution(status="accepted", envelope=envelope)
             self._idempotency.record(branch_id, command.command_id, accepted)
         self._emit_replace(envelope)
+        after_behavior_transition_committed(
+            behavior,
+            branch_id=branch_id,
+            state_version=commit_result.snapshot.state_version,
+            appended_turn_seqs=commit_result.appended_turn_seqs,
+        )
         return accepted
 
     def on_playback_idle(self, turn: Any = None) -> BehaviorStateEnvelope | None:
@@ -414,7 +427,7 @@ class SessionBehaviorCapability(BaseSessionCapability):
             )
             if transition is None:
                 return None
-            envelope = self._commit_transition(
+            envelope, commit_result = self._commit_transition(
                 behavior=behavior,
                 store=store,
                 branch_id=branch_id,
@@ -422,6 +435,12 @@ class SessionBehaviorCapability(BaseSessionCapability):
                 transition=transition,
             )
         self._emit_replace(envelope)
+        after_behavior_transition_committed(
+            behavior,
+            branch_id=branch_id,
+            state_version=commit_result.snapshot.state_version,
+            appended_turn_seqs=commit_result.appended_turn_seqs,
+        )
         return envelope
 
     def on_before_compact(self, context: BeforeCompactContext) -> None:
@@ -437,27 +456,8 @@ class SessionBehaviorCapability(BaseSessionCapability):
     def on_history_mutated(
         self, reason: str, *, branch_id: str | None = None
     ) -> BehaviorStateEnvelope | None:
-        """Invalidate prefetch and resync authoritative state after revert/clear/branch change."""
-        del reason
-        if self._prefetch is not None:
-            self._prefetch.invalidate_all()
-        with self._lock:
-            target_branch = branch_id or self._current_branch()
-            self._idempotency.clear_branch(target_branch)
-            behavior = self._behavior
-            store = self._state_store
-            if behavior is None or store is None:
-                return None
-            restored: BehaviorStateSnapshot | None = store.get_latest_state(target_branch)
-            behavior.on_state_restored(restored)
-            self._sync_media_policy(restored.state if restored is not None else None)
-            envelope = (
-                behavior.describe_state(restored.state, restored.state_version)
-                if restored is not None
-                else None
-            )
-        self._emit_replace(envelope)
-        return envelope
+        """Invalidate prefetch and resync or reopen authoritative state after history mutation."""
+        return handle_behavior_history_mutated(self, reason, branch_id=branch_id)
 
     def snapshot_payload(self) -> dict[str, Any] | None:
         with self._lock:
@@ -477,6 +477,9 @@ class SessionBehaviorCapability(BaseSessionCapability):
             return envelope.to_camel_dict()
 
     def on_shutdown(self) -> None:
+        shutdown = getattr(self._behavior, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
         if self._prefetch is not None:
             self._prefetch.shutdown()
 

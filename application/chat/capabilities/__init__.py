@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from application.chat.capabilities.background import BackgroundTurnContextProvider
-from application.chat.capabilities.behavior import SessionBehaviorCapability
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
@@ -59,6 +58,8 @@ def build_default_turn_context_pipeline() -> TurnContextPipeline:
 
 def build_default_session_capabilities() -> SessionCapabilitySet:
     """Compose the built-in session capabilities for a chat runtime."""
+    from application.chat.capabilities.behavior import SessionBehaviorCapability
+
     return SessionCapabilitySet(
         (
             KnowledgeSessionCapability(),
@@ -123,3 +124,16 @@ __all__ = [
     "get_turn_context_pipeline",
     "is_memory_auto_enabled",
 ]
+
+
+if TYPE_CHECKING:
+    from application.chat.capabilities.behavior import SessionBehaviorCapability
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily resolve `SessionBehaviorCapability` to avoid circular imports."""
+    if name == "SessionBehaviorCapability":
+        from application.chat.capabilities.behavior import SessionBehaviorCapability
+
+        return SessionBehaviorCapability
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

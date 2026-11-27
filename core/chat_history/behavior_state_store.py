@@ -162,6 +162,7 @@ class BehaviorStateStore:
         next_state: Mapping[str, Any],
         messages: Sequence[Mapping[str, Any]] = (),
         created_at_ms: int | None = None,
+        reset_branch_turns: bool = False,
     ) -> BehaviorCommitResult:
         b = normalize_branch_id(branch_id)
         bid = str(behavior_id or "").strip()
@@ -203,6 +204,16 @@ class BehaviorStateStore:
 
                 appended_seqs: list[int] = []
                 with _immediate_tx(conn):
+                    if reset_branch_turns:
+                        conn.execute("DELETE FROM turns WHERE branch_id = ?", (b,))
+                        conn.execute(
+                            "DELETE FROM compact_checkpoints WHERE branch_id = ?", (b,)
+                        )
+                        conn.execute(
+                            "DELETE FROM session_state_snapshots "
+                            "WHERE branch_id = ? AND turn_seq > 0",
+                            (b,),
+                        )
                     outfits_json = _serialize_outfits_for_turn(conn)
                     for raw_msg in messages:
                         if not isinstance(raw_msg, Mapping):
@@ -249,7 +260,11 @@ class BehaviorStateStore:
                     anchor_seq = (
                         appended_seqs[-1]
                         if appended_seqs
-                        else max(0, base_turn_seq, latest.turn_seq)
+                        else (
+                            0
+                            if reset_branch_turns
+                            else max(0, base_turn_seq, latest.turn_seq)
+                        )
                     )
                     conn.execute(
                         """

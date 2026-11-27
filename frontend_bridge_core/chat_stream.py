@@ -20,6 +20,7 @@ from application.runtime.event_sink import (
     fold_event_into_snapshot,
     make_empty_chat_snapshot,
 )
+from frontend_bridge_core.chat_command_acks import CommandAckRegistry
 from frontend_bridge_core.media_paths import (
     is_absolute_local_media_path_text,
     is_supported_media_path_text,
@@ -99,6 +100,7 @@ class _ChatStreamSession:
     producer_ready: threading.Event = field(default_factory=threading.Event, repr=False)
     renderer_seen_at: dict[str, float] = field(default_factory=dict, repr=False)
     viewers: set[_WebSocketConnection] = field(default_factory=set)
+    pending_acks: CommandAckRegistry = field(default_factory=CommandAckRegistry, repr=False)
     created_at: float = field(default_factory=time.time)
 
 
@@ -268,6 +270,7 @@ class ChatStreamService:
             session = self._sessions.pop(session_id, None)
         if session is None:
             return
+        session.pending_acks.cancel_all("Session deleted")
         connections = list(session.viewers)
         if session.producer is not None:
             connections.append(session.producer)
@@ -297,7 +300,9 @@ class ChatStreamService:
             session = self._sessions.get(session_id)
             if session is None:
                 return
+            pending_acks = session.pending_acks
             event = build_event(session.last_seq + 1, {"type": "session.closed", "reason": reason})
+        pending_acks.cancel_all(reason)
 
         loop = self._loop
         if loop is None:
@@ -382,6 +387,65 @@ class ChatStreamService:
                 pass
             time.sleep(0.1)
         return False
+
+    def send_command_and_wait_ack(
+        self,
+        session_id: str,
+        command: dict[str, Any],
+        *,
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        cmd_copy = dict(command)
+        cmd_id = str(cmd_copy.get("cmdId") or "").strip() or uuid.uuid4().hex
+        cmd_copy["cmdId"] = cmd_id
+        with self._lock:
+            session = self._sessions.get(session_id)
+        if session is None:
+            return {
+                "delivered": False,
+                "ok": False,
+                "timedOut": False,
+                "disconnected": False,
+                "error": "",
+                "errorCode": "",
+                "httpStatus": 0,
+            }
+        session.pending_acks.register(cmd_id)
+        try:
+            if not self.send_command(session_id, cmd_copy):
+                session.pending_acks.discard(cmd_id)
+                return {
+                    "delivered": False,
+                    "ok": False,
+                    "timedOut": False,
+                    "disconnected": False,
+                    "error": "",
+                    "errorCode": "",
+                    "httpStatus": 0,
+                }
+            ack = session.pending_acks.wait(cmd_id, timeout=timeout)
+        except BaseException:
+            session.pending_acks.discard(cmd_id)
+            raise
+        if ack is None:
+            return {
+                "delivered": True,
+                "ok": False,
+                "timedOut": True,
+                "disconnected": False,
+                "error": "Timed out waiting for runtime command acknowledgement.",
+                "errorCode": "",
+                "httpStatus": 504,
+            }
+        return {
+            "delivered": True,
+            "ok": bool(ack.get("ok")),
+            "timedOut": False,
+            "disconnected": bool(ack.get("disconnected")),
+            "error": str(ack.get("error") or ""),
+            "errorCode": str(ack.get("errorCode") or ""),
+            "httpStatus": int(ack.get("httpStatus") or 0),
+        }
 
     def media_url(self, raw_path: str) -> str:
         return self.resource_urls.media_url(raw_path)
@@ -760,7 +824,14 @@ class ChatStreamService:
             session.snapshot = fold_event_into_snapshot(session.snapshot, normalized_event)
             session.snapshot["sessionId"] = session_id
             session.snapshot["wsUrl"] = self.ws_base
+            pending_acks = (
+                session.pending_acks
+                if str(normalized_event.get("type") or "") == "cmd.ack"
+                else None
+            )
             viewers = list(session.viewers)
+        if pending_acks is not None:
+            pending_acks.resolve(normalized_event)
         stale: list[_WebSocketConnection] = []
         for viewer in viewers:
             try:
@@ -840,6 +911,7 @@ class ChatStreamService:
 
     async def _detach(self, connection: _WebSocketConnection) -> None:
         replacement: _WebSocketConnection | None = None
+        detached_acks: CommandAckRegistry | None = None
         with self._lock:
             session = self._sessions.get(connection.session_id)
             if session is None:
@@ -848,6 +920,7 @@ class ChatStreamService:
                 if session.producer is connection:
                     session.producer = None
                     session.producer_ready.clear()
+                    detached_acks = session.pending_acks
             else:
                 session.viewers.discard(connection)
                 renderer_id = str(getattr(connection, "renderer_id", "") or "")
@@ -874,6 +947,8 @@ class ChatStreamService:
                         ),
                         None,
                     )
+        if detached_acks is not None:
+            detached_acks.cancel_all("Producer disconnected")
         if replacement is not None:
             try:
                 await self._send_snapshot(replacement)

@@ -6,6 +6,7 @@ import { useI18n } from "../../shared/i18n";
 import type { ChatSnapshot } from "../../shared/platform/types";
 import { Button, Dialog } from "../../shared/ui";
 import { TemplateEditorPage } from "../template-editor/TemplateEditorPage";
+import { NovelConversationSettings } from "../novel-theater/NovelConversationSettings";
 import { StoryConversationSettings } from "../story-generator/StoryConversationSettings";
 import "./CurrentConversationEditorDialog.css";
 
@@ -51,6 +52,8 @@ export function CurrentConversationEditorDialog({
           </div>
           {current.data.kind === "story" ? (
             <StoryConversationSettings conversation={current.data} onPendingChange={setPending} />
+          ) : current.data.kind === "novel" ? (
+            <NovelConversationSettings conversation={current.data} onPendingChange={setPending} />
           ) : (
             <>
               <p className="section__description">{t("conversation.applyHint")}</p>

@@ -73,3 +73,22 @@ outfit_lock_status_unlocked: unlocked
 outfit_character_entry: '- {name}: active outfit group "{active_group}" ({lock_desc}; available groups: {groups})'
 outfit_default_tag: default
 outfit_group_sprites_line: '  Available sprite IDs in group "{active_group}": {items}'
+novel_director_heading: '[Novel Theater Director Mode]'
+novel_director_rules: |-
+  You are the visual-novel director adapting a serialized novel segment by segment. Each turn gives you a source passage ([Source Passage]) and a short read-only lookahead snippet ([Lookahead Only]).
+  Follow these strict rules:
+  1. Faithfully adapt all plot beats, atmosphere, and spoken dialogue from [Source Passage]. Never invent future events, skip dialogue, or emit branch choices (never output CHOICE items).
+  2. Use [Lookahead Only] strictly to resolve trailing pronouns and attribution tags (when a quote precedes the speaker name). NEVER act out events or dialogue from [Lookahead Only] in this turn!
+  3. For speakers whose identity is intentionally concealed in the text, set `character_name` to `???` (or the literal text label) until revealed in the passage.
+  4. Combine `NARR` narration, character lines, and optional scene/effect cues naturally. Bound cast actors (including aliases) MUST output valid media fields (`sprite` / `vibe`); unbound minor NPCs and `???` may speak as dialogue-only lines without media fields.
+novel_director_cast_heading: '[Cast Binding Roster]'
+novel_director_cast_actor_arrow: ' -> local actor: '
+novel_director_cast_unbound: ' -> unbound (dialogue-only NPC)'
+novel_director_cast_aliases_label: 'aliases: '
+novel_director_cast_empty: (No local characters bound; render all dialogue as pure text.)
+novel_chunk_header: '[Chapter {chapter_num}/{total_chapters} · Segment {chunk_num}/{total_chunks}]'
+novel_chunk_source_heading: '[Source Passage]'
+novel_chunk_lookahead_heading: '[Lookahead Only (disambiguation)]'
+novel_chunk_lookahead_rule: Lookahead is strictly for resolving trailing speakers/pronouns; do NOT perform it this turn.
+novel_compact_instruction: When compacting earlier Novel Theater history, preserve all introduced canonical character names, nicknames/aliases, first-person narrator identity, key relationships, and chapter progression.
+novel_compact_cast_heading: 'Active cast roster summary:'

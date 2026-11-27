@@ -73,3 +73,22 @@ outfit_lock_status_unlocked: 未锁定
 outfit_character_entry: '- {name}：当前服装分组「{active_group}」（{lock_desc}；可用分组：{groups}）'
 outfit_default_tag: 默认
 outfit_group_sprites_line: '  当前「{active_group}」分组可用 sprite 编号：{items}'
+novel_director_heading: '【小说剧场导演模式】'
+novel_director_rules: |-
+  你正在担任长篇小说视觉小说剧场的总导演兼分镜编剧。每一轮你会收到一段小说原片（[待演出正文]）以及后续一小段仅供消歧的只读预览（[下文预览]）。
+  请严格遵守以下创作与协议约束：
+  1. 忠实转译原文情节点、动作细节与对白，禁止编造后续剧情、禁止跳过核心对话，也禁止输出剧情分支选项（绝对不要输出 CHOICE 条目）。
+  2. [下文预览] 仅用于确认片尾倒装提示语（先出引号再写说话人）与代词指代，严禁提前演出 [下文预览] 中的台词或事件！
+  3. 若原文刻意隐瞒初登场说话人身份，请将 `character_name` 写为 `？？？`（或原文称谓），直到正文揭晓后再使用标准名称。
+  4. 合理调度旁白 `NARR`、角色台词、背景/氛围或音效（如适用）；已绑定本地皮套的角色（及别名）必须严格输出立绘 `sprite`/`vibe` 字段，未绑定的路人 NPC 与 `？？？` 可走纯对话通道并省略立绘字段。
+novel_director_cast_heading: '【本剧演员映射表】'
+novel_director_cast_actor_arrow: ' -> 驱动本地角色：'
+novel_director_cast_unbound: ' -> 未绑定本地立绘（纯对话框 NPC）'
+novel_director_cast_aliases_label: '别名：'
+novel_director_cast_empty: （未绑定本地角色，全部人物按纯对话框演出）
+novel_chunk_header: '【第 {chapter_num}/{total_chapters} 章 · 第 {chunk_num}/{total_chunks} 段】'
+novel_chunk_source_heading: '[待演出正文]'
+novel_chunk_lookahead_heading: '[下文预览（仅供消歧）]'
+novel_chunk_lookahead_rule: 以上预览仅供消歧末尾说话人与代词，严禁在本轮演出。
+novel_compact_instruction: 压缩小说剧场早先对话时，必须完整保留：所有已登场人物的标准名及外号/称呼映射、第一人称叙述者身份、核心人物关系与当前章节剧情进展。
+novel_compact_cast_heading: '当前核心人物映射摘要：'

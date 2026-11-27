@@ -80,6 +80,8 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "conversation.next": "Next",
   "conversation.chooseType": "Chat type",
   "conversation.normalHint": "Choose characters and a template for an open conversation",
+  "conversation.novel": "Novel theater",
+  "conversation.novelHint": "Import a TXT or PDF book with optional casting or pure dialogue",
   "conversation.storyHint": "Choose or create a story to play through",
   "conversation.delete": "Delete chat",
   "conversation.deleteConfirm":

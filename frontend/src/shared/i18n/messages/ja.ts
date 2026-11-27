@@ -12,6 +12,7 @@ import { relationJaMessages } from "./ja/relation";
 import { settingsJaMessages } from "./ja/settings";
 import { shellJaMessages } from "./ja/shell";
 import { spritesJaMessages } from "./ja/sprites";
+import { novelJaMessages } from "./ja/novel";
 import { storyJaMessages } from "./ja/story";
 import { workspaceJaMessages } from "./ja/workspace";
 
@@ -23,6 +24,7 @@ export const jaMessageSlices = {
   character: characterJaMessages,
   relation: relationJaMessages,
   sprites: spritesJaMessages,
+  novel: novelJaMessages,
   story: storyJaMessages,
   knowledge: knowledgeJaMessages,
   agent: agentJaMessages,
@@ -41,6 +43,7 @@ export const jaMessages: Record<MessageKey, string> = {
   ...characterJaMessages,
   ...relationJaMessages,
   ...spritesJaMessages,
+  ...novelJaMessages,
   ...storyJaMessages,
   ...knowledgeJaMessages,
   ...agentJaMessages,

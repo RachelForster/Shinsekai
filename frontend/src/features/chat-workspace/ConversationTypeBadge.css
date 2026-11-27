@@ -15,3 +15,6 @@
 .conversation-type-badge--story {
   color: var(--color-accent-secondary);
 }
+.conversation-type-badge--novel {
+  color: var(--color-success, var(--color-accent-secondary));
+}
