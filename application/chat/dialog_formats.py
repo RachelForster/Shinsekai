@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from ai.llm.template.core import PROMPT_CATALOG
-from ai.llm.template.dialog.renpy_prompts import ensure_renpy_prompt_provider_registered
 from core.messaging.formats.registry import (
     get_dialog_format,
     is_builtin_dialog_format,
@@ -47,7 +46,6 @@ def resolve_outfit_format_hint(
     fmt_id = str(output_format or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
     if not fmt_id or fmt_id in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
         return "", ""
-    ensure_renpy_prompt_provider_registered()
     fmt = resolve_dialog_format(fmt_id)
     if fmt.format_id in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
         return "", ""

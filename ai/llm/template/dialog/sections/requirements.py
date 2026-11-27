@@ -12,7 +12,6 @@ from ...core import Section, TextSection
 from ..context import DialogTemplateContext
 from ..format_context import build_dialog_format_prompt_context
 from ..patches import apply_requirement_patches
-from ..renpy_prompts import ensure_renpy_prompt_provider_registered
 from .field_requirements import build_field_requirements, removed_optional_fields
 
 
@@ -201,7 +200,6 @@ def build_requirement_sections(
             ("r_effect", 170, context.use_effect, None),
         )
     else:
-        ensure_renpy_prompt_provider_registered()
         fmt = resolve_dialog_format(format_id)
         custom_specs = fmt.render_requirements(build_dialog_format_prompt_context(context))
         if custom_specs:

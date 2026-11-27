@@ -7,7 +7,6 @@ import logging
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
-from ai.llm.template.dialog.renpy_prompts import ensure_renpy_prompt_provider_registered
 from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
 from ai.llm.template.session import (
     DIALOG_REPAIR_PROMPT_SPEC,
@@ -31,7 +30,6 @@ def _repair_prompt(
     locale: LocaleInput = None,
     output_format_id: str = DEFAULT_DIALOG_FORMAT_ID,
 ) -> str:
-    ensure_renpy_prompt_provider_registered()
     fmt = resolve_dialog_format(output_format_id)
     resolved_locale = resolve_dynamic_locale(locale)
     try:

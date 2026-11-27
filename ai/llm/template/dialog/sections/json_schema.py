@@ -9,7 +9,6 @@ from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORM
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
 from ..format_context import build_dialog_format_prompt_context
-from ..renpy_prompts import ensure_renpy_prompt_provider_registered
 from .field_requirements import removed_optional_fields
 
 
@@ -29,7 +28,6 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
         format_id = str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
 
         if format_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
-            ensure_renpy_prompt_provider_registered()
             fmt = resolve_dialog_format(format_id)
             prompt_ctx = build_dialog_format_prompt_context(context)
             translate_required = bool(

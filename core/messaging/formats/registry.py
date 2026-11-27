@@ -25,9 +25,8 @@ def _normalize_format_id(format_id: object) -> str:
 
 
 def configure_builtin_dialog_formats() -> None:
-    """Register built-in `json_v1`, `xml_v1`, and `renpy_v1` dialog formats (idempotent)."""
+    """Register built-in `json_v1` and `xml_v1` dialog formats (idempotent)."""
     from core.messaging.formats.json_format import JsonDialogFormat
-    from core.messaging.formats.renpy import RenpyDslDialogFormat
     from core.messaging.formats.xml_tags_format import XmlTagsDialogFormat
 
     with _lock:
@@ -35,8 +34,6 @@ def configure_builtin_dialog_formats() -> None:
             register_dialog_format(JsonDialogFormat(), builtin=True)
         if "xml_v1" not in _builtin:
             register_dialog_format(XmlTagsDialogFormat(), builtin=True)
-        if "renpy_v1" not in _builtin:
-            register_dialog_format(RenpyDslDialogFormat(), builtin=True)
 
 
 def _ensure_builtins() -> None:
@@ -66,12 +63,13 @@ def configure_registered_dialog_formats(
     """Atomically refresh plugin-contributed dialog formats (called by plugin host)."""
     _ensure_builtins()
     registered: dict[str, DialogOutputFormat] = {}
+    registered_builtins: dict[str, DialogOutputFormat] = {}
     for contribution in contributions:
         format_id = _normalize_format_id(contribution.format_id)
         if not format_id:
             logger.error("invalid dialog format id: %r", contribution.format_id)
             continue
-        if format_id in registered:
+        if format_id in registered or format_id in registered_builtins:
             logger.error("duplicate dialog format id: %s", format_id)
             continue
         with _lock:
@@ -95,10 +93,13 @@ def configure_registered_dialog_formats(
                 contribution.format_id,
             )
             continue
-        if existing_builtin is not None:
+        if is_declared_builtin:
+            if existing_builtin is None:
+                registered_builtins[format_id] = fmt
             continue
         registered[format_id] = fmt
     with _lock:
+        _builtin.update(registered_builtins)
         _plugin.clear()
         _plugin.update({k: v for k, v in registered.items() if k not in _builtin})
 
@@ -142,17 +143,17 @@ def resolve_dialog_format(format_id: str | None) -> DialogOutputFormat:
 
 
 def registered_dialog_formats() -> tuple[DialogOutputFormat, ...]:
-    """Return registered dialog formats in deterministic UI order (`xml_v1`, `renpy_v1`, `json_v1`, plugins)."""
+    """Return registered dialog formats in deterministic UI order (`xml_v1`, other built-ins, `json_v1`, plugins)."""
     _ensure_builtins()
     with _lock:
         ordered: list[DialogOutputFormat] = []
-        preferred_builtins = ("xml_v1", "renpy_v1", "json_v1")
-        for builtin_id in preferred_builtins:
-            if builtin_id in _builtin:
-                ordered.append(_builtin[builtin_id])
+        if "xml_v1" in _builtin:
+            ordered.append(_builtin["xml_v1"])
         for builtin_id in sorted(_builtin):
-            if builtin_id not in preferred_builtins:
+            if builtin_id not in ("xml_v1", "json_v1"):
                 ordered.append(_builtin[builtin_id])
+        if "json_v1" in _builtin:
+            ordered.append(_builtin["json_v1"])
         for plugin_id in sorted(_plugin):
             ordered.append(_plugin[plugin_id])
     return tuple(ordered)

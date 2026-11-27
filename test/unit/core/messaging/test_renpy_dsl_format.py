@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import pytest
 
+from ai.llm.template.dialog.renpy_plugin import (
+    RenpyDslPlugin,
+    create_renpy_dialog_format,
+)
 from application.chat.dialog_formats import list_dialog_formats
+from application.plugins.register_builtin_plugins import (
+    get_builtin_plugin_classes,
+    register_builtin_dialog_formats,
+)
 from core.chat_history.text import parse_assistant_dialog_content
 from core.messaging.formats import (
     configure_builtin_dialog_formats,
@@ -15,12 +23,10 @@ from core.messaging.formats import (
 from core.messaging.formats.registry import _reset_for_tests
 from core.messaging.formats.renpy import (
     RenpyDslDialogFormat,
-    RenpyDslPlugin,
     RenpyDslStreamParser,
-    get_default_renpy_prompt_provider,
-    set_default_renpy_prompt_provider,
 )
 from i18n import bind_language
+from plugin_system.host.builtin_plugins import register_builtin_plugins
 from sdk.adapters.dialog_format import (
     DEFAULT_DIALOG_FORMAT_ID,
     DialogFormatContribution,
@@ -38,7 +44,7 @@ from sdk.messages import LLMDialogMessage
 @pytest.fixture(autouse=True)
 def _restore_dialog_format_registry():
     _reset_for_tests()
-    configure_builtin_dialog_formats()
+    register_builtin_dialog_formats()
     yield
     _reset_for_tests()
     configure_builtin_dialog_formats()
@@ -191,9 +197,12 @@ def test_renpy_validate_and_error_recovery() -> None:
     assert len(parsed) == 1 and parsed[0].text == "Truncated line"
 
 
-def test_renpy_builtin_plugin_registration_lifecycle(caplog) -> None:
-    mgr = PluginManager()
-    mgr.register_plugin_class(RenpyDslPlugin)
+def test_renpy_builtin_plugin_registration_lifecycle(tmp_path, caplog) -> None:
+    _reset_for_tests()
+    configure_builtin_dialog_formats()
+
+    mgr = PluginManager(plugin_data_root=tmp_path / "plugin_data")
+    register_builtin_plugins(mgr, extra_plugins=get_builtin_plugin_classes())
     mgr.instantiate_all()
     mgr.load_own_config_all()
     contributions = mgr.collect_dialog_formats()
@@ -205,10 +214,18 @@ def test_renpy_builtin_plugin_registration_lifecycle(caplog) -> None:
         configure_registered_dialog_formats(contributions)
     assert not caplog.records
     assert is_builtin_dialog_format(RENPY_DIALOG_FORMAT_ID) is True
-    by_id = {row["id"]: row for row in list_dialog_formats()}
-    assert by_id[RENPY_DIALOG_FORMAT_ID]["builtin"] is True
+    rows = list_dialog_formats()
+    assert [row["id"] for row in rows[:3]] == [
+        XML_DIALOG_FORMAT_ID,
+        RENPY_DIALOG_FORMAT_ID,
+        DEFAULT_DIALOG_FORMAT_ID,
+    ]
+    assert {row["id"]: row for row in rows}[RENPY_DIALOG_FORMAT_ID]["builtin"] is True
+    reminder = resolve_dialog_format(RENPY_DIALOG_FORMAT_ID).render_format_reminder(locale="en")
+    assert reminder is not None and "Ren'Py" in reminder
 
-    # External plugins still cannot shadow builtin format ids.
+    # Subsequent plugin refreshes without built-ins preserve registered built-in formats,
+    # and external plugins still cannot shadow them.
     with caplog.at_level("ERROR"):
         configure_registered_dialog_formats(
             [
@@ -221,6 +238,7 @@ def test_renpy_builtin_plugin_registration_lifecycle(caplog) -> None:
             ]
         )
     assert any("conflicts with builtin" in rec.message for rec in caplog.records)
+    assert is_builtin_dialog_format(RENPY_DIALOG_FORMAT_ID) is True
 
 
 def test_renpy_parser_menu_show_edge_cases_and_error_branches() -> None:
@@ -320,32 +338,24 @@ narr [sprite="01", tr="旁白译文"] "Line\\\\with\\ttabs"
 
 
 def test_renpy_pure_core_provider_detachment_and_prompt_hooks() -> None:
-    fmt = RenpyDslDialogFormat()
-    assert fmt.can_parse("") is False
-    assert fmt.can_parse("Just plain text") is False
-    assert fmt.can_parse('<say char="Alice">Hi</say>') is False
-    assert fmt.can_parse('```\n{"dialog": []}\n```') is False
+    pure_fmt = RenpyDslDialogFormat()
+    assert pure_fmt.can_parse("") is False
+    assert pure_fmt.can_parse("Just plain text") is False
+    assert pure_fmt.can_parse('<say char="Alice">Hi</say>') is False
+    assert pure_fmt.can_parse('```\n{"dialog": []}\n```') is False
 
     # Pure core format works for parse/validate/serialize and returns None from prompt hooks without a provider.
-    previous_provider = get_default_renpy_prompt_provider()
-    try:
-        set_default_renpy_prompt_provider(None)
-        pure_fmt = RenpyDslDialogFormat()
-        assert pure_fmt.parse_complete('Alice [sprite="01"] "Ok"')[0].text == "Ok"
-        assert pure_fmt.validate('Alice [sprite="01"] "Ok"') is True
-        assert pure_fmt.render_schema_hint(media_field="sprite", translate_required=False, locale="en") is None
-        assert pure_fmt.render_requirements(DialogFormatPromptContext(locale="en")) is None
-        assert pure_fmt.render_outfit_hint(DialogOutfitHintContext(locale="en")) is None
-        assert pure_fmt.render_player_hint(DialogPlayerHintContext(locale="en", name="Hero")) is None
-        assert pure_fmt.render_format_reminder(locale="en") is None
-        assert pure_fmt.render_repair_prompt(media_field="sprite", retry=False, locale="en") is None
-    finally:
-        set_default_renpy_prompt_provider(previous_provider)
+    assert pure_fmt.parse_complete('Alice [sprite="01"] "Ok"')[0].text == "Ok"
+    assert pure_fmt.validate('Alice [sprite="01"] "Ok"') is True
+    assert pure_fmt.render_schema_hint(media_field="sprite", translate_required=False, locale="en") is None
+    assert pure_fmt.render_requirements(DialogFormatPromptContext(locale="en")) is None
+    assert pure_fmt.render_outfit_hint(DialogOutfitHintContext(locale="en")) is None
+    assert pure_fmt.render_player_hint(DialogPlayerHintContext(locale="en", name="Hero")) is None
+    assert pure_fmt.render_format_reminder(locale="en") is None
+    assert pure_fmt.render_repair_prompt(media_field="sprite", retry=False, locale="en") is None
 
-    # Unknown locale safely falls back to zh_CN via template provider hooks
-    from ai.llm.template.dialog.renpy_prompts import ensure_renpy_prompt_provider_registered
-
-    ensure_renpy_prompt_provider_registered()
+    # Factory-bound format renders prompt hooks across locales with unknown locale fallback to zh_CN.
+    fmt = create_renpy_dialog_format()
     reminder = fmt.render_format_reminder(locale="fr_FR")
     assert reminder is not None and "Ren'Py" in reminder
 

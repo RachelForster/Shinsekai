@@ -296,8 +296,9 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats,
         configure_builtin_formats,
     )
-    from ai.llm.template.dialog.renpy_prompts import (
-        ensure_renpy_prompt_provider_registered,
+    from application.plugins.register_builtin_plugins import (
+        get_builtin_plugin_classes,
+        register_builtin_dialog_formats,
     )
     from core.messaging.formats.registry import (
         configure_builtin_dialog_formats,
@@ -309,7 +310,7 @@ def _import_provider_runtime() -> SimpleNamespace:
     configure_builtin_t2i_adapters()
     configure_builtin_formats()
     configure_builtin_dialog_formats()
-    ensure_renpy_prompt_provider_registered()
+    register_builtin_dialog_formats()
     from plugin_system.host import (
         bind_model_assets_runtime,
         ensure_plugins_loaded,
@@ -329,6 +330,7 @@ def _import_provider_runtime() -> SimpleNamespace:
         TTSManager=TTSManager,
         ToolManager=ToolManager,
         bind_model_assets_runtime=bind_model_assets_runtime,
+        builtin_plugins=get_builtin_plugin_classes(),
         configure_registered_asr_adapters=configure_registered_asr_adapters,
         configure_registered_fallbacks=configure_registered_fallbacks,
         configure_registered_formats=configure_registered_formats,
@@ -424,6 +426,9 @@ def _load_plugin_manager(
     )
     if callable(configure_dialog_formats_fn):
         extra_bindings["configure_dialog_formats"] = configure_dialog_formats_fn
+    builtin_plugins = getattr(runtime, "builtin_plugins", ())
+    if builtin_plugins:
+        extra_bindings["builtin_plugins"] = tuple(builtin_plugins)
 
     return runtime.ensure_plugins_loaded(
         config,

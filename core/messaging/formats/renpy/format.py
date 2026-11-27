@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 import re
-import threading
 from typing import Protocol, runtime_checkable
 
 from core.messaging.dialog_tokens import (
@@ -75,24 +74,6 @@ class RenpyPromptProvider(Protocol):
     ) -> str | None: ...
 
 
-_PROMPT_PROVIDER_LOCK = threading.RLock()
-_DEFAULT_PROMPT_PROVIDER: RenpyPromptProvider | None = None
-
-
-def set_default_renpy_prompt_provider(
-    provider: RenpyPromptProvider | None,
-) -> None:
-    """Register or clear the process-wide fallback prompt provider for `renpy_v1`."""
-    global _DEFAULT_PROMPT_PROVIDER
-    with _PROMPT_PROVIDER_LOCK:
-        _DEFAULT_PROMPT_PROVIDER = provider
-
-
-def get_default_renpy_prompt_provider() -> RenpyPromptProvider | None:
-    """Return the active process-wide prompt provider for `renpy_v1`, if set."""
-    with _PROMPT_PROVIDER_LOCK:
-        return _DEFAULT_PROMPT_PROVIDER
-
 _QUOTED_SPEAKER_LINE_RE = re.compile(
     r'^(?:"[^"\n]+"|\'[^\'\n]+\'|[^\s\[\]{}<>:"\'][^\n\[\]{}<>:]*)\s*(?:\[[^\]]*\]|\bat\s+[a-zA-Z0-9_-]+\s+)?\s*["\']',
     re.MULTILINE,
@@ -146,11 +127,7 @@ class RenpyDslDialogFormat(DialogOutputFormat):
         self._prompt_provider = prompt_provider
 
     def _resolve_prompt_provider(self) -> RenpyPromptProvider | None:
-        return (
-            self._prompt_provider
-            if self._prompt_provider is not None
-            else get_default_renpy_prompt_provider()
-        )
+        return self._prompt_provider
 
     def create_stream_parser(self) -> DialogStreamParser:
         return RenpyDslStreamParser()

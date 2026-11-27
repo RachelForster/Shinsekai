@@ -182,7 +182,7 @@ def test_pluggable_format_registry_and_history_autodetection() -> None:
         ]
     )
     ids = [fmt.format_id for fmt in registered_dialog_formats()]
-    assert ids[:4] == ["xml_v1", "renpy_v1", "json_v1", "script_v1"]
+    assert ids[:3] == ["xml_v1", "json_v1", "script_v1"]
 
     fmt = resolve_dialog_format("script_v1")
     assert fmt.format_id == "script_v1"

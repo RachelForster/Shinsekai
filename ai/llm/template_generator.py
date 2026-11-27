@@ -23,7 +23,6 @@ from .template.dialog import DialogTemplateContext, DialogTemplateSection
 from .template.integrations.characters import (
     resolve_chat_template_characters as _resolve_characters,
 )
-from .template.dialog.renpy_prompts import ensure_renpy_prompt_provider_registered
 from .template.integrations.localization import (
     TRANSPARENT_BG,
     _target_voice_display_name as _voice_display_name,
@@ -81,7 +80,6 @@ def format_reminder(
     locale: str | None = None,
 ) -> str:
     """Close system prompts with the active output-format and tool protocol rules."""
-    ensure_renpy_prompt_provider_registered()
     resolved = resolve_dialog_format(output_format_id)
     fmt_id = resolved.format_id
     if fmt_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):

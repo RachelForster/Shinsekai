@@ -19,6 +19,7 @@ from ai.llm.template.dialog.sections.player import player_runtime_prompt
 from ai.llm.template.session import OUTFIT_CONTEXT_MARKER
 import ai.llm.template_generator as legacy
 from application.chat.capabilities.outfit import OutfitRuntimeController
+from application.plugins.register_builtin_plugins import register_builtin_dialog_formats
 from config.models import Character, Sprite
 from core.messaging.formats import configure_builtin_dialog_formats
 from core.messaging.formats.registry import _reset_for_tests
@@ -34,7 +35,7 @@ from test.mocks import MockLLMAdapter
 @pytest.fixture(autouse=True)
 def _restore_registry():
     _reset_for_tests()
-    configure_builtin_dialog_formats()
+    register_builtin_dialog_formats()
     yield
     _reset_for_tests()
     configure_builtin_dialog_formats()

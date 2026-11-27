@@ -3,13 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-import threading
 
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
-from core.messaging.formats.renpy import (
-    get_default_renpy_prompt_provider,
-    set_default_renpy_prompt_provider,
-)
 from sdk.adapters.dialog_format import (
     DialogFormatPromptContext,
     DialogOutfitHint,
@@ -255,17 +250,6 @@ class RenpyTemplatePromptProvider:
         )
 
 
-_PROVIDER_LOCK = threading.RLock()
-_PROVIDER = RenpyTemplatePromptProvider()
-
-
-def ensure_renpy_prompt_provider_registered() -> None:
-    """Idempotently attach the template-layer Ren'Py prompt provider."""
-    with _PROVIDER_LOCK:
-        if get_default_renpy_prompt_provider() is None:
-            set_default_renpy_prompt_provider(_PROVIDER)
-
-
 __all__ = [
     "RENPY_OUTFIT_PROMPT_SPEC",
     "RENPY_PLAYER_PROMPT_SPEC",
@@ -275,7 +259,6 @@ __all__ = [
     "RenpyPlayerContext",
     "RenpySchemaContext",
     "RenpyTemplatePromptProvider",
-    "ensure_renpy_prompt_provider_registered",
     "render_renpy_format_reminder",
     "render_renpy_outfit_hint",
     "render_renpy_player_hint",
