@@ -1,6 +1,10 @@
 """Built-in text-to-speech adapters."""
 from sdk.adapters import TTSAdapter
-from ai.tts.server_process import server_python, start_server_process
+from ai.tts.server_process import (
+    server_python,
+    start_server_process,
+    stop_server_process,
+)
 import os
 import requests
 import threading
@@ -129,16 +133,9 @@ class GPTSoVitsAdapter(TTSAdapter):
             self._session.close()
         except Exception:
             pass
-        if self._server_process is not None:
-            try:
-                self._server_process.terminate()
-                self._server_process.wait(timeout=5)
-            except Exception:
-                try:
-                    self._server_process.kill()
-                except Exception:
-                    pass
-            self._server_process = None
+        proc = self._server_process
+        self._server_process = None
+        stop_server_process(proc)
 
     def _server_is_reachable(self) -> bool:
         try:
@@ -555,16 +552,9 @@ class IndexTTSAdapter(TTSAdapter):
             self._session.close()
         except Exception:
             pass
-        if self._server_process is not None:
-            try:
-                self._server_process.terminate()
-                self._server_process.wait(timeout=5)
-            except Exception:
-                try:
-                    self._server_process.kill()
-                except Exception:
-                    pass
-            self._server_process = None
+        proc = self._server_process
+        self._server_process = None
+        stop_server_process(proc)
 
     def _server_is_reachable(self) -> bool:
         try:
@@ -754,16 +744,9 @@ class GenieTTSAdapter(TTSAdapter):
         self._start_server_process()
 
     def stop_server(self) -> None:
-        if self._server_process is not None:
-            try:
-                self._server_process.terminate()
-                self._server_process.wait(timeout=5)
-            except Exception:
-                try:
-                    self._server_process.kill()
-                except Exception:
-                    pass
-            self._server_process = None
+        proc = self._server_process
+        self._server_process = None
+        stop_server_process(proc)
 
     @staticmethod
     def _encode_name(name: str) -> str:

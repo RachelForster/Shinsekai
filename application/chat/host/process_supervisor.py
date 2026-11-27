@@ -25,6 +25,7 @@ from application.chat.host.ports import (
     TerminationSystem,
 )
 from sdk.chat_lifecycle import ChatProcessContext, ChatProcessEvent
+from sdk.process_guard import get_process_registry
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +274,7 @@ class ChatProcessSupervisor:
                 stderr=subprocess.STDOUT,
                 **self.hidden_kwargs(),
             )
+            get_process_registry().attach_to_host_job(child)
         except BaseException:
             with self.resources.lock:
                 if self.resources.log is handle:

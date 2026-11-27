@@ -7,7 +7,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::bridge::{send_bridge_agent_close, send_bridge_chat_close};
+use crate::bridge::{
+    send_bridge_agent_close, send_bridge_chat_close, send_bridge_runtime_shutdown,
+};
+use crate::process_guard::assign_child_to_job;
 use crate::frontend_protocol::{
     app_window_url, chat_window_url, live_chat_frontend_url, live_frontend_origin_for_platform,
     live_frontend_reload_targets, live_frontend_url, resolve_published_frontend_dist,
@@ -330,6 +333,66 @@ fn send_bridge_agent_close_posts_authenticated_runtime_shutdown() {
     assert!(request.starts_with("POST /api/agent/runtime/stop HTTP/1.1\r\n"));
     assert!(request.contains("X-Shinsekai-Bridge-Token: agent-token\r\n"));
     assert!(request.ends_with("\r\n\r\n{}"));
+}
+
+#[test]
+fn send_bridge_runtime_shutdown_posts_authenticated_shutdown() {
+    let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buffer = [0_u8; 1024];
+        let read = stream.read(&mut buffer).unwrap();
+        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+            .unwrap();
+        request
+    });
+    send_bridge_runtime_shutdown(port, "shutdown-token").unwrap();
+    let request = handle.join().unwrap();
+    assert!(request.starts_with("POST /api/runtime/shutdown HTTP/1.1\r\n"));
+    assert!(request.contains("X-Shinsekai-Bridge-Token: shutdown-token\r\n"));
+    assert!(request.ends_with("\r\n\r\n{}"));
+}
+
+#[cfg(all(windows, target_pointer_width = "64"))]
+#[test]
+fn windows_job_object_extended_limit_struct_matches_sdk_size() {
+    assert_eq!(crate::process_guard::extended_limit_info_size(), 144);
+}
+
+#[cfg(windows)]
+#[test]
+fn dropping_child_process_job_terminates_assigned_child_process() {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
+    let mut command = Command::new("cmd");
+    command
+        .args(["/C", "ping -n 30 127.0.0.1 >nul"])
+        .creation_flags(0x0800_0000);
+    let mut child = command.spawn().expect("spawn test child");
+    let job = assign_child_to_job(&child).expect("assign child to Job Object");
+    assert!(child.try_wait().unwrap().is_none());
+
+    drop(job);
+
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let mut exited = false;
+    while Instant::now() < deadline {
+        if child.try_wait().unwrap().is_some() {
+            exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    if !exited {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    assert!(exited, "expected Job Object close to terminate assigned child");
 }
 
 #[test]

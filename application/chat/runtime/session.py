@@ -584,8 +584,26 @@ class _BaseChatSession:
             self.capabilities.on_shutdown()
 
     def _tts_shutdown(self) -> Callable[[], None] | None:
-        manager = self.startup.tts_manager
-        return manager.shutdown if manager is not None else None
+        tts_manager = self.startup.tts_manager
+        t2i_manager = getattr(self.startup, "t2i_manager", None)
+        tts_fn = getattr(tts_manager, "shutdown", None)
+        t2i_fn = getattr(t2i_manager, "shutdown", None)
+        if not callable(tts_fn) and not callable(t2i_fn):
+            return None
+
+        def _shutdown_media_managers() -> None:
+            from sdk import process_guard
+
+            stop_server = not process_guard.is_host_managed()
+            if callable(tts_fn):
+                tts_fn(stop_server=stop_server)
+            if callable(t2i_fn):
+                try:
+                    t2i_fn(stop_server=stop_server)
+                except TypeError:
+                    t2i_fn()
+
+        return _shutdown_media_managers
 
     def _require_runtime(self) -> _RuntimeComponents:
         if self.runtime is None:

@@ -121,8 +121,12 @@ class T2IManager:
             'kwargs': kwargs
         })
 
-    def shutdown(self):
+    def shutdown(self, *, stop_server: bool = False):
         """Shuts down the queue and worker thread."""
         print("Shutting down T2IManager worker thread...")
         self.task_queue.put(None)
         self.worker_thread.join()
+        if stop_server and self.t2i_adapter is not None:
+            stop_fn = getattr(self.t2i_adapter, "stop_server", None)
+            if callable(stop_fn):
+                stop_fn()

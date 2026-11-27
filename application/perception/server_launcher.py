@@ -39,6 +39,7 @@ from core.model_assets.service import (
 from core.paths import project_root as resolve_project_root
 from core.perception.models import GGUF_MODEL_ID, PerceptionConfig
 from core.storage.layout import StorageLayout
+from sdk.process_guard import get_process_registry, subprocess_isolation_kwargs
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "0.0.0.0", "::1"}
 
@@ -624,11 +625,17 @@ class PerceptionLocalServerManager:
             "bufsize": 1,
             "env": env,
             "cwd": str(script_path.parent.parent),
+            **subprocess_isolation_kwargs(hide_window=True),
         }
-        if os.name == "nt":
-            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
         proc = self._popen_fn(cmd, **popen_kwargs)
+        get_process_registry().register(
+            proc,
+            name="perception-server",
+            kind="perception",
+            scope="process",
+            name_hint="python",
+        )
 
         with self._lock:
             self._generation += 1
@@ -710,39 +717,17 @@ class PerceptionLocalServerManager:
         with self._lock:
             self._generation += 1
             proc = self._proc
-            gguf = self._model == GGUF_MODEL_ID
             self._proc = None
             self._state = "stopped"
             self._error = ""
-        if proc is not None and proc.poll() is None:
-            if proc.stdin is not None:
-                try:
-                    proc.stdin.close()
-                    proc.wait(timeout=max(0.2, timeout))
-                except (OSError, subprocess.TimeoutExpired):
-                    pass
-        if proc is not None and proc.poll() is None:
+        if proc is not None and proc.poll() is None and proc.stdin is not None:
             try:
-                if gguf and os.name == "nt":
-                    subprocess.run(
-                        [str(Path(os.environ["SystemRoot"]) / "System32" / "taskkill.exe"),
-                         "/T", "/F", "/PID", str(proc.pid)],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                        timeout=max(0.2, timeout),
-                        check=False,
-                    )
-                proc.terminate()
+                proc.stdin.close()
                 proc.wait(timeout=max(0.2, timeout))
-            except subprocess.TimeoutExpired:
-                try:
-                    proc.kill()
-                    proc.wait(timeout=1.0)
-                except Exception:
-                    pass
-            except Exception:
+            except (OSError, subprocess.TimeoutExpired):
                 pass
+        if proc is not None:
+            get_process_registry().stop_process(proc, timeout=max(0.2, timeout))
         with self._lock:
             self._logs.append("[launcher] Local perception server stopped.")
         return self.status()

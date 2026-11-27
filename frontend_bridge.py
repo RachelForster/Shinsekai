@@ -137,6 +137,12 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         shutdown_perception_local_server()
     except Exception as exc:
         _restart_debug_log(f"bridge perception local server shutdown failed reason={reason} error={exc}")
+    try:
+        from sdk.process_guard import get_process_registry
+
+        get_process_registry().shutdown_host_all(timeout=3.0)
+    except Exception as exc:
+        _restart_debug_log(f"bridge managed process shutdown failed reason={reason} error={exc}")
 
     with _bridge_state_lock:
         state = _bridge_state
@@ -446,6 +452,13 @@ def run(
         app_root,
     )
     resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
+    from core.storage.layout import StorageLayout
+    from sdk.process_guard import get_process_registry
+
+    get_process_registry().activate_host(
+        StorageLayout.from_env(resolved_project_root).runtime_dir
+        / f"managed_processes_{os.getpid()}.jsonl"
+    )
     from sdk.logging import configure_logging, get_logger
 
     configure_logging("frontend-bridge", project_root=Path(resolved_project_root))

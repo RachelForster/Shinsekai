@@ -14,8 +14,10 @@ mod bridge;
 mod desktop_files;
 mod frontend_protocol;
 mod paths;
+mod process_guard;
 mod project_root;
 mod reminders;
+mod restart;
 mod runtime;
 mod runtime_commands;
 mod state;
@@ -117,7 +119,7 @@ pub fn run() {
             state::desktop_files_browse,
             desktop_files::desktop_files_save_history_export,
             state::desktop_restart_debug_log,
-            bridge::desktop_app_restart,
+            restart::desktop_app_restart,
             runtime_commands::desktop_bridge_restart,
             frontend_protocol::desktop_frontend_reload,
             window_controls::desktop_window_hide,
