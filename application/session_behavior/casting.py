@@ -12,6 +12,7 @@ class CastBinding:
     """Binding from a story/document speaker role to an existing host character asset."""
 
     character_name: str
+    display_name: str = ""
     aliases: tuple[str, ...] = ()
     role: str = "supporting"
     silhouette_until_revealed: bool = False
@@ -20,6 +21,7 @@ class CastBinding:
     def to_dict(self) -> dict[str, Any]:
         return {
             "characterName": self.character_name,
+            "displayName": self.display_name,
             "aliases": list(self.aliases),
             "role": self.role,
             "silhouetteUntilRevealed": self.silhouette_until_revealed,
@@ -36,6 +38,7 @@ class CastBinding:
         )
         return cls(
             character_name=str(data["characterName"]).strip(),
+            display_name=str(data.get("displayName") or "").strip(),
             aliases=aliases,
             role=str(data.get("role") or "supporting").strip() or "supporting",
             silhouette_until_revealed=bool(data.get("silhouetteUntilRevealed", False)),
@@ -54,14 +57,21 @@ class CastingMap:
         )
         self._exact: dict[str, CastBinding] = {}
         self._casefold: dict[str, CastBinding] = {}
+        # Index explicit novel display names & aliases before falling back to local character_name
+        # so distinct novel roles sharing one local character asset stay unambiguous.
         for binding in self._bindings:
-            names = (binding.character_name, *binding.aliases)
-            for name in names:
+            for name in (binding.display_name, *binding.aliases):
                 clean = str(name or "").strip()
                 if not clean:
                     continue
                 self._exact.setdefault(clean, binding)
                 self._casefold.setdefault(clean.casefold(), binding)
+        for binding in self._bindings:
+            clean = str(binding.character_name or "").strip()
+            if not clean:
+                continue
+            self._exact.setdefault(clean, binding)
+            self._casefold.setdefault(clean.casefold(), binding)
 
     @property
     def bindings(self) -> tuple[CastBinding, ...]:
@@ -93,6 +103,20 @@ class CastingMap:
                 return binding
         return None
 
+    def resolve_display_name(
+        self,
+        speaker_name: str,
+        binding: CastBinding,
+        *,
+        cc: Any = None,
+    ) -> str:
+        """Return the canonical stage-visible name for a resolved binding."""
+        del cc
+        display = str(binding.display_name or "").strip()
+        if display:
+            return display
+        return str(binding.character_name or speaker_name or "").strip()
+
     def is_bound(self, speaker_name: str, *, cc: Any = None) -> bool:
         return self.resolve(speaker_name, cc=cc) is not None
 
@@ -101,11 +125,12 @@ class CastingMap:
         return self.is_bound(speaker_name, cc=cc)
 
     def bound_speaker_names(self) -> tuple[str, ...]:
-        """Return deduplicated canonical names and aliases for repair prompts."""
+        """Return deduplicated visible names and aliases for repair prompts."""
         ordered: list[str] = []
         seen: set[str] = set()
         for binding in self._bindings:
-            for name in (binding.character_name, *binding.aliases):
+            primary = str(binding.display_name or binding.character_name or "").strip()
+            for name in (primary, *binding.aliases):
                 clean = str(name or "").strip()
                 if clean and clean not in seen:
                     seen.add(clean)

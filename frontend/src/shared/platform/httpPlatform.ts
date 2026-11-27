@@ -6,6 +6,7 @@ import {
   createCharactersHttpPlatform,
 } from "./slices/characterHttpPlatform";
 import { createChatHttpPlatform, createStoryHttpPlatform } from "./slices/chatHttpPlatform";
+import { createNovelHttpPlatform } from "./slices/novelHttpPlatform";
 import {
   createConfigHttpPlatform,
   createModelAssetsHttpPlatform,
@@ -34,6 +35,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
     backgrounds: createBackgroundsHttpPlatform(transport),
     effects: createEffectsHttpPlatform(transport),
     chat: createChatHttpPlatform(transport),
+    novel: createNovelHttpPlatform(transport),
     story: createStoryHttpPlatform(transport),
     knowledge: createKnowledgeHttpPlatform(transport),
     characterRelation: createCharacterRelationHttpPlatform(transport),

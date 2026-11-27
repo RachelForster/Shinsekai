@@ -2,6 +2,7 @@ import type { ChatStagePageController } from "../controllers/useChatStagePageCon
 import { HistoryExportDialog } from "../replay/HistoryExportDialog";
 import { ChatConfigDialog } from "./ChatConfigDialog";
 import { HistoryDialog } from "./HistoryDialog";
+import { NovelChapterDrawer, parseNovelHud } from "./NovelChapterDrawer";
 import { ScreenSharePreflightDialog } from "./ScreenSharePreflightDialog";
 import { ScreenShareSettingsDialog } from "./ScreenShareSettingsDialog";
 
@@ -81,6 +82,29 @@ export function ChatStageDialogs({ controller }: ChatStageDialogsProps) {
           setup={screenShare.screenSharePreflight.setup}
           setupTask={screenShare.screenSharePreflight.setupTask}
           status={screenShare.screenSharePreflight.status}
+        />
+      ) : null}
+      {viewModel.behavior && parseNovelHud(viewModel.behavior) ? (
+        <NovelChapterDrawer
+          behavior={viewModel.behavior}
+          onClose={() => modals.setNovelDrawerOpen(false)}
+          onSelectChapter={(chapterIndex) => {
+            const commandId =
+              typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                ? crypto.randomUUID()
+                : `jump-${Date.now()}`;
+            modals.setNovelDrawerOpen(false);
+            void commands.sendCommand({
+              type: "behavior-command",
+              payload: {
+                commandId,
+                action: "jump_chapter",
+                expectedStateVersion: viewModel.behavior!.stateVersion,
+                payload: { chapterIndex },
+              },
+            });
+          }}
+          open={modals.novelDrawerOpen}
         />
       ) : null}
       <ChatConfigDialog

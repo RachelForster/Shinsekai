@@ -133,6 +133,7 @@ class CharacterSection(Section[DialogTemplateContext]):
         )
         profiles = TextSection(
             "profiles",
+            enabled=context.include_character_profiles,
             text=context.translate("profile_header"),
             children=tuple(
                 _profile_node(index, name, character)
@@ -141,7 +142,7 @@ class CharacterSection(Section[DialogTemplateContext]):
         )
         briefs = TextSection(
             "briefs",
-            enabled=bool(supporting_characters),
+            enabled=context.include_character_profiles and bool(supporting_characters),
             text=context.translate("brief_header"),
             children=tuple(
                 _brief_node(index, name, character)

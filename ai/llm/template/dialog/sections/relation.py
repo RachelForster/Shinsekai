@@ -49,6 +49,8 @@ class RelationSection(Section[DialogTemplateContext]):
     id: str = "relations"
 
     def _render_self(self, context: DialogTemplateContext) -> str:
+        if not context.include_character_profiles:
+            return ""
         blocks = _build_relation_context(context.characters, context.primary_character_names)
         rendered = []
         for owner, edges in blocks:

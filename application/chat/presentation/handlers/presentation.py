@@ -201,6 +201,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         ch = _play()
         replay = out if isinstance(out, ReplayPresentationMessage) else None
         character_name = out.name
+        stage_name = str(getattr(out, "display_name", "") or "").strip() or character_name
         speech = out.text or ""
         sprite_id = out.asset_id
         audio_path = out.audio_path
@@ -237,7 +238,15 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 index = int(sprite_id) - 1
             except (TypeError, ValueError):
                 index = None
-            ui.update_sprite(character_name, index, slot=replay.sprite_slot)
+            if stage_name != character_name:
+                ui.update_sprite(
+                    character_name,
+                    index,
+                    slot=replay.sprite_slot,
+                    display_name=stage_name,
+                )
+            else:
+                ui.update_sprite(character_name, index, slot=replay.sprite_slot)
         elif character_config and not is_player and replay is None:
             try:
                 catalog = tuple(
@@ -249,17 +258,24 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                     for sprite in (getattr(character_config, "sprites", None) or [])
                 )
                 catalog_changed = (
-                    self._last_catalog_by_character.get(character_name) != catalog
+                    self._last_catalog_by_character.get(stage_name) != catalog
                 )
                 if sprite_id is not None and (
                     catalog_changed
-                    or self._last_character != character_name
+                    or self._last_character != stage_name
                     or self._last_sprite != sprite_id
                 ):
-                    ui.update_sprite(character_name, int(sprite_id) - 1)
-                    self._last_character = character_name
+                    if stage_name != character_name:
+                        ui.update_sprite(
+                            character_name,
+                            int(sprite_id) - 1,
+                            display_name=stage_name,
+                        )
+                    else:
+                        ui.update_sprite(character_name, int(sprite_id) - 1)
+                    self._last_character = stage_name
                     self._last_sprite = sprite_id
-                    self._last_catalog_by_character[character_name] = catalog
+                    self._last_catalog_by_character[stage_name] = catalog
             except (ValueError, TypeError, IndexError) as e:
                 print(f"PresentationWorker: 立绘更新跳过（索引或数据无效）: {e}")
 
@@ -268,11 +284,11 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             if replay is None:
                 if not character_config:
                     print(f"PresentationWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
-                ui.post_notification(f"{character_name}正在回复……")
+                ui.post_notification(f"{stage_name}正在回复……")
             if speech:
                 color = character_config.color if character_config else fallback_color
                 ui.update_dialog(
-                    character_name,
+                    stage_name,
                     speech,
                     color,
                     is_system=False,
@@ -286,10 +302,10 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if motion and not is_player:
             post_motion = getattr(ui, "post_sprite_motion", None)
             if callable(post_motion):
-                post_motion(character_name, motion)
+                post_motion(stage_name, motion)
         if not is_continuation or str(effect or "").strip():
             ui.resolve_effect(
-                effect=effect, args={"character_name": character_name}, after_dialog=False
+                effect=effect, args={"character_name": stage_name}, after_dialog=False
             )
 
         _tmo = out.timeout
@@ -317,7 +333,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 ui.post_pause_asr()
 
             result = controller.play_and_wait(
-                character_name=character_name,
+                character_name=stage_name,
                 audio_path=audio_path,
                 volume=volume,
                 minimum_duration_seconds=min_stop_time,
@@ -335,9 +351,10 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
     def post_process(self, out: PresentationMessage) -> None:
         if not out.is_final_segment or isinstance(out, ReplayPresentationMessage):
             return
+        stage_name = str(getattr(out, "display_name", "") or "").strip() or (out.name or "")
         get_app_runtime().ui_update_manager.resolve_effect(
             effect=out.effect,
-            args={"character_name": out.name},
+            args={"character_name": stage_name},
             after_dialog=True,
         )
 

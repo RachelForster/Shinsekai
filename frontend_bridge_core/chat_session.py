@@ -8,6 +8,10 @@ from application.chat.conversation_library import (
     remember_conversation,
     saved_conversation_launch,
 )
+from application.novel_theater import (
+    materialize_novel_session_binding,
+    rollback_novel_session_binding,
+)
 from application.chat.presentation.initial_sprite import (
     initial_sprite_path_for_characters,
 )
@@ -351,7 +355,10 @@ def _launch_chat_locked(
         state.config_manager, player_character, body.get("userDisplayName"),
     )
     raw_memory_mode = str(body.get("memoryMode") or "").strip()
-    if not raw_memory_mode and body.get("storyPath"):
+    is_novel_launch = (
+        body.get("behaviorId") == "novel_theater" or bool(body.get("novelDocId"))
+    )
+    if not raw_memory_mode and (body.get("storyPath") or is_novel_launch):
         raw_memory_mode = "isolated"
     raw_initial_outfits = body.get("initialOutfits")
     session_base = {
@@ -381,78 +388,92 @@ def _launch_chat_locked(
         ),
     }
     release_unbound_story_session(state, session_base["historyPath"])
-    state.chat_session = {**state.chat_session, **session_base}
-    initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
-    use_react_runtime = _chat_runtime_mode(state) == "react"
-    stream_info = init_stream_info or (
-        state.chat_stream.create_session(initial_snapshot)
-        if use_react_runtime and state.chat_stream is not None
-        else {}
+    novel_binding_handle = (
+        materialize_novel_session_binding(state, body, history_path)
+        if is_novel_launch
+        else None
     )
-    effect_context = build_effect_context(
-        EffectConfigAdapter(state.config_manager),
-        body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
-    )
-    effect_names_str = ",".join(effect_context.selected_names)
-    lifecycle = _session_lifecycle(
-        state,
-        configure_mobile=configure_mobile_access,
-        remember_history=persist_confirmed_history_path,
-    )
-    launch_id = lifecycle.begin(
-        str(stream_info.get("sessionId") or ""),
-        history_path=history_path if init_stream_info is None else "",
-        mobile_enabled=mobile_access_enabled,
-        mobile_on_connected=init_stream_info is None or not use_react_runtime,
-        remember_on_connected=init_stream_info is None,
-    )
-    message = lifecycle.launch(
-        lambda: _launch_runtime_chat(
-            state,
-            session_id=str(stream_info.get("sessionId") or ""),
-            launch_id=launch_id,
-            character_names=characters,
-            effect_names=effect_names_str,
-            effect_context=effect_context,
-            history_file=history_path.as_posix(),
-            init_sprite_path=init_sprite_path,
-            show_initial_sprite=body.get("showInitialSprite", True) is not False,
-            room_id=room_id,
-            selected_bg=str(body.get("backgroundName") or ""),
-            system_template=system_template,
-            use_cg=bool(body.get("useCg")),
-            user_scenario=user_scenario,
-            stream_endpoint=(
-                str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
-            ),
-            init_stream_endpoint=(
-                str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else ""
-            ),
-            workflow_path=str(body.get("workflowPath") or ""),
-            media_selection_mode=media_selection_mode,
-            output_format=output_format,
-            **(
-                {"primary_character_names": primary_characters}
-                if primary_characters is not None
-                else {}
-            ),
-            **(
-                {"use_current_template_for_history": True}
-                if body.get("useCurrentTemplateForHistory")
-                else {}
-            ),
+    try:
+        state.chat_session = {**state.chat_session, **session_base}
+        initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
+        use_react_runtime = _chat_runtime_mode(state) == "react"
+        stream_info = init_stream_info or (
+            state.chat_stream.create_session(initial_snapshot)
+            if use_react_runtime and state.chat_stream is not None
+            else {}
         )
-    )
-    failure = _complete_chat_launch(
-        state,
-        lifecycle=lifecycle,
-        message=message,
-        session_base=session_base,
-        stream_info=stream_info,
-        use_react_runtime=use_react_runtime,
-    )
-    if failure is not None:
-        return failure
+        effect_context = build_effect_context(
+            EffectConfigAdapter(state.config_manager),
+            body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
+        )
+        effect_names_str = ",".join(effect_context.selected_names)
+        lifecycle = _session_lifecycle(
+            state,
+            configure_mobile=configure_mobile_access,
+            remember_history=persist_confirmed_history_path,
+        )
+        launch_id = lifecycle.begin(
+            str(stream_info.get("sessionId") or ""),
+            history_path=history_path if init_stream_info is None else "",
+            mobile_enabled=mobile_access_enabled,
+            mobile_on_connected=init_stream_info is None or not use_react_runtime,
+            remember_on_connected=init_stream_info is None,
+        )
+        message = lifecycle.launch(
+            lambda: _launch_runtime_chat(
+                state,
+                session_id=str(stream_info.get("sessionId") or ""),
+                launch_id=launch_id,
+                character_names=characters,
+                effect_names=effect_names_str,
+                effect_context=effect_context,
+                history_file=history_path.as_posix(),
+                init_sprite_path=init_sprite_path,
+                show_initial_sprite=(
+                    False
+                    if (is_novel_launch and "showInitialSprite" not in body)
+                    else body.get("showInitialSprite", True) is not False
+                ),
+                room_id=room_id,
+                selected_bg=str(body.get("backgroundName") or ""),
+                system_template=system_template,
+                use_cg=bool(body.get("useCg")),
+                user_scenario=user_scenario,
+                stream_endpoint=(
+                    str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
+                ),
+                init_stream_endpoint=(
+                    str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else ""
+                ),
+                workflow_path=str(body.get("workflowPath") or ""),
+                media_selection_mode=media_selection_mode,
+                output_format=output_format,
+                **(
+                    {"primary_character_names": primary_characters}
+                    if primary_characters is not None
+                    else {}
+                ),
+                **(
+                    {"use_current_template_for_history": True}
+                    if body.get("useCurrentTemplateForHistory")
+                    else {}
+                ),
+            )
+        )
+        failure = _complete_chat_launch(
+            state,
+            lifecycle=lifecycle,
+            message=message,
+            session_base=session_base,
+            stream_info=stream_info,
+            use_react_runtime=use_react_runtime,
+        )
+        if failure is not None:
+            rollback_novel_session_binding(novel_binding_handle)
+            return failure
+    except BaseException:
+        rollback_novel_session_binding(novel_binding_handle)
+        raise
     try:
         remember_conversation(state, history_path, {
             **body,

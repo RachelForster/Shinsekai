@@ -1,0 +1,111 @@
+.novel-wizard {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+.novel-wizard__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.novel-wizard__step {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: transparent;
+}
+.novel-wizard__step[data-active="true"] {
+  border-color: var(--color-accent-primary);
+  color: var(--color-accent-primary);
+  background: color-mix(in srgb, var(--color-accent-primary) 10%, transparent);
+}
+.novel-wizard__upload-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control);
+}
+.novel-wizard__upload-input {
+  display: none;
+}
+.novel-wizard__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+.novel-wizard__doc-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--space-3);
+}
+.novel-wizard__doc-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.novel-wizard__doc-card[data-selected="true"] {
+  border-color: var(--color-accent-primary);
+  background: color-mix(in srgb, var(--color-accent-primary) 8%, transparent);
+}
+.novel-wizard__doc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.novel-wizard__doc-select {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.novel-wizard__doc-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.novel-wizard__toc {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.novel-wizard__toc-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 13px;
+}
+.novel-wizard__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.novel-wizard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.novel-wizard__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 13px;
+}

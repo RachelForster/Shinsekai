@@ -15,6 +15,13 @@ from ai.llm.template.extraction.memory import (
     build_memory_extraction_user_section,
     build_structured_memory_extraction_user_section,
 )
+from ai.llm.template.extraction.novel_cast import (
+    NOVEL_CAST_EXTRACTION_SPEC,
+    NovelCastExtractionContext,
+    build_novel_cast_system_section,
+    build_novel_cast_user_section,
+    render_novel_cast_prompts,
+)
 
 __all__ = [
     "KNOWLEDGE_EXTRACTION_SPEC",
@@ -23,9 +30,14 @@ __all__ = [
     "MEMORY_STRUCTURED_EXTRACTION_SPEC",
     "MemorySimpleExtractionContext",
     "MemoryStructuredExtractionContext",
+    "NOVEL_CAST_EXTRACTION_SPEC",
+    "NovelCastExtractionContext",
     "build_knowledge_extraction_system_section",
     "build_knowledge_extraction_user_section",
     "build_memory_extraction_system_section",
     "build_memory_extraction_user_section",
+    "build_novel_cast_system_section",
+    "build_novel_cast_user_section",
     "build_structured_memory_extraction_user_section",
+    "render_novel_cast_prompts",
 ]

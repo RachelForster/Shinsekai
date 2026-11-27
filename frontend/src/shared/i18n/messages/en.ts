@@ -12,6 +12,7 @@ import { relationEnMessages } from "./en/relation";
 import { settingsEnMessages } from "./en/settings";
 import { shellEnMessages } from "./en/shell";
 import { spritesEnMessages } from "./en/sprites";
+import { novelEnMessages } from "./en/novel";
 import { storyEnMessages } from "./en/story";
 import { workspaceEnMessages } from "./en/workspace";
 
@@ -23,6 +24,7 @@ export const enMessageSlices = {
   character: characterEnMessages,
   relation: relationEnMessages,
   sprites: spritesEnMessages,
+  novel: novelEnMessages,
   story: storyEnMessages,
   knowledge: knowledgeEnMessages,
   agent: agentEnMessages,
@@ -41,6 +43,7 @@ export const enMessages: Record<MessageKey, string> = {
   ...characterEnMessages,
   ...relationEnMessages,
   ...spritesEnMessages,
+  ...novelEnMessages,
   ...storyEnMessages,
   ...knowledgeEnMessages,
   ...agentEnMessages,

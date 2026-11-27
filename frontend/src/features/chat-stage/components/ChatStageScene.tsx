@@ -1,3 +1,4 @@
+import { useI18n } from "../../../shared/i18n";
 import { ChatSoundPlayer } from "../audio/ChatSoundPlayer";
 import type { ChatStagePageController } from "../controllers/useChatStagePageController";
 import { runtimeSpriteFraming, runtimeSpriteScale } from "../runtimeConfig";
@@ -13,6 +14,7 @@ import {
   StandaloneDesktopResizeHandles,
   TokenUsageLayer,
 } from "./StageLayers";
+import { parseNovelHud } from "./NovelChapterDrawer";
 import { ReactionBubble } from "./ReactionBubble";
 import { StoryDebugPanel } from "./StoryDebugPanel";
 import { TopStageTools } from "./TopStageTools";
@@ -22,8 +24,10 @@ export interface ChatStageSceneProps {
 }
 
 export function ChatStageScene({ controller }: ChatStageSceneProps) {
+  const { t } = useI18n();
   const { desktop, dialogPlayback, historyReplay, modals, pluginOverlay, runtime, stage, state, viewModel } =
     controller;
+  const novelHud = parseNovelHud(viewModel.behavior);
 
   return (
     <>
@@ -34,8 +38,18 @@ export function ChatStageScene({ controller }: ChatStageSceneProps) {
         }
         hidden={!viewModel.layers.toolbar || stage.miniAvatarActive}
         miniAvatarDisabled={historyReplay.replaying}
+        novelProgressLabel={
+          novelHud
+            ? t("novel.drawer.progress", {
+                chapter: Math.min(novelHud.chapterIndex + 1, novelHud.totalChapters),
+                current: Math.min(novelHud.chunkIndex + 1, novelHud.totalChunks),
+                total: novelHud.totalChunks,
+              })
+            : undefined
+        }
         onCloseDesktopWindow={desktop.closeSurface}
         onEnterMiniAvatar={stage.remoteMobileAccess ? undefined : desktop.enterMiniAvatarMode}
+        onOpenNovelChapters={novelHud ? () => modals.setNovelDrawerOpen(true) : undefined}
         onOpenPluginPage={pluginOverlay.openPluginPage}
         onOpenRuntimeMode={!desktop.desktopApp ? () => modals.setRuntimeModeOpen(true) : undefined}
         onOpenWorkspace={!desktop.desktopApp ? stage.openWorkspace : undefined}

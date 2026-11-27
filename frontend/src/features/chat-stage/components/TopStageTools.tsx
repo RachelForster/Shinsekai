@@ -1,4 +1,4 @@
-import { Activity, CircleUserRound, KeyRound, LayoutGrid, Maximize2, Minus, X } from "lucide-react";
+import { Activity, BookOpen, CircleUserRound, KeyRound, LayoutGrid, Maximize2, Minus, X } from "lucide-react";
 
 import { minimizeDesktopWindow, toggleMaximizeDesktopWindow } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -14,8 +14,10 @@ export function TopStageTools({
   hidden,
   miniAvatarDisabled = false,
   needsApiKeyBadge = false,
+  novelProgressLabel,
   onCloseDesktopWindow,
   onEnterMiniAvatar,
+  onOpenNovelChapters,
   onOpenPluginPage,
   onOpenRuntimeMode,
   onOpenWorkspace,
@@ -33,8 +35,10 @@ export function TopStageTools({
   hidden: boolean;
   miniAvatarDisabled?: boolean;
   needsApiKeyBadge?: boolean;
+  novelProgressLabel?: string;
   onCloseDesktopWindow: () => Promise<void>;
   onEnterMiniAvatar?: () => void;
+  onOpenNovelChapters?: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
   onOpenRuntimeMode?: () => void;
   onOpenWorkspace?: () => void;
@@ -84,10 +88,21 @@ export function TopStageTools({
       <ThemeFrame prefix="chat-toolbar" />
       <div className="top-stage-tools__status">
         <span className="top-stage-tools__transport">{transportText}</span>
-        <span className="top-stage-tools__state">{status}</span>
+        <span className="top-stage-tools__state">
+          {novelProgressLabel ? `${status} · ${novelProgressLabel}` : status}
+        </span>
       </div>
       <div className="top-stage-tools__controls">
         <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-top-toolbar" />
+        {onOpenNovelChapters ? (
+          <IconButton
+            className="top-stage-tools__button"
+            label={novelProgressLabel || t("novel.drawer.title")}
+            onClick={onOpenNovelChapters}
+          >
+            <BookOpen aria-hidden className="icon-button__icon" />
+          </IconButton>
+        ) : null}
         {onOpenRuntimeMode ? (
           <IconButton
             className="top-stage-tools__button"

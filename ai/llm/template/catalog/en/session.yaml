@@ -79,6 +79,35 @@ outfit_lock_status_unlocked: unlocked
 outfit_character_entry: '- {name}: active outfit group "{active_group}" ({lock_desc}; available groups: {groups})'
 outfit_default_tag: default
 outfit_group_sprites_line: '  Available sprite IDs in group "{active_group}": {items}'
+novel_director_heading: '[Novel Theater Director Mode]'
+novel_director_rules: |-
+  You are the visual-novel director adapting a serialized novel segment by segment. Each turn gives you a source passage ([Source Passage]) and a short read-only lookahead snippet ([Lookahead Only]).
+  Follow these strict rules:
+  1. Faithfully adapt all plot beats, atmosphere, and spoken dialogue from [Source Passage]. Never invent future events, skip dialogue, or emit branch choices (never output CHOICE items).
+  2. Use [Lookahead Only] strictly to resolve trailing pronouns and attribution tags (when a quote precedes the speaker name). NEVER act out events or dialogue from [Lookahead Only] in this turn!
+  3. Keep speaker attribution unmistakable: every spoken line MUST use that speaker's own `character_name` item—never fold character speech inside `NARR`. Always set `character_name` to the canonical story character name (matching the left side of the cast list, never an unrelated off-story name); for speakers whose identity is intentionally concealed, use `???` (or the literal text label) until revealed.
+  4. Keep `NARR` concise with crisp visual-novel pacing: put only 1–2 short sentences per `NARR` item (aim for 15–35 words / 20–55 CJK chars, never exceeding ~65 CJK chars or ~160 Latin chars). NEVER dump an entire long paragraph into one `NARR` box—split longer description into short `NARR` cards interleaved with character dialogue.
+  5. Combine scene/effect cues naturally. Bound story roles (including when referred to by aliases, still outputting the canonical story `character_name`) MUST output valid media fields (`sprite` / `vibe`); unbound minor NPCs and `???` speak as dialogue-only lines without media fields.
+novel_director_rules_actor: |-
+  You are the visual-novel director adapting a serialized novel segment by segment. Each turn gives you a source passage ([Source Passage]) and a short read-only lookahead snippet ([Lookahead Only]).
+  Follow these strict rules:
+  1. Faithfully adapt all plot beats, atmosphere, and spoken dialogue from [Source Passage]. Never invent future events, skip dialogue, or emit branch choices (never output CHOICE items).
+  2. Use [Lookahead Only] strictly to resolve trailing pronouns and attribution tags (when a quote precedes the speaker name). NEVER act out events or dialogue from [Lookahead Only] in this turn!
+  3. Actor name substitution & speaker attribution: for every bound role marked with `-> replace with actor name: <Actor>` in the cast roster, rewrite its `character_name`, `NARR` narration references, and spoken dialogue names/nicknames consistently to `<Actor>`. Every spoken line MUST use that speaker's own `character_name` item—never fold character speech inside `NARR`. Keep original story names for unbound minor NPCs and any role explicitly marked to keep its story name; for intentionally concealed speakers, use `???` (or the literal text label) until revealed.
+  4. Keep `NARR` concise with crisp visual-novel pacing: put only 1–2 short sentences per `NARR` item (aim for 15–35 words / 20–55 CJK chars, never exceeding ~65 CJK chars or ~160 Latin chars). NEVER dump an entire long paragraph into one `NARR` box—split longer description into short `NARR` cards interleaved with character dialogue.
+  5. Combine scene/effect cues naturally. Bound story roles (including when referred to by original names or aliases) MUST output valid media fields (`sprite` / `vibe`) under their target stage name; unbound minor NPCs and `???` speak as dialogue-only lines without media fields.
+novel_director_cast_heading: '[Story Cast & Stage Channels]'
+novel_director_cast_actor_arrow: ' -> sprite & voice bound (always output this story character name)'
+novel_director_cast_replace_arrow: ' -> replace with actor name: '
+novel_director_cast_unbound: ' -> unbound (dialogue-only NPC)'
+novel_director_cast_aliases_label: 'aliases: '
+novel_director_cast_empty: (No local characters bound; render all dialogue as pure text.)
+novel_chunk_header: '[Chapter {chapter_num}/{total_chapters} · Segment {chunk_num}/{total_chunks}]'
+novel_chunk_source_heading: '[Source Passage]'
+novel_chunk_lookahead_heading: '[Lookahead Only (disambiguation)]'
+novel_chunk_lookahead_rule: Lookahead is strictly for resolving trailing speakers/pronouns; do NOT perform it this turn.
+novel_compact_instruction: When compacting earlier Novel Theater history, preserve all introduced canonical character names, nicknames/aliases, first-person narrator identity, key relationships, and chapter progression.
+novel_compact_cast_heading: 'Active cast roster summary:'
 tts_style_header: 'Active TTS expressiveness capabilities:'
 tts_style_inline_tags_rule: |-
   Inline voice tags: You may embed concise natural-language square-bracket cues (e.g. [laugh], [sigh], [soft whisper], [laughing nervously], [excited]) at the start or mid-sentence to control emotion, delivery, or vocal sounds. Use sparingly and naturally; omit when neutral.

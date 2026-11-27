@@ -36,6 +36,7 @@ export function useChatStagePageController() {
 
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
+  const [novelDrawerOpen, setNovelDrawerOpen] = useState(false);
   const [runtimeModeOpen, setRuntimeModeOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
@@ -113,6 +114,7 @@ export function useChatStagePageController() {
     historyReplay.activeReplay != null ||
     state.replay != null ||
     conversationEditorOpen ||
+    novelDrawerOpen ||
     pluginOverlay.overlayTarget != null ||
     themePickerOpen ||
     toolbarConfigOpen ||
@@ -173,6 +175,7 @@ export function useChatStagePageController() {
     setHistoryDialogOpen(false);
     setScreenSettingsOpen(false);
     setScreenSharePreflightOpen(false);
+    setNovelDrawerOpen(false);
     setConversationEditorOpen(false);
   }, [setHistoryDialogOpen, setScreenSettingsOpen, setScreenSharePreflightOpen]);
 
@@ -274,10 +277,12 @@ export function useChatStagePageController() {
       confirmClearHistory,
       conversationEditorOpen,
       dialogControlsLocked,
+      novelDrawerOpen,
       runtimeModeOpen,
       setConfirmClearHistory,
       setConversationEditorOpen,
       setDialogControlsLocked,
+      setNovelDrawerOpen,
       setRuntimeModeOpen,
       setThemePickerOpen,
       setTokenUsageOpen,

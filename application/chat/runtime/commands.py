@@ -49,6 +49,8 @@ class ChatCommandResult:
 
     ok: bool
     error: str = ""
+    error_code: str = ""
+    http_status: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,8 +183,16 @@ class ChatCommandDispatcher:
             return ChatCommandResult(ok=True)
         except Exception as exc:
             error = str(exc)
+            error_code = str(getattr(exc, "error_code", "") or "")
+            raw_status = getattr(exc, "http_status", 0) or 0
+            http_status = int(raw_status) if isinstance(raw_status, int) else 0
             self.bindings.ui.notify(error)
-            return ChatCommandResult(ok=False, error=error)
+            return ChatCommandResult(
+                ok=False,
+                error=error,
+                error_code=error_code,
+                http_status=http_status,
+            )
 
     def _close_session(self, _payload: object) -> None:
         self.bindings.shutdown_session()

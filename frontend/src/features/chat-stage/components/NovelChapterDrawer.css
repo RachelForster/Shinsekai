@@ -1,0 +1,102 @@
+.novel-chapter-drawer__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 23, 42, 0.36);
+  backdrop-filter: blur(4px);
+}
+.novel-chapter-drawer {
+  width: min(380px, 92vw);
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.novel-chapter-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.novel-chapter-drawer__header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.novel-chapter-drawer__meta {
+  display: grid;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+.novel-chapter-drawer__book {
+  font-size: 13px;
+  font-weight: 600;
+}
+.novel-chapter-drawer__progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.novel-chapter-drawer__list {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.novel-chapter-drawer__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.novel-chapter-drawer__item:hover {
+  border-color: var(--color-accent-primary);
+}
+.novel-chapter-drawer__item[data-current="true"] {
+  border-color: var(--color-accent-primary);
+  background: color-mix(in srgb, var(--color-accent-primary) 10%, transparent);
+}
+.novel-chapter-drawer__item-title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.novel-chapter-drawer__item-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.novel-chapter-drawer__current-tag {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--color-accent-primary);
+  background: color-mix(in srgb, var(--color-accent-primary) 14%, transparent);
+}
+.novel-chapter-drawer__status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
