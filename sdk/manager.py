@@ -28,6 +28,7 @@ from sdk.model_assets import ModelAssetContribution
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry, PluginDiscoveryRegistry
+from sdk.session_behavior import SessionBehaviorContribution
 from sdk.types import (
     ChatUIContribution,
     FrontendChatUIContribution,
@@ -331,6 +332,24 @@ class PluginManager:
         if self._capabilities is None:
             return []
         return self._capabilities.output_contract_patches
+
+    def collect_session_behaviors(self) -> list[SessionBehaviorContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.session_behaviors
+
+    def find_session_behavior(
+        self,
+        behavior_id: str,
+    ) -> SessionBehaviorContribution | None:
+        target = str(behavior_id or "").strip()
+        if not target:
+            return None
+        for contribution in self.collect_session_behaviors():
+            if contribution.behavior_id == target:
+                return contribution
+        return None
 
     def iter_plugin_ids(self) -> Iterator[str]:
         self._ensure_plugins_instantiated()

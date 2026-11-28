@@ -37,6 +37,7 @@ def test_plugin_route_contracts_remain_stable() -> None:
         ("GET", "/api/plugins"),
         ("GET", "/api/plugins/app-update/info"),
         ("GET", "/api/plugins/chat-ui-contributions"),
+        ("GET", "/api/plugins/session-behaviors"),
         ("GET", "/api/plugins/registry"),
         ("GET", "/api/plugins/status"),
         ("GET", "/api/plugins/{plugin_id}/ui"),

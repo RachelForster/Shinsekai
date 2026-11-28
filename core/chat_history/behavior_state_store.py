@@ -15,6 +15,7 @@ import uuid
 from core.chat_history.behavior_state_models import (
     BEHAVIOR_TURN_JOURNAL_FILENAME,
     BehaviorCommitResult,
+    BehaviorIdentityMismatchError,
     BehaviorRecoveryReport,
     BehaviorStateSnapshot,
     BehaviorTurnJournalRecord,
@@ -22,6 +23,7 @@ from core.chat_history.behavior_state_models import (
     atomic_write_journal,
     ensure_behavior_state_schema,
     normalize_branch_id,
+    read_latest_behavior_id_readonly,
     row_to_behavior_snapshot,
 )
 from core.chat_history.models import strip_internal_message_keys, turn_node_from_message
@@ -136,6 +138,10 @@ class BehaviorStateStore:
             with self._session_store._store._borrow_conn() as conn:
                 existing = self._get_latest_conn(conn, b)
                 if existing is not None:
+                    if existing.behavior_id != bid:
+                        raise BehaviorIdentityMismatchError(
+                            bid, existing.behavior_id, branch_id=b
+                        )
                     return existing
                 with _immediate_tx(conn):
                     conn.execute(
@@ -180,6 +186,10 @@ class BehaviorStateStore:
                 if latest is None or actual_ver != int(expected_state_version):
                     raise BehaviorVersionConflictError(
                         int(expected_state_version), actual_ver, branch_id=b
+                    )
+                if latest.behavior_id != bid:
+                    raise BehaviorIdentityMismatchError(
+                        bid, latest.behavior_id, branch_id=b
                     )
                 max_row = conn.execute(
                     "SELECT COALESCE(MAX(seq), 0) AS max_seq FROM turns WHERE branch_id = ?",
@@ -432,10 +442,12 @@ class BehaviorStateStore:
 __all__ = [
     "BEHAVIOR_TURN_JOURNAL_FILENAME",
     "BehaviorCommitResult",
+    "BehaviorIdentityMismatchError",
     "BehaviorRecoveryReport",
     "BehaviorStateSnapshot",
     "BehaviorStateStore",
     "BehaviorTurnJournalRecord",
     "BehaviorVersionConflictError",
     "ensure_behavior_state_schema",
+    "read_latest_behavior_id_readonly",
 ]
