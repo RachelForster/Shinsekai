@@ -34,7 +34,7 @@ from config.schema import (
 from config.sprite_groups import normalize_sprite_group_list, set_sprite_group_value
 
 _PROTECTED_PROFILE_FIELDS = frozenset(
-    {"id", "sprites", "sprite_transitions", "is_builtin", "pinned", "undeletable"}
+    {"id", "sprites", "sprite_transitions", "avatar_state_history", "is_builtin", "pinned", "undeletable"}
 )
 
 

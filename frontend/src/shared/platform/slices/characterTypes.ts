@@ -447,6 +447,12 @@ export interface CharactersPlatform {
     source_paths: string[];
     state: unknown;
   }) => Promise<Character>;
+  deleteModelStates: (input: {
+    name: string;
+    avatar_type: string;
+    model_path: string;
+    states: { sprite_index: number; path: string }[];
+  }) => Promise<Character>;
   saveModelState: (input: {
     name: string;
     avatar_type: string;

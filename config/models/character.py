@@ -236,6 +236,10 @@ class Character(BaseModel):
         default_factory=dict,
         description="模型格式 id → 该格式的模型路径与资源列表；static 不在其中",
     )
+    avatar_state_history: DefaultIfNone[Dict[str, List[str]]] = Field(
+        default_factory=dict,
+        description="本机已配置模型的历史状态路径，供已保存的会话与回放读取",
+    )
 
     # gpt-sovits 相关的配置
     gpt_model_path: Optional[str] = Field("", description="角色 GPT 模型的路径 (可选)")

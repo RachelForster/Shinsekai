@@ -61,6 +61,7 @@ class _CatalogCharacterTarget:
 class CharacterOperation(str, Enum):
     IMPORT_MODEL = "import-model"
     IMPORT_MODEL_STATES = "import-model-states"
+    DELETE_MODEL_STATES = "delete-model-states"
     SAVE_MODEL_STATE = "save-model-state"
     SAVE = "save"
     SAVE_EMOTION_TAGS = "save-emotion-tags"
@@ -181,10 +182,16 @@ class CharacterUseCase:
         )
 
     def execute(self, request: CharacterRequest) -> Any:
-        from application.characters.model_assets import import_model, import_model_states, save_model_state
+        from application.characters.model_assets import (
+            delete_model_states,
+            import_model,
+            import_model_states,
+            save_model_state,
+        )
         handlers = {
             CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
             CharacterOperation.IMPORT_MODEL_STATES: lambda body: import_model_states(self, body),
+            CharacterOperation.DELETE_MODEL_STATES: lambda body: delete_model_states(self, body),
             CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
             CharacterOperation.SAVE: self._save,
             CharacterOperation.SAVE_EMOTION_TAGS: self._save_emotion_tags,
@@ -425,6 +432,7 @@ class CharacterUseCase:
                 "sprite_prefix": "temp",
                 **patch_body,
             }
+            legacy_body.pop("avatar_state_history", None)
             character = Character.model_validate(legacy_body)
             saved_name = character.name.strip()
             original_name = explicit_original_name or saved_name

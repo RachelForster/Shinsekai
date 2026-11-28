@@ -317,6 +317,7 @@ describe("entity repositories", () => {
       characters: {
         importModel: vi.fn().mockResolvedValue(character),
         importModelStates: vi.fn().mockResolvedValue(character),
+        deleteModelStates: vi.fn().mockResolvedValue(character),
         saveModelState: vi.fn().mockResolvedValue(character),
         autoLabelSprites: vi.fn().mockResolvedValue({}),
         planSprites: vi.fn().mockResolvedValue({ items: [] }),

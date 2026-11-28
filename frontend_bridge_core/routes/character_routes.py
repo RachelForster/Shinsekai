@@ -93,6 +93,10 @@ def _save_model_state(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_execute_character_request(request.state, CharacterOperation.SAVE_MODEL_STATE, request.body))
 
 
+def _delete_model_states(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_execute_character_request(request.state, CharacterOperation.DELETE_MODEL_STATES, request.body))
+
+
 def _import_model_states(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(kind="character-preset-import", title="Import character presets",
@@ -419,6 +423,8 @@ CHARACTER_ROUTES = (
           handler=_save_model_state, name="characters.model.state"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/states/import",
           handler=_import_model_states, name="characters.model.states.import"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/states/delete",
+          handler=_delete_model_states, name="characters.model.states.delete"),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/characters",

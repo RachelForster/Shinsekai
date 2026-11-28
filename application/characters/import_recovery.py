@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from application.characters.management import CharacterUseCase
+from config.sprite_files import sprite_field
 from core.media.asset_import import PENDING_MARKER, recover_asset_batches
 from core.media.avatar.registry import adapter_for
 from core.media.avatar.state_dependencies import indexed_state_files
@@ -41,12 +42,21 @@ def recover_model_imports(state) -> None:
                         # Also preserve a model's declared texture dependencies.
                         references.update(adapter_for(kind).inspect(model).files)
                         for sprite in bank.sprites:
-                            raw = sprite.get("path", "") if isinstance(sprite, dict) else sprite.path
+                            raw = sprite_field(sprite, "path", "")
                             saved = safe_existing_path(raw, roots=[model.parent])
                             references.add(saved)
                             if batch in saved.parents:
                                 return True
                             references.update(indexed_state_files(model, saved, kind))
+                        for raw in character.avatar_state_history.get(bank.model_path, ()):
+                            try:
+                                saved = safe_existing_path(raw, roots=[model.parent])
+                                if batch in saved.parents:
+                                    return True
+                                references.update(indexed_state_files(model, saved, kind))
+                            except (ValueError, OSError, KeyError):
+                                # A stale historical state cannot authorize new dependencies.
+                                continue
                     if any(path == batch or batch in path.parents for path in references):
                         return True
             return False

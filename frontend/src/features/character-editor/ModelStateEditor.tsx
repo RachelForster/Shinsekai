@@ -1,17 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Character } from "../../entities/config/types";
 import { characterAvatarType, createEmptyCharacterAssets, getCharacterAssets } from "../../entities/character/assets";
-import { importCharacterModel, importCharacterModelStates } from "../../entities/character/repository";
+import {
+  deleteCharacterModelStates,
+  importCharacterModel,
+  importCharacterModelStates,
+} from "../../entities/character/repository";
 import type { AvatarSession } from "../../modules/character-visual";
 import { modelFileUrl } from "../../entities/files/repository";
 import { registeredAvatarFormats, avatarFormat, CharacterVisual } from "../../modules/character-visual";
 import { avatarStateUrl } from "../../entities/character/modelStateRepository";
 import { tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, EmptyState, FilePicker, ImageAssetGallery, PathDisplay, Select } from "../../shared/ui";
+import {
+  AlertDialog,
+  AsyncButton,
+  Button,
+  EmptyState,
+  FilePicker,
+  ImageAssetGallery,
+  PathDisplay,
+  Select,
+} from "../../shared/ui";
 import { ModelStateDialog } from "./ModelStateDialog";
 import { AvatarRuntimeDialog } from "./AvatarRuntimeDialog";
 import "./ModelStateEditor.css";
+
+type PresetDeletion = { sprite_index: number; path: string; title: string };
 
 export function ModelStateEditor({
   character,
@@ -39,6 +54,10 @@ export function ModelStateEditor({
   }, []);
   const [index, setIndex] = useState(0);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [deleteSelection, setDeleteSelection] = useState<PresetDeletion[] | null>(null);
+  const [deleteTargets, setDeleteTargets] = useState<PresetDeletion[]>([]);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const request = useRef(0);
@@ -46,10 +65,24 @@ export function ModelStateEditor({
   const modelPath = bank?.model_path ?? "";
   const sprite = bank?.sprites[index];
   const tags = tagContents(bank?.emotion_tags ?? "", bank?.sprites.length ?? 0);
+  const storedPresets = bank.sprites.map((item, i) => ({
+    sprite_index: i,
+    path: item.path,
+    title: tags[i] || item.path.split(/[\\/]/).at(-1) || "",
+  }));
+  const isChecked = (item: PresetDeletion) =>
+    Boolean(
+      deleteSelection?.some((selected) => selected.sprite_index === item.sprite_index && selected.path === item.path),
+    );
+  const selectedForDeletion = storedPresets.filter(isChecked);
   useEffect(() => {
     setIndex(0);
     setRuntimeOpen(false);
     setEditingIndex(null);
+    setDeleteSelection(null);
+    setDeleteTargets([]);
+    setDeleteError("");
+    setDeleting(false);
     setSource("");
     setPresets([]);
     setPreviewSequence(0);
@@ -96,6 +129,34 @@ export function ModelStateEditor({
       if (request.current === sequence) setError(String(failure));
     } finally {
       if (request.current === sequence) setPending(false);
+    }
+  };
+  const deleteStates = async () => {
+    if (!deleteTargets.length || deleting) return;
+    const sequence = ++request.current;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const result = await deleteCharacterModelStates({
+        name,
+        avatar_type: kind,
+        model_path: modelPath,
+        states: deleteTargets.map(({ sprite_index, path }) => ({ sprite_index, path })),
+      });
+      if (request.current !== sequence) return;
+      const remaining = getCharacterAssets(result, kind).sprites;
+      const removedBefore = deleteTargets.filter((item) => item.sprite_index < index).length;
+      setIndex(Math.max(0, Math.min(index - removedBefore, remaining.length - 1)));
+      setPreviewSequence(0);
+      setEditingIndex(null);
+      setDeleteSelection(null);
+      setDeleteTargets([]);
+      setError("");
+      onSaved(result);
+    } catch (failure) {
+      if (request.current === sequence) setDeleteError(String(failure));
+    } finally {
+      if (request.current === sequence) setDeleting(false);
     }
   };
   return (
@@ -199,20 +260,58 @@ export function ModelStateEditor({
             )}
             {modelPath && (
               <div className="asset-gallery-layout asset-gallery-layout--character">
-                {bank?.sprites.length ? (
-                  <ImageAssetGallery
-                    selectedIndex={index}
-                    onSelect={(next) => {
-                      setIndex(next);
-                      setPreviewSequence(0);
-                    }}
-                    items={bank.sprites.map((item, i) => ({
-                      id: item.path,
-                      title: tags[i] || item.path.split(/[\\/]/).at(-1) || "",
-                      meta: t("character.avatar.state"),
-                      badge: format.label,
-                    }))}
-                  />
+                {deleteSelection && storedPresets.length ? (
+                  <fieldset className="model-state-editor__delete-list" disabled={pending || deleting}>
+                    <legend>{t("character.avatar.selectPresetsToDelete")}</legend>
+                    {storedPresets.map((item) => (
+                      <label key={item.sprite_index}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked(item)}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setDeleteSelection(
+                              (current) =>
+                                current &&
+                                (checked
+                                  ? [...current, item]
+                                  : current.filter((selected) => selected.sprite_index !== item.sprite_index)),
+                            );
+                          }}
+                        />
+                        {item.sprite_index + 1}. {item.title}
+                      </label>
+                    ))}
+                    <div className="model-state-editor__delete-actions">
+                      <Button onClick={() => setDeleteSelection(null)}>{t("common.cancel")}</Button>
+                      <Button
+                        disabled={!selectedForDeletion.length}
+                        onClick={() => setDeleteTargets(selectedForDeletion)}
+                        variant="danger"
+                      >
+                        {t("character.avatar.deleteSelectedPresets")}
+                      </Button>
+                    </div>
+                  </fieldset>
+                ) : storedPresets.length ? (
+                  <div className="model-state-editor__gallery">
+                    <ImageAssetGallery
+                      selectedIndex={index}
+                      onSelect={(next) => {
+                        setIndex(next);
+                        setPreviewSequence(0);
+                      }}
+                      items={storedPresets.map((item) => ({
+                        id: item.path,
+                        title: item.title,
+                        meta: t("character.avatar.state"),
+                        badge: format.label,
+                      }))}
+                    />
+                    <Button disabled={pending || deleting} onClick={() => setDeleteSelection([])}>
+                      {t("character.avatar.deleteSelectedPresets")}
+                    </Button>
+                  </div>
                 ) : (
                   <EmptyState title={t("character.avatar.emptyStates")} />
                 )}
@@ -257,6 +356,15 @@ export function ModelStateEditor({
                       {t("character.avatar.playPreset")}
                     </Button>
                   )}
+                  {sprite && (
+                    <Button
+                      disabled={pending || deleting}
+                      onClick={() => setDeleteTargets([storedPresets[index]])}
+                      variant="danger"
+                    >
+                      {t("character.avatar.deleteCurrentPreset")}
+                    </Button>
+                  )}
                 </aside>
               </div>
             )}
@@ -274,6 +382,7 @@ export function ModelStateEditor({
           character={character}
           index={editingIndex}
           onClose={() => setEditingIndex(null)}
+          onDelete={storedPresets[editingIndex] ? () => setDeleteTargets([storedPresets[editingIndex]]) : undefined}
           onSaved={(result) => {
             setIndex(editingIndex < 0 ? bank.sprites.length : editingIndex);
             setEditingIndex(null);
@@ -281,6 +390,26 @@ export function ModelStateEditor({
           }}
         />
       )}
+      <AlertDialog
+        open={Boolean(deleteTargets.length)}
+        pending={deleting}
+        title={t("character.avatar.deletePresetsTitle")}
+        body={
+          deleteError ||
+          (deleteTargets.length === 1
+            ? t("character.avatar.deletePresetConfirm", { name: deleteTargets[0].title })
+            : t("character.avatar.deletePresetsConfirm", { count: deleteTargets.length }))
+        }
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={t("common.delete")}
+        onCancel={() => {
+          setDeleteError("");
+          setDeleteTargets([]);
+        }}
+        onConfirm={() => void deleteStates()}
+        trapFocus
+      />
       {runtimeOpen && format?.runtime && (
         <AvatarRuntimeDialog
           format={format}

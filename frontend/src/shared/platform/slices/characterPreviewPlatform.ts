@@ -160,6 +160,9 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     importModel: async () => {
       throw new Error("Model import requires the local bridge");
     },
+    deleteModelStates: async () => {
+      throw new Error("Preset deletion requires the local bridge");
+    },
     saveModelState: async () => {
       throw new Error("Model state saving requires the local bridge");
     },

@@ -52,8 +52,13 @@ class CharacterManager:
     def _save_characters_config(self) -> None:
         self._config_manager.save_characters_config()
 
-    def save_avatar_bank(self, name: str, avatar_type: str, bank: ModelSprites, *, activate: bool = False) -> None:
-        save_character_avatar_bank(self._target(), name, avatar_type, bank, activate=activate)
+    def save_avatar_bank(
+        self, name: str, avatar_type: str, bank: ModelSprites, *,
+        activate: bool = False, retired_states: tuple[str, ...] = (),
+    ) -> None:
+        save_character_avatar_bank(
+            self._target(), name, avatar_type, bank, activate=activate, retired_states=retired_states,
+        )
 
     def save_characters_to_file(self) -> str:
         try:

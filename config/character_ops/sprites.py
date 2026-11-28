@@ -280,6 +280,7 @@ def save_character_avatar_bank(
     bank: ModelSprites,
     *,
     activate: bool = False,
+    retired_states: tuple[str, ...] = (),
 ) -> Character:
     """Persist one validated avatar bank without replacing other avatar types or static assets."""
     character = target.get_by_name(name)
@@ -294,6 +295,14 @@ def save_character_avatar_bank(
     updates: dict[str, Any] = {
         "avatars": {**dict(character.avatars or {}), **validated_banks},
     }
+    history = dict(character.avatar_state_history)
+    old_bank = character.avatars.get(avatar_type)
+    if old_bank is not None and old_bank.model_path != bank.model_path:
+        history.pop(old_bank.model_path, None)
+    if retired_states:
+        existing_states = history.get(bank.model_path, ())
+        history[bank.model_path] = list(dict.fromkeys((*existing_states, *retired_states)))
+    updates["avatar_state_history"] = history
     if activate:
         updates["avatar_type"] = avatar_type
     updated = character.model_copy(update=updates)
