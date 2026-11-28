@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from application.media.auto_annotation import (
     AnnotationCancelled,
+    annotate_model_preview,
     auto_label_background_images,
     auto_label_character_sprites,
 )
@@ -77,3 +78,16 @@ def run_background_image_auto_label(state: BridgeState, task_id: str, name: str)
         auto_label_background_images,
         backgrounds=getattr(stores, "backgrounds", None) if stores is not None else None,
     )
+
+
+def run_model_preview_annotation(
+    state: BridgeState, task_id: str, name: str, kind: str, model_path: str, preview: Path,
+) -> dict[str, str]:
+    on_progress, is_cancelled = _task_callbacks(state, task_id)
+    try:
+        return annotate_model_preview(
+            state.config_manager, name, kind, model_path, preview,
+            on_progress=on_progress, is_cancelled=is_cancelled,
+        )
+    except AnnotationCancelled as exc:
+        raise TaskCancelled(str(exc)) from exc

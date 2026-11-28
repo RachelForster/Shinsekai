@@ -6,6 +6,7 @@ import json
 import os
 import uuid
 from collections.abc import Callable, Sequence
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,40 @@ InferCallback = Callable[[bytes, str], str]
 CHARACTER_PROMPT = render_character_annotation_prompt()
 BACKGROUND_PROMPT = render_background_annotation_prompt(locale="en")
 _IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp", ".mp4", ".webm"}
+
+
+def annotate_model_preview(
+    config_manager, name: str, kind: str, model_path: str, preview: Path, *,
+    on_progress: ProgressCallback, is_cancelled: CancelCallback,
+) -> dict[str, str]:
+    def check_target() -> None:
+        if is_cancelled():
+            raise AnnotationCancelled("模型标注已取消")
+        character = config_manager.get_character_by_name(name)
+        bank = character.avatars.get(kind) if character else None
+        if bank is None or bank.model_path != model_path:
+            raise ValueError("Model changed; refresh the character")
+
+    check_target()
+    with preview.open("rb") as stream:
+        limit = 10 * 1024 * 1024
+        data = stream.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("Preview too large")
+    from PIL import Image
+
+    with Image.open(BytesIO(data)) as image:
+        if image.format != "PNG" or max(image.size) > 4096:
+            raise ValueError("Expected a PNG preview up to 4096 pixels")
+        image.verify()
+    on_progress(0, 1, "正在标注模型预览…", "annotating")
+    check_target()
+    tags = normalize_sprite_tags(configured_vision_manager().describe(data, CHARACTER_PROMPT))
+    check_target()
+    if not tags:
+        raise ValueError("Vision model returned no tags")
+    on_progress(1, 1, "模型预览标注完成。", "annotating")
+    return {"tags": tags}
 
 
 class AnnotationCancelled(RuntimeError):

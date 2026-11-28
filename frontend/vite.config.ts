@@ -54,6 +54,10 @@ export default defineConfig(({ mode }) => {
             if (has("/@babylonjs/") || has("/babylon-mmd/")) {
               return "mmd-vendor";
             }
+            // Keep the VRM renderer behind the avatar adapter's lazy import.
+            if (has("/three/") || has("/@pixiv/") || has("/three@")) {
+              return "vrm-vendor";
+            }
 
             if (
               has("/react/") ||

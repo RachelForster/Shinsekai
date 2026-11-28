@@ -13,7 +13,9 @@ import {
 import { readAvatarState } from "../../entities/character/modelStateRepository";
 import { tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, Dialog, TextInput } from "../../shared/ui";
+import { getPlatform } from "../../shared/platform/platform";
+import type { TaskSnapshot } from "../../shared/platform/slices/taskTypes";
+import { AsyncButton, Button, Dialog, TaskProgress, TextInput } from "../../shared/ui";
 
 /** A temporary edit session: closing discards drafts; only Save changes the resource bank. */
 export function ModelStateDialog({
@@ -44,6 +46,9 @@ export function ModelStateDialog({
   const [saveError, setSaveError] = useState("");
   const [pending, setPending] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [annotating, setAnnotating] = useState(false);
+  const [annotation, setAnnotation] = useState<TaskSnapshot<{ tags: string }> | null>(null);
+  const { annotateModelPreview, cancelModelPreviewAnnotation } = getPlatform().characters;
   const request = useRef(0);
   const lifetime = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -143,6 +148,42 @@ export function ModelStateDialog({
     }
   };
   const Editor = module?.Editor;
+  const annotate = async () => {
+    const signal = lifetime.current?.signal;
+    const canvas = host.current?.querySelector("canvas");
+    if (!signal || !canvas || !annotateModelPreview) return;
+    const sequence = request.current;
+    setAnnotating(true);
+    setAnnotation(null);
+    setSaveError("");
+    try {
+      const png = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error(t("character.avatar.captureFailed")))),
+          "image/png",
+        ),
+      );
+      signal.throwIfAborted();
+      const result = await annotateModelPreview(
+        {
+          name: character.name,
+          avatarType: kind,
+          modelPath,
+          file: new File([png], "preview.png", { type: "image/png" }),
+        },
+        {
+          onTaskUpdate: (task) => {
+            if (!signal.aborted) setAnnotation(task);
+          },
+        },
+      );
+      if (!signal.aborted && request.current === sequence) setTags(result.tags);
+    } catch (failure) {
+      if (!signal.aborted) setSaveError(String(failure));
+    } finally {
+      if (!signal.aborted) setAnnotating(false);
+    }
+  };
   return (
     <Dialog
       open
@@ -158,7 +199,7 @@ export function ModelStateDialog({
           </Button>
           <AsyncButton
             loading={pending}
-            disabled={pending || applying || !session || value === null || Boolean(error)}
+            disabled={pending || applying || annotating || !session || value === null || Boolean(error)}
             onClick={() => void save()}
           >
             {t("character.avatar.saveState")}
@@ -174,11 +215,32 @@ export function ModelStateDialog({
               <TextInput
                 aria-label={t("character.sprite.tag")}
                 value={tags}
-                disabled={pending}
+                disabled={pending || annotating}
                 onChange={(event) => setTags(event.target.value)}
               />
             </span>
           </label>
+          {format?.capabilities.sampling === "single" && annotateModelPreview && (
+            <>
+              <AsyncButton
+                loading={annotating}
+                disabled={pending || applying || annotating || !session || Boolean(error)}
+                onClick={() => void annotate()}
+              >
+                {t("character.avatar.annotate")}
+              </AsyncButton>
+              {annotation && <TaskProgress task={annotation} compact />}
+              {annotating && annotation && !annotation.cancelRequested && cancelModelPreviewAnnotation && (
+                <Button
+                  onClick={() => {
+                    void cancelModelPreviewAnnotation(annotation.id).catch((failure) => setSaveError(String(failure)));
+                  }}
+                >
+                  {t("common.cancel")}
+                </Button>
+              )}
+            </>
+          )}
           <fieldset className="model-state-dialog__controls" disabled={pending}>
             {!session && !error && <p role="status">{t("common.loading")}</p>}
             {session && Editor && value !== null && <Editor session={session} value={value} onChange={change} />}

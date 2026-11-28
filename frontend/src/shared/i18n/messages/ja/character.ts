@@ -136,6 +136,16 @@ export const characterJaMessages: Record<CharacterMessageKey, string> = {
   "character.avatar.presetImportHint":
     "最大100ファイル。ファイル名をタグにし、現在のプレビューのカメラと口・瞬きの設定を引き継ぎます。VPDはポーズを保持、VMDは1回再生後に最終フレームを保持します。",
   "character.avatar.playPreset": "プリセットを再生",
+  "character.avatar.annotate": "現在のプレビューを AI でタグ付け",
+  "character.avatar.captureFailed": "プレビューを保存できません",
+  "character.avatar.armsDown": "両腕を下げる",
+  "character.avatar.vrm.searchExpression": "表情を検索",
+  "character.avatar.vrm.mouthExpression": "口の表情",
+  "character.avatar.vrm.blinkExpression": "瞬きの表情",
+  "character.avatar.vrm.noMouth": "口の表情が設定されていません。下から選択できます。",
+  "character.avatar.vrm.noBlink": "瞬きの表情が設定されていません。下から選択できます。",
+  "character.avatar.vrm.presetImportHint":
+    "VRMAファイルは最大100件選択できます。各アニメーションは現在のVRMの表情とポーズを引き継いだ状態になり、ファイル名がタグになります。",
   "character.avatar.clearMotion": "モーション参照を削除",
   "character.avatar.state": "モデル状態",
   "character.avatar.newState": "新しい状態",

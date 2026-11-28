@@ -439,6 +439,11 @@ export interface AvatarRuntimesPlatform {
 }
 
 export interface CharactersPlatform {
+  annotateModelPreview?: (
+    input: { name: string; avatarType: string; modelPath: string; file: File },
+    options?: TaskProgressOptions<{ tags: string }>,
+  ) => Promise<{ tags: string }>;
+  cancelModelPreviewAnnotation?: (taskId: string) => Promise<unknown>;
   importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
   importModelStates: (input: {
     name: string;

@@ -31,11 +31,14 @@ def configure_builtin_formats() -> None:
     """Explicit composition entry; harmless when both bridge and chat initialize."""
     from core.media.avatar.l2d import Live2DAdapter
     from core.media.avatar.mmd import MmdAdapter
+    from core.media.avatar.vrm import VrmAssetAdapter
     with _lock:
         if "l2d" not in _builtin:
             register_adapter(Live2DAdapter())
         if "mmd" not in _builtin:
             register_adapter(MmdAdapter())
+        if "vrm" not in _builtin:
+            register_adapter(VrmAssetAdapter())
 
 
 def _normalize_format_id(format_id: object) -> str:
