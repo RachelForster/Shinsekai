@@ -200,3 +200,27 @@ def test_capability_and_plugin_attachment_reject_identity_mismatch(tmp_path) -> 
         assert behavior_store.get_latest_state("main").behavior_id == "alpha"  # type: ignore[union-attr]
     finally:
         session_store.close()
+
+
+def test_capability_includes_plugin_id_when_runtime_port_provides_it(tmp_path) -> None:
+    session_store = open_session_store(str(tmp_path / "hist.json"))
+    events: list[dict[str, Any]] = []
+    cap = SessionBehaviorCapability(emit_event=events.append)
+    cap.set_runtime_port(SimpleNamespace(plugin_id="com.example.werewolf"))
+    try:
+
+        class _GameBehavior(BaseSessionBehavior):
+            behavior_id = "werewolf"
+
+        cap.attach_behavior(
+            _GameBehavior(),
+            state_store=BehaviorStateStore(session_store, tmp_path),  # type: ignore[arg-type]
+            initial_state={"phase": "night"},
+        )
+        payload = cap.snapshot_payload()
+        assert payload is not None
+        assert payload["pluginId"] == "com.example.werewolf"
+        assert events[-1]["type"] == "behavior.state.replace"
+        assert events[-1]["behavior"]["pluginId"] == "com.example.werewolf"
+    finally:
+        session_store.close()

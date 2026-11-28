@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Location, NavigateFunction } from "react-router-dom";
 
-import type { ChatAttachmentInput, ChatCommand } from "../../../shared/platform/types";
+import type { ChatAttachmentInput, ChatCommand, PluginBehaviorEvent } from "../../../shared/platform/types";
 import type { PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatStageState } from "../chatState";
 import { withChatRouteInputState } from "./chatStageRouteState";
+
+const MAX_QUEUED_BEHAVIOR_EVENTS_PER_PLUGIN = 32;
 
 export interface UseChatStagePluginOverlayControllerOptions {
   inputAttachments: ChatAttachmentInput[];
@@ -25,6 +27,56 @@ export function useChatStagePluginOverlayController({
 }: UseChatStagePluginOverlayControllerOptions) {
   const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
   const locallyDismissedPresentationRef = useRef<string | null>(null);
+  const behaviorEventListenersRef = useRef(new Map<(event: PluginBehaviorEvent) => void, string | undefined>());
+  const pendingBehaviorEventsByPluginRef = useRef(new Map<string, PluginBehaviorEvent[]>());
+
+  const emitBehaviorEvent = useCallback((event: PluginBehaviorEvent) => {
+    const matchingListeners: Array<(event: PluginBehaviorEvent) => void> = [];
+    for (const [listener, listenerPluginId] of behaviorEventListenersRef.current.entries()) {
+      if (listenerPluginId === undefined || listenerPluginId === event.pluginId) {
+        matchingListeners.push(listener);
+      }
+    }
+    if (matchingListeners.length > 0) {
+      for (const listener of matchingListeners) {
+        listener(event);
+      }
+      return;
+    }
+    const existing = pendingBehaviorEventsByPluginRef.current.get(event.pluginId) ?? [];
+    if (event.seq > 0 && existing.some((item) => item.seq === event.seq)) {
+      return;
+    }
+    const nextQueue = [...existing, event].slice(-MAX_QUEUED_BEHAVIOR_EVENTS_PER_PLUGIN);
+    pendingBehaviorEventsByPluginRef.current.set(event.pluginId, nextQueue);
+  }, []);
+
+  const subscribeBehaviorEvents = useCallback((listener: (event: PluginBehaviorEvent) => void, pluginId?: string) => {
+    behaviorEventListenersRef.current.set(listener, pluginId);
+    if (pluginId !== undefined) {
+      const queued = pendingBehaviorEventsByPluginRef.current.get(pluginId);
+      if (queued?.length) {
+        pendingBehaviorEventsByPluginRef.current.delete(pluginId);
+        for (const event of queued) {
+          listener(event);
+        }
+      }
+    } else {
+      for (const [queuedPluginId, queued] of Array.from(pendingBehaviorEventsByPluginRef.current.entries())) {
+        pendingBehaviorEventsByPluginRef.current.delete(queuedPluginId);
+        for (const event of queued) {
+          listener(event);
+        }
+      }
+    }
+    return () => {
+      behaviorEventListenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const resetPendingBehaviorEvents = useCallback(() => {
+    pendingBehaviorEventsByPluginRef.current.clear();
+  }, []);
 
   useEffect(() => {
     const presentation = pluginPagePresentations?.at(-1);
@@ -59,6 +111,9 @@ export function useChatStagePluginOverlayController({
   const closePluginPageOverlay = useCallback(() => {
     const current = overlayTarget;
     setOverlayTarget(null);
+    if (current?.pluginId) {
+      pendingBehaviorEventsByPluginRef.current.delete(current.pluginId);
+    }
     if (!current?.presentationId) {
       return;
     }
@@ -102,7 +157,10 @@ export function useChatStagePluginOverlayController({
 
   return {
     closePluginPageOverlay,
+    emitBehaviorEvent,
     openPluginPage,
     overlayTarget,
+    resetPendingBehaviorEvents,
+    subscribeBehaviorEvents,
   };
 }

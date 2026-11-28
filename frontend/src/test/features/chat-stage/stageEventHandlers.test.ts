@@ -64,6 +64,7 @@ const EXPECTED_FOLDED_EVENT_TYPES: readonly FoldedStageEventType[] = [
   "memory.mode",
   "plugin.page.present",
   "plugin.page.dismiss",
+  "plugin.behavior.event",
 ];
 
 describe("stageEventHandlers", () => {
@@ -170,6 +171,33 @@ describe("stageEventHandlers", () => {
       name: "Aoi",
     });
     expect(state.userDisplayName).toBe("Aoi");
+
+    state = applyStageEvent(state, {
+      v: 1,
+      seq: 5,
+      ts: 50,
+      type: "plugin.behavior.event",
+      pluginId: "demo.plugin",
+      eventType: "phase.changed",
+      payload: { phase: "night" },
+    });
+    expect(state.pluginBehaviorEvents).toEqual([
+      {
+        eventType: "phase.changed",
+        payload: { phase: "night" },
+        pluginId: "demo.plugin",
+        seq: 5,
+      },
+    ]);
+
+    const closed = applyStageEvent(state, {
+      v: 1,
+      seq: 6,
+      ts: 60,
+      type: "session.closed",
+      reason: "ended",
+    });
+    expect(closed.pluginBehaviorEvents).toEqual([]);
   });
 
   it("retains at most 32 ambient effects on ambient.start", () => {

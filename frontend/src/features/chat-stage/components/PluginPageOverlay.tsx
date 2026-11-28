@@ -4,12 +4,14 @@ import { createPortal } from "react-dom";
 import { getPluginUiDetail } from "../../../entities/plugin/repository";
 import { useI18n } from "../../../shared/i18n";
 import { resolvePlatformHttpUrl } from "../../../shared/platform/platform";
+import type { ChatBehaviorState, PluginBehaviorEvent } from "../../../shared/platform/types";
 import type { PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import "./PluginPageOverlay.css";
 
 const DEFAULT_WIDTH = 360;
 const DEFAULT_HEIGHT = 640;
 const VIEWPORT_MARGIN = 8;
+const MAX_PENDING_BEHAVIOR_EVENTS = 32;
 
 type Pos = { x: number; y: number };
 type Size = { height: number; width: number };
@@ -56,7 +58,17 @@ function initialPosition(size: Size): Pos {
  * `{ __pluginOverlay: "drag", type, dx, dy }` messages using absolute screen
  * coordinates). Tapping the bottom bar (a press with no drag) collapses it.
  */
-export function PluginPageOverlay({ onClose, target }: { onClose: () => void; target: PluginPageTarget }) {
+export function PluginPageOverlay({
+  behavior,
+  onClose,
+  subscribeBehaviorEvents,
+  target,
+}: {
+  behavior?: ChatBehaviorState | null;
+  onClose: () => void;
+  subscribeBehaviorEvents?: (listener: (event: PluginBehaviorEvent) => void, pluginId?: string) => () => void;
+  target: PluginPageTarget;
+}) {
   const { t } = useI18n();
   const [size, setSize] = useState<Size>(viewportSize);
   const [pos, setPos] = useState<Pos>(() => initialPosition(viewportSize()));
@@ -69,10 +81,14 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
   const suppressClickRef = useRef(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const frameLoadedRef = useRef(false);
+  const hadPluginBehaviorRef = useRef(false);
+  const pendingEventsRef = useRef<PluginBehaviorEvent[]>([]);
 
   useEffect(() => {
     let active = true;
     frameLoadedRef.current = false;
+    hadPluginBehaviorRef.current = false;
+    pendingEventsRef.current = [];
     setPage(null);
     setPageError(false);
     void getPluginUiDetail(target.pluginId)
@@ -102,32 +118,117 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
     };
   }, [target.pageId, target.pluginId]);
 
+  const postToPluginFrame = useCallback(
+    (message: Record<string, unknown>) => {
+      const frameWindow = frameRef.current?.contentWindow;
+      if (!frameWindow || !page) {
+        return false;
+      }
+      try {
+        const targetOrigin = new URL(page.src, window.location.href).origin;
+        frameWindow.postMessage(
+          {
+            __shinsekai: "plugin-page",
+            ...message,
+          },
+          targetOrigin,
+        );
+        return true;
+      } catch {
+        // A malformed page URL is handled by the iframe load/error state.
+        return false;
+      }
+    },
+    [page],
+  );
+
   const postPresentation = useCallback(() => {
-    const frameWindow = frameRef.current?.contentWindow;
-    if (!frameWindow || !page || !target.presentationId) {
+    if (!target.presentationId) {
       return;
     }
-    try {
-      const targetOrigin = new URL(page.src, window.location.href).origin;
-      frameWindow.postMessage(
-        {
-          __shinsekai: "plugin-page",
-          payload: target.payload ?? {},
-          presentationId: target.presentationId,
-          type: "present",
-        },
-        targetOrigin,
-      );
-    } catch {
-      // A malformed page URL is handled by the iframe load/error state.
+    postToPluginFrame({
+      payload: target.payload ?? {},
+      presentationId: target.presentationId,
+      type: "present",
+    });
+  }, [postToPluginFrame, target.payload, target.presentationId]);
+
+  const postBehaviorState = useCallback(() => {
+    if (!frameLoadedRef.current) {
+      return;
     }
-  }, [page, target.payload, target.presentationId]);
+    if (behavior && behavior.pluginId === target.pluginId) {
+      hadPluginBehaviorRef.current = true;
+      postToPluginFrame({
+        behavior,
+        type: "behavior.state",
+      });
+      return;
+    }
+    if (!behavior && hadPluginBehaviorRef.current) {
+      hadPluginBehaviorRef.current = false;
+      postToPluginFrame({
+        behavior: null,
+        type: "behavior.state",
+      });
+    }
+  }, [behavior, postToPluginFrame, target.pluginId]);
+
+  const postBehaviorEvent = useCallback(
+    (event: PluginBehaviorEvent) => {
+      if (event.pluginId !== target.pluginId) {
+        return;
+      }
+      if (
+        !frameLoadedRef.current ||
+        !postToPluginFrame({
+          eventType: event.eventType,
+          payload: event.payload,
+          pluginId: event.pluginId,
+          seq: event.seq,
+          type: "behavior.event",
+        })
+      ) {
+        const queue = pendingEventsRef.current;
+        queue.push(event);
+        if (queue.length > MAX_PENDING_BEHAVIOR_EVENTS) {
+          queue.shift();
+        }
+      }
+    },
+    [postToPluginFrame, target.pluginId],
+  );
+
+  const flushPendingBehaviorEvents = useCallback(() => {
+    if (!frameLoadedRef.current || !pendingEventsRef.current.length) {
+      return;
+    }
+    const queued = pendingEventsRef.current.splice(0);
+    for (const event of queued) {
+      postBehaviorEvent(event);
+    }
+  }, [postBehaviorEvent]);
 
   useEffect(() => {
     if (frameLoadedRef.current) {
       postPresentation();
     }
   }, [postPresentation]);
+
+  useEffect(() => {
+    if (frameLoadedRef.current) {
+      postBehaviorState();
+    }
+  }, [postBehaviorState]);
+
+  useEffect(() => {
+    if (!subscribeBehaviorEvents) {
+      return;
+    }
+    return subscribeBehaviorEvents((event) => {
+      postBehaviorEvent(event);
+    }, target.pluginId);
+  }, [postBehaviorEvent, subscribeBehaviorEvents, target.pluginId]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -241,6 +342,8 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
           onLoad={() => {
             frameLoadedRef.current = true;
             postPresentation();
+            postBehaviorState();
+            flushPendingBehaviorEvents();
           }}
         />
       ) : (

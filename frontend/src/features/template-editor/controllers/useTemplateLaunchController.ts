@@ -187,6 +187,8 @@ export function useTemplateLaunchController({
             ...synchronizeChatLaunchPayloadWithSession(
               buildChatLaunchPayload({
                 backgroundName: session.background,
+                behaviorConfig: session.behaviorConfig,
+                behaviorId: session.behaviorId,
                 effectNames: session.effectNames,
                 mobileAccessEnabled: Boolean(session.enableMobileAccess),
                 mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
@@ -268,6 +270,8 @@ export function useTemplateLaunchController({
       autoOutfitSwitch: state.autoOutfitSwitch,
       backgroundName: state.selectedBackground,
       baseScenario: state.baseScenario,
+      behaviorConfig: state.behaviorConfig,
+      behaviorId: state.behaviorId,
       characterPromptMode: state.characterPromptMode ?? "full",
       draft: summaryDraft,
       effectNames: state.selectedEffects,

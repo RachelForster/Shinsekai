@@ -16,6 +16,7 @@ import type {
 export const pluginCatalogQueryKey = ["plugins", "catalog"] as const;
 export const pluginLoadStatusQueryKey = ["plugins", "status"] as const;
 export const pluginsQueryKey = ["plugins"] as const;
+export const pluginSessionBehaviorsQueryKey = ["plugins", "session-behaviors"] as const;
 export const pluginSlotContributionsQueryKey = ["plugins", "slot-contributions"] as const;
 export const mcpConfigQueryKey = ["plugins", "mcp", "config"] as const;
 
@@ -29,6 +30,10 @@ export function listPlugins() {
 
 export function getPluginLoadStatus() {
   return getPlatform().plugins.status();
+}
+
+export function listPluginSessionBehaviors() {
+  return getPlatform().plugins.listSessionBehaviors();
 }
 
 export function listPluginSlotContributions() {

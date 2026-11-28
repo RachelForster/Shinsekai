@@ -196,6 +196,10 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     eventSeq: nextEventSeq,
     inputAttachments: state.inputAttachments,
     inputDraft: state.inputDraft || snapshot.inputDraft,
+    pluginBehaviorEvents: (snapshot.pluginBehaviorEvents ?? []).map((item) => ({
+      ...item,
+      payload: { ...(item.payload ?? {}) },
+    })),
     pluginPagePresentations: (snapshot.pluginPagePresentations ?? []).map((presentation) => ({
       ...presentation,
       payload: { ...presentation.payload },

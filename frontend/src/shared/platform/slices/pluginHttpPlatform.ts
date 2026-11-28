@@ -11,6 +11,7 @@ import type {
   PluginLoadStatus,
   PluginLocalScanResult,
   PluginManifest,
+  PluginSessionBehaviorContribution,
   PluginSlotActionResult,
   PluginSlotContribution,
   PluginsPlatform,
@@ -52,6 +53,12 @@ export function createPluginsHttpPlatform(transport: HttpTransport): PluginsPlat
     },
     getUi: (id) => requestJson<PluginUIDetail>(`/api/plugins/${encodePath(id)}/ui`),
     list: () => requestJson<PluginManifest[]>("/api/plugins"),
+    async listSessionBehaviors() {
+      const result = await requestJson<{ behaviors?: PluginSessionBehaviorContribution[] }>(
+        "/api/plugins/session-behaviors",
+      );
+      return Array.isArray(result?.behaviors) ? result.behaviors : [];
+    },
     listSlotContributions: () => requestJson<PluginSlotContribution[]>("/api/plugins/chat-ui-contributions"),
     status: () => requestJson<PluginLoadStatus>("/api/plugins/status"),
     async repoTags(repo) {

@@ -2212,6 +2212,24 @@ describe("http platform", () => {
     );
   });
 
+  it("lists plugin session behavior contributions", async () => {
+    const behaviors = [
+      {
+        behaviorId: "werewolf",
+        defaultConfig: { playerCount: 6 },
+        description: "Social deduction",
+        name: "Werewolf",
+        pluginId: "demo.werewolf",
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValueOnce(await mockJsonResponse({ behaviors }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.plugins.listSessionBehaviors()).resolves.toEqual(behaviors);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/plugins/session-behaviors", expect.any(Object));
+  });
+
   it("reads and saves plugin UI config through the bridge", async () => {
     const detail = {
       pages: [

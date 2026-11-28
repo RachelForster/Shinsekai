@@ -319,6 +319,14 @@ export interface PluginUIDetail {
   plugin: PluginManifest;
 }
 
+export interface PluginSessionBehaviorContribution {
+  behaviorId: string;
+  defaultConfig: Record<string, unknown>;
+  description: string;
+  name: string;
+  pluginId: string;
+}
+
 export interface PluginConfigSaveResult {
   message: string;
   page: PluginUIPage;
@@ -346,6 +354,7 @@ export interface PluginsPlatform {
   ) => Promise<PluginManifest>;
   getUi: (id: string) => Promise<PluginUIDetail>;
   list: () => Promise<PluginManifest[]>;
+  listSessionBehaviors: () => Promise<PluginSessionBehaviorContribution[]>;
   listSlotContributions: () => Promise<PluginSlotContribution[]>;
   status: () => Promise<PluginLoadStatus>;
   repoTags: (repo: string) => Promise<string[]>;

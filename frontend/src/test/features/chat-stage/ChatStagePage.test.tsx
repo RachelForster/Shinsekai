@@ -96,12 +96,28 @@ vi.mock("../../../shared/plugin/PluginSlot", () => ({
     ) : null,
 }));
 
+const overlayBehaviorMocks = vi.hoisted(() => ({
+  events: [] as Array<{ eventType: string; payload: Record<string, unknown>; pluginId: string; seq: number }>,
+  reset() {
+    this.events = [];
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+  },
+  unsubscribe: null as (() => void) | null,
+}));
+
 vi.mock("../../../features/chat-stage/components/PluginPageOverlay", () => ({
   PluginPageOverlay: ({
+    behavior,
     onClose,
+    subscribeBehaviorEvents,
     target,
   }: {
+    behavior?: { behaviorId: string; pluginId?: string } | null;
     onClose: () => void;
+    subscribeBehaviorEvents?: (
+      listener: (event: { eventType: string; payload: Record<string, unknown>; pluginId: string; seq: number }) => void,
+    ) => () => void;
     target: {
       pageId: string;
       payload?: Record<string, unknown>;
@@ -109,9 +125,24 @@ vi.mock("../../../features/chat-stage/components/PluginPageOverlay", () => ({
       presentationId?: string;
     };
   }) => (
-    <section aria-label="Plugin page overlay">
+    <section
+      aria-label="Plugin page overlay"
+      data-behavior={behavior ? `${behavior.pluginId ?? ""}:${behavior.behaviorId}` : ""}
+    >
       <span>{`${target.pluginId}:${target.pageId}`}</span>
       {target.presentationId ? <span>{`${target.presentationId}:${JSON.stringify(target.payload)}`}</span> : null}
+      <button
+        onClick={() => {
+          overlayBehaviorMocks.unsubscribe?.();
+          overlayBehaviorMocks.unsubscribe =
+            subscribeBehaviorEvents?.((event) => {
+              overlayBehaviorMocks.events.push(event);
+            }) ?? null;
+        }}
+        type="button"
+      >
+        Subscribe behavior
+      </button>
       <button onClick={onClose} type="button">
         Close overlay
       </button>
@@ -745,6 +776,233 @@ describe("ChatStagePage", () => {
       }),
     );
     expect(screen.queryByLabelText("Plugin page overlay")).not.toBeInTheDocument();
+  });
+
+  it("forwards behavior.state.replace and plugin.behavior.event to active PluginPageOverlay", async () => {
+    overlayBehaviorMocks.reset();
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((callback: (event: ChatStageEvent) => void) => {
+      listener = callback;
+      return vi.fn();
+    });
+    renderPage(["/chat-stage"]);
+    await screen.findByText("Ready");
+
+    act(() => {
+      listener?.({
+        mode: "overlay",
+        pageId: "dashboard",
+        payload: {},
+        pluginId: "demo.plugin",
+        presentationId: "board-1",
+        seq: 1,
+        ts: 1,
+        type: "plugin.page.present",
+        v: 1,
+      });
+    });
+
+    const overlay = await screen.findByLabelText("Plugin page overlay");
+    fireEvent.click(within(overlay).getByRole("button", { name: "Subscribe behavior" }));
+
+    act(() => {
+      listener?.({
+        behavior: {
+          behaviorId: "werewolf",
+          hud: { phase: "night" },
+          pluginId: "demo.plugin",
+          stagePolicy: {
+            allowFreeTextInterject: true,
+            allowUnboundSpeakers: true,
+            hideInputLayer: false,
+            playbackEndAction: "idle",
+          },
+          stateVersion: 1,
+        },
+        seq: 2,
+        ts: 2,
+        type: "behavior.state.replace",
+        v: 1,
+      });
+      listener?.({
+        eventType: "phase.changed",
+        payload: { phase: "day" },
+        pluginId: "demo.plugin",
+        seq: 3,
+        ts: 3,
+        type: "plugin.behavior.event",
+        v: 1,
+      });
+      listener?.({
+        eventType: "stale.ignored",
+        payload: {},
+        pluginId: "demo.plugin",
+        seq: 2,
+        ts: 4,
+        type: "plugin.behavior.event",
+        v: 1,
+      });
+    });
+
+    expect(overlay).toHaveAttribute("data-behavior", "demo.plugin:werewolf");
+    expect(overlayBehaviorMocks.events).toEqual([
+      {
+        eventType: "phase.changed",
+        payload: { phase: "day" },
+        pluginId: "demo.plugin",
+        seq: 3,
+      },
+    ]);
+    overlayBehaviorMocks.reset();
+  });
+
+  it("queues pre-subscription behavior events, replays missed outbox events from snapshots, and resets watermark per session", async () => {
+    overlayBehaviorMocks.reset();
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((callback: (event: ChatStageEvent) => void) => {
+      listener = callback;
+      return vi.fn();
+    });
+    renderPage(["/chat-stage"]);
+    await screen.findByText("Ready");
+
+    // 1. Present overlay and emit a behavior event before the overlay subscribes.
+    act(() => {
+      listener?.({
+        mode: "overlay",
+        pageId: "dashboard",
+        payload: {},
+        pluginId: "demo.plugin",
+        presentationId: "board-1",
+        seq: 10,
+        ts: 10,
+        type: "plugin.page.present",
+        v: 1,
+      });
+      listener?.({
+        eventType: "queued.before.subscribe",
+        payload: { round: 1 },
+        pluginId: "demo.plugin",
+        seq: 11,
+        ts: 11,
+        type: "plugin.behavior.event",
+        v: 1,
+      });
+    });
+
+    const overlay = await screen.findByLabelText("Plugin page overlay");
+    fireEvent.click(within(overlay).getByRole("button", { name: "Subscribe behavior" }));
+
+    expect(overlayBehaviorMocks.events).toEqual([
+      {
+        eventType: "queued.before.subscribe",
+        payload: { round: 1 },
+        pluginId: "demo.plugin",
+        seq: 11,
+      },
+    ]);
+
+    // 2. Snapshot gap recovery replays missed seq 99 below live seq 100 without duplicating seq 11.
+    act(() => {
+      listener?.({
+        color: "#ffffff",
+        fullHtml: "<p>s1</p>",
+        isSystem: false,
+        seq: 100,
+        speaker: "Alice",
+        ts: 100,
+        type: "dialog.end",
+        v: 1,
+      });
+    });
+    act(() => {
+      listener?.({
+        seq: 100,
+        snapshot: snapshot({
+          dialogText: "s1",
+          eventSeq: 100,
+          pluginBehaviorEvents: [
+            {
+              eventType: "queued.before.subscribe",
+              payload: { round: 1 },
+              pluginId: "demo.plugin",
+              seq: 11,
+            },
+            {
+              eventType: "recovered.from.snapshot",
+              payload: { missed: true },
+              pluginId: "demo.plugin",
+              seq: 99,
+            },
+          ],
+          pluginPagePresentations: [
+            {
+              mode: "overlay",
+              pageId: "dashboard",
+              payload: {},
+              pluginId: "demo.plugin",
+              presentationId: "board-1",
+            },
+          ],
+          sessionId: "s1",
+        }),
+        ts: 101,
+        type: "snapshot",
+        v: 1,
+      });
+    });
+
+    expect(overlayBehaviorMocks.events).toHaveLength(2);
+    expect(overlayBehaviorMocks.events[1]).toEqual({
+      eventType: "recovered.from.snapshot",
+      payload: { missed: true },
+      pluginId: "demo.plugin",
+      seq: 99,
+    });
+
+    // 3. Ordinary snapshot for a new session resets watermark from seq 100 down to 1 so s2 seq 2 arrives.
+    act(() => {
+      listener?.({
+        seq: 1,
+        snapshot: snapshot({
+          dialogText: "s2",
+          eventSeq: 1,
+          pluginPagePresentations: [
+            {
+              mode: "overlay",
+              pageId: "dashboard",
+              payload: {},
+              pluginId: "demo.plugin",
+              presentationId: "board-1",
+            },
+          ],
+          sessionId: "s2",
+        }),
+        ts: 200,
+        type: "snapshot",
+        v: 1,
+      });
+    });
+    act(() => {
+      listener?.({
+        eventType: "new.session.event",
+        payload: { fresh: true },
+        pluginId: "demo.plugin",
+        seq: 2,
+        ts: 201,
+        type: "plugin.behavior.event",
+        v: 1,
+      });
+    });
+
+    expect(overlayBehaviorMocks.events).toHaveLength(3);
+    expect(overlayBehaviorMocks.events[2]).toEqual({
+      eventType: "new.session.event",
+      payload: { fresh: true },
+      pluginId: "demo.plugin",
+      seq: 2,
+    });
+    overlayBehaviorMocks.reset();
   });
 
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {

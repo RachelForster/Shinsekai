@@ -292,6 +292,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
       return delay(plugin, 400);
     },
     list: () => delay(plugins),
+    listSessionBehaviors: () => Promise.resolve([]),
     listSlotContributions: () =>
       delay(
         plugins.some((plugin) => plugin.id === "core-tools" && plugin.enabled)

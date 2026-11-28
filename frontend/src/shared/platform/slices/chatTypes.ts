@@ -2,7 +2,7 @@ import type { ChatThemePayload } from "../../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../theme/chatTheme";
 import type { StoryDocument, StoryEditInput, StorySuggestion, StorySuggestionInput } from "../storyEditorTypes";
 import type { StoryGenerationPreview } from "../storyPreviewTypes";
-import type { ChatBehaviorChoiceOption, ChatBehaviorState } from "./behaviorTypes";
+import type { ChatBehaviorChoiceOption, ChatBehaviorState, PluginBehaviorEvent } from "./behaviorTypes";
 import type { PlayerPortrait, PortraitCrop, SpriteTransitionMedia } from "./characterTypes";
 import type { PerceptionRuntimeState } from "./perceptionTypes";
 import type { PluginPagePresentation } from "./pluginTypes";
@@ -56,6 +56,7 @@ export interface ConversationSummary {
 export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   behaviorId?: string;
+  behaviorConfig?: Record<string, unknown>;
   novelDocId?: string;
   nameMode?: NovelNameMode;
   casting?: Record<string, unknown>;
@@ -410,6 +411,7 @@ export interface ChatSnapshot {
   numericInfo?: string;
   notificationText?: string;
   options: ChatOption[];
+  pluginBehaviorEvents?: PluginBehaviorEvent[];
   pluginPagePresentations?: PluginPagePresentation[];
   runtimeDependencyError?: RuntimeDependencyError;
   runtimeMode?: "native" | "react";
@@ -554,6 +556,12 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
   | (ChatEventBase & PluginPagePresentation & { type: "plugin.page.present" })
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
+  | (ChatEventBase & {
+      type: "plugin.behavior.event";
+      pluginId: string;
+      eventType: string;
+      payload: Record<string, unknown>;
+    })
   | (ChatEventBase & {
       type: "sprite.show";
       mouthSync?: string;

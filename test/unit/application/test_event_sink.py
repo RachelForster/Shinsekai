@@ -653,6 +653,59 @@ class EventSinkSnapshotTests(unittest.TestCase):
 
         self.assertEqual(dismissed["pluginPagePresentations"], [])
 
+    def test_plugin_behavior_events_fold_into_bounded_outbox_and_clear_on_close(self):
+        snapshot = make_empty_chat_snapshot()
+        for seq in range(1, 36):
+            snapshot = fold_event_into_snapshot(
+                snapshot,
+                {
+                    "eventType": "phase.changed",
+                    "payload": {"step": seq},
+                    "pluginId": "demo.plugin",
+                    "seq": seq,
+                    "ts": seq,
+                    "type": "plugin.behavior.event",
+                    "v": 1,
+                },
+            )
+        # Re-folding the same seq updates/deduplicates rather than duplicating.
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "eventType": "phase.changed",
+                "payload": {"step": 35, "revised": True},
+                "pluginId": "demo.plugin",
+                "seq": 35,
+                "ts": 36,
+                "type": "plugin.behavior.event",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(len(snapshot["pluginBehaviorEvents"]), 32)
+        self.assertEqual(snapshot["pluginBehaviorEvents"][0]["seq"], 4)
+        self.assertEqual(
+            snapshot["pluginBehaviorEvents"][-1],
+            {
+                "eventType": "phase.changed",
+                "payload": {"step": 35, "revised": True},
+                "pluginId": "demo.plugin",
+                "seq": 35,
+            },
+        )
+
+        closed = fold_event_into_snapshot(
+            snapshot,
+            {
+                "reason": "done",
+                "seq": 37,
+                "ts": 37,
+                "type": "session.closed",
+                "v": 1,
+            },
+        )
+        self.assertEqual(closed["pluginBehaviorEvents"], [])
+
     def test_background_transition_and_sprite_motions_fold_with_expiry_and_reset(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),

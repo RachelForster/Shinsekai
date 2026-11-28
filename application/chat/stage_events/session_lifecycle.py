@@ -97,6 +97,12 @@ def _fold_snapshot(
         merged["spriteMotions"] = dict(merged["spriteMotions"])
     else:
         merged["spriteMotions"] = {}
+    if isinstance(merged.get("pluginBehaviorEvents"), list):
+        merged["pluginBehaviorEvents"] = [
+            dict(item) for item in merged["pluginBehaviorEvents"] if isinstance(item, dict)
+        ][-32:]
+    else:
+        merged["pluginBehaviorEvents"] = []
     if "eventSeq" not in merged:
         try:
             merged["eventSeq"] = int(event.get("seq") or 0)
@@ -148,6 +154,7 @@ def _fold_session_closed(
     next_snapshot["notificationText"] = reason
     next_snapshot["options"] = []
     next_snapshot["perception"] = None
+    next_snapshot["pluginBehaviorEvents"] = []
     next_snapshot["pluginPagePresentations"] = []
     next_snapshot["sessionClosedReason"] = reason
     next_snapshot["spriteMotions"] = {}

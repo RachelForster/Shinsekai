@@ -76,6 +76,8 @@ export async function getConversationSession(id: string): Promise<TemplateLaunch
     selectedCharacters: payload.characters,
     templateFileDropdown: payload.templateId,
     useCg: payload.useCg ?? false,
+    ...(options.behaviorId ? { behaviorId: options.behaviorId } : {}),
+    ...(options.behaviorConfig ? { behaviorConfig: options.behaviorConfig } : {}),
   };
 }
 export const chatRuntimeStatusQueryKey = ["chat", "runtime-status"] as const;

@@ -12,6 +12,7 @@ import type {
   MediaSelectionMode,
   MemoryMode,
   MobileAccessInfo,
+  PluginSessionBehaviorContribution,
   TaskSnapshot,
   UserPromptPreset,
 } from "../../shared/platform/types";
@@ -103,6 +104,8 @@ export interface TemplateEditorContext {
   autoOutfitSwitch: boolean;
   backgroundOptions: string[];
   baseScenario: string;
+  behaviorConfig: Record<string, unknown>;
+  behaviorId: string;
   characterByName: Map<string, Character>;
   characterDialogError: string;
   characterDialogOpen: boolean;
@@ -169,10 +172,12 @@ export interface TemplateEditorContext {
   savePresetsPending: boolean;
   saveTemplate: () => void;
   scenarioStatusKey: "template.bar.scenarioEmpty" | "template.bar.scenarioDefault" | "template.bar.scenarioCustom";
+  selectBehaviorId: (nextId: string) => void;
   selectedBackground: string;
   selectedCharacterRecords: Character[];
   selectedCharacters: string[];
   selectedEffectNames: Set<string>;
+  sessionBehaviors: PluginSessionBehaviorContribution[];
   sessionDraftActive: boolean;
   sessionRestored: boolean;
   setAutoOutfitSwitch: Dispatch<SetStateAction<boolean>>;

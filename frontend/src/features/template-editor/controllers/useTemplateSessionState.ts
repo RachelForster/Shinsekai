@@ -40,6 +40,7 @@ import {
   toAppliedPresets,
 } from "../userPromptPresets";
 import { useTemplateRestoreEffects } from "./useTemplateRestoreEffects";
+import { useTemplateSessionBehavior } from "./useTemplateSessionBehavior";
 
 interface UseTemplateSessionStateOptions {
   conversationId?: string;
@@ -126,6 +127,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
   const [initialOutfits, setInitialOutfits] = useState<Record<string, string>>({});
   const [historyPath, setHistoryPath] = useState("");
   const [roomId, setRoomId] = useState("");
+  const sessionBehavior = useTemplateSessionBehavior();
   const [systemManuallyEdited, setSystemManuallyEdited] = useState(false);
   const [manualBaseKey, setManualBaseKey] = useState("");
 
@@ -246,6 +248,8 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     sessionRestored,
     setAllowPlayerDialogue,
     setAutoOutfitSwitch,
+    setBehaviorConfig: sessionBehavior.setBehaviorConfig,
+    setBehaviorId: sessionBehavior.setBehaviorId,
     setCharacterPromptMode,
     setDraft,
     setHistoryPath,
@@ -366,6 +370,8 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     autoOutfitSwitch,
     backgroundOptions,
     baseScenario,
+    behaviorConfig: sessionBehavior.behaviorConfig,
+    behaviorId: sessionBehavior.behaviorId,
     characterByName,
     characterDialogError,
     characterDialogOpen,
@@ -413,6 +419,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     restoredSessionBackgroundRef,
     runtimeOptionsState,
     scenarioForSelectedCharacters,
+    selectBehaviorId: sessionBehavior.selectBehaviorId,
     selected,
     selectedBackground,
     selectedCharacterRecords,
@@ -421,10 +428,13 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     selectedEffectNames,
     selectedEffects,
     selectedId,
+    sessionBehaviors: sessionBehavior.sessionBehaviors,
     sessionDraftActive,
     sessionRestored,
     setAllowPlayerDialogue,
     setAutoOutfitSwitch,
+    setBehaviorConfig: sessionBehavior.setBehaviorConfig,
+    setBehaviorId: sessionBehavior.setBehaviorId,
     setCharacterDialogError,
     setCharacterDialogOpen,
     setCharacterPromptMode,

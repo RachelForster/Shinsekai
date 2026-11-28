@@ -52,6 +52,8 @@ interface UseTemplateRestoreEffectsOptions {
   sessionRestored: boolean;
   setAllowPlayerDialogue: Dispatch<SetStateAction<boolean>>;
   setAutoOutfitSwitch: Dispatch<SetStateAction<boolean>>;
+  setBehaviorConfig: Dispatch<SetStateAction<Record<string, unknown>>>;
+  setBehaviorId: Dispatch<SetStateAction<string>>;
   setCharacterPromptMode: Dispatch<SetStateAction<CharacterPromptMode | undefined>>;
   setDraft: Dispatch<SetStateAction<TemplateSummary>>;
   setHistoryPath: Dispatch<SetStateAction<string>>;
@@ -123,6 +125,8 @@ export function useTemplateRestoreEffects({
   sessionRestored,
   setAllowPlayerDialogue,
   setAutoOutfitSwitch,
+  setBehaviorConfig,
+  setBehaviorId,
   setCharacterPromptMode,
   setDraft,
   setHistoryPath,
@@ -263,6 +267,8 @@ export function useTemplateRestoreEffects({
     setShowInitialSprite(restored.showInitialSprite);
     setMemoryMode(restored.memoryMode);
     setAutoOutfitSwitch(restored.autoOutfitSwitch);
+    setBehaviorId(restored.behaviorId);
+    setBehaviorConfig(restored.behaviorConfig);
     if (restored.initialOutfits) {
       setInitialOutfits(restored.initialOutfits);
     }

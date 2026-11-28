@@ -127,6 +127,8 @@ export interface TemplateLaunchSession extends PlayerCharacterOptions {
   appliedPresets?: AppliedUserPromptPreset[];
   background: string;
   baseScenario?: string;
+  behaviorConfig?: Record<string, unknown>;
+  behaviorId?: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
   effectNames: string[];

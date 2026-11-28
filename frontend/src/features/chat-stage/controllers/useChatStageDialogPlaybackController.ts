@@ -1,7 +1,7 @@
 import { useCallback, type Dispatch } from "react";
 
 import type { MessageKey } from "../../../shared/i18n";
-import type { ChatCommand } from "../../../shared/platform/types";
+import type { ChatCommand, PluginBehaviorEvent } from "../../../shared/platform/types";
 import type { VoicePlaybackSignal } from "../audio/soundPlayer";
 import type { ChatStageAction, ChatStageState, ChatStageViewModel } from "../chatState";
 import type { DialogTypewriterDirection } from "../dialogTypewriter";
@@ -22,6 +22,8 @@ export interface UseChatStageDialogPlaybackControllerOptions {
   longPressTalk: boolean;
   miniAvatarActive: boolean;
   modalOpen: boolean;
+  onPluginBehaviorEvent?: (event: PluginBehaviorEvent) => void;
+  onPluginBehaviorSessionReset?: () => void;
   sendCommand: (command: ChatCommand) => Promise<void>;
   state: ChatStageState;
   t: (key: MessageKey, values?: Record<string, string | number>) => string;
@@ -40,6 +42,8 @@ export function useChatStageDialogPlaybackController({
   longPressTalk,
   miniAvatarActive,
   modalOpen,
+  onPluginBehaviorEvent,
+  onPluginBehaviorSessionReset,
   sendCommand,
   state,
   t,
@@ -96,6 +100,8 @@ export function useChatStageDialogPlaybackController({
     eventSeq: state.eventSeq,
     sessionId: state.sessionId,
     loadFallbackMessage: t("chat.error.loadFallback"),
+    onPluginBehaviorEvent,
+    onPluginBehaviorSessionReset,
     queueAnimatedDialog,
     showDialogImmediately,
   });
