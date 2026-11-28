@@ -2,352 +2,47 @@
 
 from __future__ import annotations
 
-import html
 import logging
-import os
-import re
 import threading
-import time
 from collections import OrderedDict
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 
 if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
-from core.effects import effect_modes, match_effect_label, parse_ambient_directive
-from core.messaging.stage_effects import (
-    character_motion_duration_ms,
-    normalize_character_motion,
-    normalize_scene_transition,
-    scene_transition_duration_ms,
-)
-from core.messaging.stat_payload import parse_stat_payload
-from core.paths import resource_path
-from core.sprite.selection import resolve_runtime_path, sprite_entry_path
-from config.character_assets import get_character_assets
-from config.config_manager import character_name_key
-from application.chat.presentation.character_visual import (
-    image_visual_identity,
-    resolve_character_visual,
-)
 from application.media.resource_urls import ResourceUrls
-from application.chat.history.state import restore_history_voice_ids, serialize_chat_history_entries
+from core.messaging.stage_effects import normalize_scene_transition, scene_transition_duration_ms
+from core.messaging.stat_payload import parse_stat_payload
 
-SOUND_EFFECTS_PATH = {
-    "DISAPPOINTED": "./assets/system/sound/disappointed.wav",
-    "SHOCKED": "./assets/system/sound/shocked.wav",
-    "ATTENTION": "./assets/system/sound/attention.wav",
-}
+from .ambient_controller import StageAmbientController
+from .character_lookup import bind_presentation_character_catalog, get_character_by_name
+from .character_visual import resolve_character_visual
+from .dialog_controller import StageDialogController
+from .effect_controller import StageEffectController
+from .effect_resolution import (
+    IMAGE_EFFECT_DURATION_MS, SOUND_EFFECTS_PATH, find_running_effect_key,
+    match_ambient_asset, same_effect_asset,
+)
+from .formatting import (
+    _format_dialog_html, _format_token_count, _format_user_html,
+    _native_tool_confirmation_options, _safe_css_color, format_context_token_estimate,
+)
+from .headless import HeadlessUIUpdateManager
+from .sprite_controller import StageSpriteController
 
-IMAGE_EFFECT_DURATION_MS = 8_800
-
-_config_manager = None
-_catalog_lock = threading.RLock()
-_bound_character_catalog: Any = None
 logger = logging.getLogger(__name__)
 
 
-def bind_presentation_character_catalog(catalog: Any | None) -> None:
-    """Bind or clear a narrow ``CharacterCatalogPort`` for presentation lookups."""
-    with _catalog_lock:
-        global _bound_character_catalog
-        _bound_character_catalog = catalog
-
-
-def _get_config_manager():
-    global _config_manager
-    if _config_manager is None:
-        from config.config_manager import ConfigManager
-
-        _config_manager = ConfigManager()
-    return _config_manager
-
-
-def get_character_by_name(name: str):
-    with _catalog_lock:
-        catalog = _bound_character_catalog
-    if catalog is not None:
-        get_by_name = getattr(catalog, "get_by_name", None)
-        if callable(get_by_name):
-            found = get_by_name(name)
-            if found is not None:
-                return found
-        folded = str(name or "").strip().casefold()
-        list_all = getattr(catalog, "list_all", None)
-        if folded and callable(list_all):
-            for character in list_all():
-                if str(getattr(character, "name", "")).strip().casefold() == folded:
-                    return character
-        if callable(get_by_name) or callable(list_all):
-            return None
-    try:
-        return _get_config_manager().get_character_by_name(name)
-    except ModuleNotFoundError:
-        return None
-
-
-def _native_tool_confirmation_options(
-    *,
-    confirmation_id: str,
-    tool_name: str,
-    detail: str = "",
-) -> list[dict[str, str]]:
-    from i18n import tr
-
-    confirm_label = tr("tool_confirmation.confirm", tool=tool_name)
-    if detail:
-        confirm_label = f"{confirm_label}\n{detail}"
-    base = {
-        "confirmationId": str(confirmation_id or ""),
-        "kind": "tool-confirmation",
-    }
-    return [
-        {
-            **base,
-            "action": "cancel",
-            "label": tr("common.cancel"),
-        },
-        {
-            **base,
-            "action": "confirm",
-            "label": confirm_label,
-        },
-    ]
-
-
-def _format_token_count(value: Any) -> str:
-    try:
-        count = max(0, int(value or 0))
-    except (TypeError, ValueError):
-        count = 0
-    if count >= 1_000_000:
-        return f"{count / 1_000_000:.1f}m"
-    if count >= 1_000:
-        return f"{count / 1_000:.1f}k"
-    return str(count)
-
-
-def format_context_token_estimate(estimate: Dict[str, Any]) -> str:
-    """Compact one-line token budget status for the desktop overlay."""
-    return (
-        "tokens "
-        f"sys {_format_token_count(estimate.get('system_prompt_tokens'))} | "
-        f"hist {_format_token_count(estimate.get('history_tokens'))} | "
-        f"tools {_format_token_count(estimate.get('tool_definition_tokens'))} | "
-        f"total {_format_token_count(estimate.get('estimated_total_tokens'))}"
-    )
-
-
-def _format_dialog_html(name: str, speech: str, color: str, is_system: bool) -> str:
-    separator = "\uff1a"
-    safe_name = html.escape(str(name or ""), quote=False)
-    safe_speech = html.escape(str(speech or ""), quote=False).replace("\n", "<br>")
-    safe_color = _safe_css_color(color, "#84C2D5" if is_system else "#FFFFFF")
-    if is_system:
-        return (
-            f"<p style='line-height: 135%; letter-spacing: 2px; color:{safe_color};'>"
-            f"<b>{safe_name}</b>{separator}{safe_speech}</p>"
-        )
-    return (
-        f"<p style='line-height: 135%; letter-spacing: 2px;'>"
-        f"<b style='color:{safe_color};'>{safe_name}</b>{separator}{safe_speech}</p>"
-    )
-
-
-def _format_user_html(text: str) -> str:
-    created_at = int(time.time() * 1000)
-    safe_text = html.escape(str(text or ""), quote=False).replace("\n", "<br>")
-    return (
-        f"<p data-created-at='{created_at}' style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-        f"<b style='color:white;'>你</b>: {safe_text}</p>"
-    )
-
-
-def _safe_css_color(value: Any, fallback: str) -> str:
-    color = str(value or "").strip()
-    if re.fullmatch(r"#[0-9A-Fa-f]{3,8}", color):
-        return color
-    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", color):
-        return color
-    if re.fullmatch(r"rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)", color):
-        return color
-    return fallback
-
-
-class HeadlessUIUpdateManager:
-    """Console/no-op UI facade for workflows that run without a desktop window."""
-
-    def __init__(self, chat_history: Optional[MutableSequence[str]] = None) -> None:
-        self.chat_history: MutableSequence[str] = (
-            chat_history if chat_history is not None else []
-        )
-        self.current_bgm_path: Optional[str] = None
-        self.current_background_path: Optional[str] = None
-        self.bg_group: List = []
-        self.user_display_name: str = "你"
-
-    def post_notification(self, text: str) -> None:
-        if text:
-            print(text)
-
-    def post_busy_bar(self, text: str, timeout: float = 0.0) -> None:
-        if text:
-            print(text)
-
-    def hide_busy_bar(self) -> None:
-        pass
-
-    def post_options(self, option_list: List[Any], *, selected_index: int | None = None) -> None:
-        if option_list:
-            print(" / ".join(str(x) for x in option_list))
-
-    def post_tool_confirmation(
-        self,
-        *,
-        confirmation_id: str,
-        tool_name: str,
-        detail: str = "",
-        risk: str = "high",
-    ) -> None:
-        del risk
-        self.post_options(
-            _native_tool_confirmation_options(
-                confirmation_id=confirmation_id,
-                tool_name=tool_name,
-                detail=detail,
-            )
-        )
-
-    def clear_tool_confirmation(self, confirmation_id: str) -> None:
-        del confirmation_id
-        self.post_options([])
-
-    def post_numeric_value(self, text: str) -> None:
-        if text:
-            print(text)
-
-    def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
-        pass
-
-    def post_background(self, path: str, *, transition: str = "") -> None:
-        del transition
-        self.current_background_path = path or None
-        if path:
-            print(f"background: {path}")
-
-    def post_cg(self, path: str) -> None:
-        if path:
-            print(f"cg: {path}")
-
-    def post_llm_reply_finished(self) -> None:
-        pass
-
-    def post_pause_asr(self) -> None:
-        pass
-
-    def post_tts_play(
-        self,
-        character_name: str,
-        audio_path: str,
-        *,
-        playback_id: str = "",
-        volume: float | None = None,
-    ) -> None:
-        pass
-
-    def post_tts_skip(self, *, playback_id: str = "") -> None:
-        pass
-
-    def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
-        self.post_notification(reason)
-
-    def set_user_display_name(self, name: str) -> None:
-        value = str(name or "").strip()
-        if value:
-            self.user_display_name = value
-
-    def set_player_character(self, name: str) -> None:
-        self.player_character = str(name or "").strip()
-        if self.player_character:
-            self.set_user_display_name(self.player_character)
-
-    def update_dialog(
-        self,
-        name: str,
-        speech: str,
-        color: str,
-        is_system: bool = True,
-        voice_id: str = "",
-    ) -> None:
-        formatted = _format_dialog_html(name, speech, color, is_system)
-        if re.fullmatch(r"[0-9a-f]{32}", voice_id):
-            formatted = formatted.replace("<p ", f"<p data-voice-id='{voice_id}' ", 1)
-        if str(speech or "").strip() or str(name or "").strip():
-            self.chat_history.append(formatted)
-            print(f"{name}: {speech}" if name else str(speech or ""))
-
-    def record_user_message(self, text: str) -> None:
-        value = str(text or "").strip()
-        if not value:
-            return
-        self.chat_history.append(_format_user_html(value))
-        try:
-            print(f"你: {value}")
-        except UnicodeEncodeError:
-            print(f"你: {value}".encode("ascii", errors="backslashreplace").decode("ascii"))
-
-    def update_sprite(
-        self,
-        character_name: str,
-        sprite_id: int | None,
-        *,
-        slot: int | None = None,
-        display_name: str = "",
-    ) -> None:
-        pass
-
-    def post_sprite_reaction(
-        self,
-        character_name: str,
-        text: str,
-        *,
-        duration_ms: int = 3600,
-    ) -> None:
-        pass
-
-    def post_sprite_motion(self, character_name: str, motion: str) -> None:
-        pass
-
-    def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
-        pass
-
-    def switch_bgm(self, new_bgm_path: str) -> None:
-        self.current_bgm_path = new_bgm_path or None
-        if new_bgm_path:
-            print(f"bgm: {new_bgm_path}")
-
-    def resolve_effect(self, *args: Any, **kwargs: Any) -> bool:
-        return False
-
 class StreamingUIUpdateManager(HeadlessUIUpdateManager):
-    """把演出输出序列化成 chat stage 事件流的无 Qt 实现（M0 占位骨架）。
+    """Streaming event presenter delegating dialog, sprite, ambient, and effect controllers."""
 
-    复刻已退役桌面 presenter 的下行契约：生产者（application handlers 的
-    ``*UiHandler`` 等）照旧调用 ``post_*``/``update_*``，本类把每次调用翻译成事件 dict
-    并 ``emit`` 到 ``ChatEventSink``。详见设计文档"演出方法→事件映射"表。
-
-    M0：事件映射搭好骨架；立绘 URL 转换、CG 显隐区分、token 估算等在 M2 补全。
-    """
+    _find_running_effect_key = staticmethod(find_running_effect_key)
+    _same_loop_asset = staticmethod(same_effect_asset)
+    _match_ambient_asset = staticmethod(match_ambient_asset)
 
     def __init__(
-        self,
-        sink: "ChatEventSink",
-        chat_history: Optional[MutableSequence[str]] = None,
-        bg_group: Optional[List] = None,
-        max_sprite_slots: int = 3,
-        *,
-        resource_urls: ResourceUrls,
+        self, sink: "ChatEventSink", chat_history: Optional[MutableSequence[str]] = None,
+        bg_group: Optional[List] = None, max_sprite_slots: int = 3, *, resource_urls: ResourceUrls,
     ) -> None:
         super().__init__(chat_history=chat_history)
         if not isinstance(resource_urls, ResourceUrls):
@@ -355,21 +50,48 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sink = sink
         self._resource_urls = resource_urls
         self.bg_group = list(bg_group or [])
-        try:
-            normalized_slot_count = int(max_sprite_slots)
-        except (TypeError, ValueError):
-            normalized_slot_count = 3
-        self.max_sprite_slots = max(1, normalized_slot_count)
-        self._sprite_lru: OrderedDict[str, int] = OrderedDict()
         self._background_url = ""
-        self._looping_effects: dict[str, str] = {}
-        self._ambient_effects: dict[str, dict[str, str]] = {}
-        self._ambient_aliases: dict[str, str] = {}
         self.audio_playback_owner = "frontend"
         self._notification_lock = threading.Lock()
         self._notification_version = 0
-        self._history_sync_lock = threading.Lock()
         self._presentation_emit_lock = threading.RLock()
+
+        # Pass module-level lookups through lambdas so tests patching attributes on
+        # ``application.chat.presentation.updates`` or methods on this instance keep working.
+        self._sprites = StageSpriteController(
+            emit=self._emit, resource_urls=resource_urls, max_sprite_slots=max_sprite_slots,
+            character_lookup=lambda name: get_character_by_name(name),
+            visual_resolver=lambda ch, sid, urls: resolve_character_visual(ch, sid, urls),
+        )
+        self.max_sprite_slots = self._sprites.max_sprite_slots
+        self._ambient = StageAmbientController(emit=self._emit, media_url=self._media_url)
+        self._effects = StageEffectController(
+            emit=self._emit, media_url=self._media_url,
+            remove_sprite=lambda name: self.remove_character_sprite(name), ambient=self._ambient,
+        )
+        self._dialog = StageDialogController(
+            emit=self._emit, chat_history_getter=lambda: self.chat_history,
+            voice_archive_getter=lambda: getattr(self, "voice_archive", None),
+            player_character_getter=lambda: str(getattr(self, "player_character", "") or ""),
+            show_player_portrait=lambda name, sid: self.update_player_portrait(name, sid),
+            record_console_user_message=super().record_user_message,
+        )
+
+    @property
+    def _sprite_lru(self) -> OrderedDict[str, int]:
+        return self._sprites.sprite_lru
+
+    @property
+    def _looping_effects(self) -> dict[str, str]:
+        return self._effects.looping_effects
+
+    @property
+    def _ambient_effects(self) -> dict[str, dict[str, str]]:
+        return self._ambient.ambient_effects
+
+    @property
+    def _ambient_aliases(self) -> dict[str, str]:
+        return self._ambient.ambient_aliases
 
     def _emit(self, event: dict) -> None:
         with self._presentation_emit_lock:
@@ -379,46 +101,16 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                     recorder.observe(event)
                 except (OSError, ValueError):
                     # Optional replay storage must not interrupt the live performance.
-                    import logging
-                    logging.getLogger(__name__).warning("Could not save replay frame", exc_info=True)
+                    logger.warning("Could not save replay frame", exc_info=True)
             self._sink.emit(event)
-
-    def _get_or_create_sprite_slot(self, character_name: str) -> int:
-        """Mirror the legacy Qt SpritePanel character-to-slot LRU."""
-        if character_name in self._sprite_lru:
-            slot = self._sprite_lru.pop(character_name)
-            self._sprite_lru[character_name] = slot
-            return slot
-
-        used_slots = set(self._sprite_lru.values())
-        if len(used_slots) < self.max_sprite_slots:
-            slot = next(index for index in range(self.max_sprite_slots) if index not in used_slots)
-        else:
-            _oldest_character, slot = self._sprite_lru.popitem(last=False)
-        self._sprite_lru[character_name] = slot
-        return slot
 
     def _media_url(self, raw_path: str) -> str:
         return self._resource_urls.media_url(raw_path)
 
     def sync_history_entries(self) -> None:
-        # Completion and presentation run on different workers. Publish snapshots
-        # in order so a pending snapshot cannot overwrite the completion update.
-        with self._history_sync_lock:
-            archive = getattr(self, "voice_archive", None)
-            if archive is not None:
-                restore_history_voice_ids(self.chat_history, archive.voice_for_dialog)
-            entries = serialize_chat_history_entries(list(self.chat_history))
-            for entry in entries:
-                if entry.get("voiceId") and (archive is None or not archive.has_voice(entry["voiceId"])):
-                    entry.pop("voiceId", None)
-            self._emit({
-                "type": "history.replace",
-                "entries": entries,
-                "voiceArchiveEnabled": bool(archive and archive.enabled),
-            })
+        self._dialog.sync_history_entries()
 
-    # --- 低层 post_* → 事件 ---
+    # --- Low-level stage state notifications ---
 
     def post_notification(self, text: str) -> None:
         with self._notification_lock:
@@ -447,41 +139,28 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_options(self, option_list: List[Any], *, selected_index: int | None = None) -> None:
         options = [str(x) for x in (option_list or [])]
         if options:
-            self._emit({
-                "type": "options.show", "options": options,
-                **({"selectedIndex": selected_index} if selected_index is not None else {}),
-            })
+            payload: dict[str, Any] = {"type": "options.show", "options": options}
+            if selected_index is not None:
+                payload["selectedIndex"] = selected_index
+            self._emit(payload)
         else:
             self._emit({"type": "options.clear"})
         if not getattr(self, "replay_active", False):
             self.sync_history_entries()
 
     def post_tool_confirmation(
-        self,
-        *,
-        confirmation_id: str,
-        tool_name: str,
-        detail: str = "",
-        risk: str = "high",
+        self, *, confirmation_id: str, tool_name: str, detail: str = "", risk: str = "high"
     ) -> None:
-        normalized_risk = "medium" if str(risk).casefold() == "medium" else "high"
-        self._emit(
-            {
-                "type": "tool.confirmation.show",
-                "confirmationId": str(confirmation_id or ""),
-                "detail": str(detail or ""),
-                "risk": normalized_risk,
-                "toolName": str(tool_name or ""),
-            }
-        )
+        self._emit({
+            "type": "tool.confirmation.show",
+            "confirmationId": str(confirmation_id or ""),
+            "detail": str(detail or ""),
+            "risk": "medium" if str(risk).casefold() == "medium" else "high",
+            "toolName": str(tool_name or ""),
+        })
 
     def clear_tool_confirmation(self, confirmation_id: str) -> None:
-        self._emit(
-            {
-                "type": "tool.confirmation.clear",
-                "confirmationId": str(confirmation_id or ""),
-            }
-        )
+        self._emit({"type": "tool.confirmation.clear", "confirmationId": str(confirmation_id or "")})
 
     def post_numeric_value(self, text: str) -> None:
         stats = parse_stat_payload(text)
@@ -494,16 +173,14 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_background(self, path: str, *, transition: str = "") -> None:
         url = self._media_url(path)
         if url != self._background_url:
-            self._sprite_lru.clear()
+            self._sprites.clear_slots()
         self._background_url = url
         self.current_background_path = path or None
         payload: dict[str, Any] = {"type": "background.change", "url": url}
         normalized_transition = normalize_scene_transition(transition)
         if normalized_transition:
             payload["transition"] = normalized_transition
-            payload["transitionDurationMs"] = scene_transition_duration_ms(
-                normalized_transition
-            )
+            payload["transitionDurationMs"] = scene_transition_duration_ms(normalized_transition)
         self._emit(payload)
 
     def switch_bgm(self, new_bgm_path: str) -> None:
@@ -512,10 +189,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._emit({"type": "bgm.change", "url": self._media_url(path)})
 
     def post_cg(self, path: str) -> None:
-        if path:
-            self._emit({"type": "cg.show", "url": self._media_url(path)})
-        else:
-            self._emit({"type": "cg.hide"})
+        self._emit({"type": "cg.show", "url": self._media_url(path)} if path else {"type": "cg.hide"})
 
     def post_llm_reply_finished(self) -> None:
         self._emit({"type": "reply.finished"})
@@ -525,12 +199,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._emit({"type": "asr.state", "running": False})
 
     def post_tts_play(
-        self,
-        character_name: str,
-        audio_path: str,
-        *,
-        playback_id: str = "",
-        volume: float | None = None,
+        self, character_name: str, audio_path: str, *,
+        playback_id: str = "", volume: float | None = None,
     ) -> None:
         resolved_volume = volume
         if resolved_volume is None:
@@ -538,17 +208,12 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             try:
                 character = get_character_by_name(character_name)
                 if character is not None:
-                    resolved_volume = float(
-                        getattr(character, "speech_volume", 1.0) or 1.0
-                    )
+                    resolved_volume = float(getattr(character, "speech_volume", 1.0) or 1.0)
             except Exception:
                 pass
-        resolved_volume = min(1.0, max(0.0, float(resolved_volume)))
-        payload = {
-            "type": "tts.play",
-            "characterName": str(character_name or ""),
-            "url": self._media_url(audio_path),
-            "volume": resolved_volume,
+        payload: dict[str, Any] = {
+            "type": "tts.play", "characterName": str(character_name or ""),
+            "url": self._media_url(audio_path), "volume": min(1.0, max(0.0, float(resolved_volume))),
         }
         if playback_id:
             payload["playbackId"] = str(playback_id)
@@ -560,280 +225,6 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             payload["playbackId"] = str(playback_id)
         self._emit(payload)
 
-    def play_sound_effect(self, sound_effect_path: str) -> None:
-        raw_path = str(sound_effect_path or "").strip()
-        if not raw_path:
-            return
-        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
-        self._emit({"type": "effect.play", "url": self._media_url(str(path))})
-
-    def show_image_effect(self, keyword: str, image_effect_path: str) -> None:
-        raw_path = str(image_effect_path or "").strip()
-        if not raw_path:
-            return
-        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
-        self._emit(
-            {
-                "type": "effect.image.show",
-                "url": self._media_url(str(path)),
-                "label": str(keyword or "").strip(),
-                "durationMs": IMAGE_EFFECT_DURATION_MS,
-            }
-        )
-
-    def start_loop_effect(self, keyword: str, audio_path: str) -> None:
-        key = str(keyword or "").strip()
-        raw_path = str(audio_path or "").strip()
-        if not key or not raw_path or key in self._looping_effects:
-            return
-        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
-        self._looping_effects[key] = str(path)
-        self._emit(
-            {
-                "type": "effect.loop.start",
-                "key": key,
-                "url": self._media_url(str(path)),
-            }
-        )
-
-    def stop_loop_effect(self, keyword: str) -> None:
-        key = str(keyword or "").strip()
-        if not key or key not in self._looping_effects:
-            return
-        path = self._looping_effects.pop(key, None)
-        # Aliases share one asset-level loop instance. Drop every alias with the
-        # same asset so a stale snapshot key cannot revive the sound on resume.
-        removed = [key]
-        if path:
-            for alias, alias_path in [
-                (existing, existing_path)
-                for existing, existing_path in self._looping_effects.items()
-                if self._same_loop_asset(existing_path, path)
-            ]:
-                self._looping_effects.pop(alias, None)
-                removed.append(alias)
-        # Emit a stop for every removed key: the snapshot reducers and the
-        # frontend state only drop the key named by the event, so a missing
-        # alias would survive in ``loopingEffects`` and restart after a
-        # polling recovery or WebSocket reconnect.
-        for removed_key in removed:
-            self._emit({"type": "effect.loop.stop", "key": removed_key})
-
-    @staticmethod
-    def _find_running_effect_key(query: str, keys: Any) -> str:
-        """Resolve a stop label against the effects that are actually running."""
-        candidates = tuple(str(key) for key in keys if str(key or "").strip())
-        normalized_query = str(query or "").strip().casefold()
-        for key in candidates:
-            if key.strip().casefold() == normalized_query:
-                return key
-        matched = match_effect_label(query, candidates)
-        return matched or ""
-
-    @staticmethod
-    def _same_loop_asset(left: str, right: str) -> bool:
-        if not left or not right:
-            return False
-        try:
-            return os.path.normcase(os.path.normpath(left)) == os.path.normcase(
-                os.path.normpath(right)
-            )
-        except (TypeError, ValueError):
-            return left == right
-
-    def stop_all_loop_effects(self) -> None:
-        if not self._looping_effects:
-            return
-        self._looping_effects.clear()
-        self._emit({"type": "effect.loop.stop-all"})
-
-    def start_ambient_effect(
-        self,
-        keyword: str,
-        asset: Any,
-        layer: str = "",
-    ) -> bool:
-        """Start or retarget one persistent full-screen effect instance."""
-
-        key = str(keyword or "").strip()
-        raw_path = str(getattr(asset, "path", "") or "").strip()
-        if not key or not raw_path:
-            return False
-        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
-        raw_audio = str(getattr(asset, "audio_path", "") or "").strip()
-        audio_path = (
-            resource_path(raw_audio) if raw_audio and Path(raw_audio).is_absolute() else raw_audio
-        )
-        resolved_layer = "front" if str(layer or "").strip().lower() == "front" else "back"
-        canonical = self._ambient_aliases.get(key, key)
-        current = self._ambient_effects.get(canonical)
-        if current is not None and not self._same_loop_asset(
-            str(current.get("path") or ""), str(path)
-        ):
-            self.stop_ambient_effect(canonical)
-            canonical = key
-            current = None
-        if current is None:
-            for existing_key, existing_state in self._ambient_effects.items():
-                if self._same_loop_asset(str(existing_state.get("path") or ""), str(path)):
-                    canonical = existing_key
-                    current = existing_state
-                    break
-        if current is not None:
-            if canonical != key:
-                self._ambient_aliases[key] = canonical
-            changed = (
-                current.get("layer") != resolved_layer
-                or current.get("audioPath") != audio_path
-            )
-            if not changed:
-                return False
-            current["layer"] = resolved_layer
-            current["audioPath"] = audio_path
-            self._emit(
-                {
-                    "type": "ambient.layer",
-                    "key": canonical,
-                    "layer": resolved_layer,
-                    "audioUrl": self._media_url(audio_path) if audio_path else "",
-                }
-            )
-            return True
-        self._ambient_aliases.pop(key, None)
-        self._ambient_effects[key] = {
-            "path": str(path),
-            "audioPath": audio_path,
-            "layer": resolved_layer,
-        }
-        self._emit(
-            {
-                "type": "ambient.start",
-                "key": key,
-                "url": self._media_url(str(path)),
-                "audioUrl": self._media_url(audio_path) if audio_path else "",
-                "layer": resolved_layer,
-            }
-        )
-        return True
-
-    def stop_ambient_effect(self, keyword: str) -> bool:
-        key = str(keyword or "").strip()
-        canonical = self._ambient_aliases.get(key, key)
-        current = self._ambient_effects.get(canonical)
-        if not key or current is None:
-            return False
-        self._ambient_effects.pop(canonical, None)
-        self._ambient_aliases.pop(key, None)
-        for alias in [
-            alias
-            for alias, target in self._ambient_aliases.items()
-            if target == canonical
-        ]:
-            self._ambient_aliases.pop(alias, None)
-        self._emit({"type": "ambient.stop", "key": canonical})
-        return True
-
-    def stop_all_ambient_effects(self) -> None:
-        if not self._ambient_effects:
-            return
-        self._ambient_effects.clear()
-        self._ambient_aliases.clear()
-        self._emit({"type": "ambient.stop-all"})
-
-    @staticmethod
-    def _match_ambient_asset(
-        keyword: str,
-        ambient_map: dict[str, Any],
-        *,
-        allow_fuzzy: bool = True,
-    ) -> tuple[str, Any | None]:
-        keyword_key = str(keyword or "").strip().casefold()
-        if keyword_key in ambient_map:
-            return keyword_key, ambient_map[keyword_key]
-        if allow_fuzzy:
-            matched = match_effect_label(keyword, tuple(ambient_map))
-            if matched is not None:
-                return matched, ambient_map[matched]
-        return "", None
-
-    def restore_ambient_directives(self, directives: Any) -> None:
-        """Fold persisted ambient effect directives and emit only the surviving active effects."""
-        ambient_map: dict[str, Any] = {}
-        try:
-            from application.runtime.context import get_app_runtime
-
-            ambient_map = getattr(get_app_runtime(), "ambient_effect_keyword_map", {}) or {}
-        except Exception:
-            ambient_map = {}
-
-        active: dict[str, dict[str, Any]] = {}
-        aliases: dict[str, str] = {}
-        for directive in directives or ():
-            parsed = parse_ambient_directive(directive)
-            if parsed is None:
-                continue
-            mode, keyword = parsed
-            if mode == "ambient-stop-all":
-                active.clear()
-                aliases.clear()
-                continue
-            if not keyword:
-                continue
-            matched_key, asset = self._match_ambient_asset(keyword, ambient_map)
-            if mode == "ambient-stop":
-                stop_key = matched_key
-                if not stop_key or (stop_key not in active and stop_key not in aliases):
-                    stop_key = self._find_running_effect_key(keyword, (*active, *aliases))
-                if not stop_key:
-                    continue
-                canonical = aliases.pop(stop_key, stop_key)
-                active.pop(canonical, None)
-                for alias in [k for k, target in aliases.items() if target == canonical]:
-                    aliases.pop(alias, None)
-                continue
-            if asset is None:
-                continue
-            raw_path = str(getattr(asset, "path", "") or "").strip()
-            if not raw_path:
-                continue
-            resolved_path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
-            key = matched_key or keyword
-            canonical = aliases.get(key, key)
-            current = active.get(canonical)
-            if current is not None and not self._same_loop_asset(
-                str(current.get("path") or ""), str(resolved_path)
-            ):
-                active.pop(canonical, None)
-                canonical = key
-                current = None
-            if current is None:
-                for existing_key, existing_state in active.items():
-                    if self._same_loop_asset(
-                        str(existing_state.get("path") or ""), str(resolved_path)
-                    ):
-                        canonical = existing_key
-                        current = existing_state
-                        break
-            layer = (
-                "front"
-                if mode == "expose"
-                else "back"
-                if mode == "shelter"
-                else ("front" if str(getattr(asset, "layer", "back") or "").strip().lower() == "front" else "back")
-            )
-            if current is not None:
-                if canonical != key:
-                    aliases[key] = canonical
-                current["layer"] = layer
-                current["asset"] = asset
-            else:
-                aliases.pop(key, None)
-                active[key] = {"asset": asset, "layer": layer, "path": str(resolved_path)}
-
-        self.stop_all_ambient_effects()
-        for key, entry in active.items():
-            self.start_ambient_effect(key, entry["asset"], layer=entry["layer"])
-
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
         self._emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
 
@@ -843,424 +234,103 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if value:
             self._emit({"type": "user.display_name.change", "name": value})
 
-    # --- 高层业务组装 → 事件 ---
+    # --- Effect, ambient, dialog, and sprite delegation ---
+
+    def play_sound_effect(self, sound_effect_path: str) -> None:
+        self._effects.play_sound_effect(sound_effect_path)
+
+    def show_image_effect(self, keyword: str, image_effect_path: str) -> None:
+        self._effects.show_image_effect(keyword, image_effect_path)
+
+    def start_loop_effect(self, keyword: str, audio_path: str) -> None:
+        self._effects.start_loop_effect(keyword, audio_path)
+
+    def stop_loop_effect(self, keyword: str) -> None:
+        self._effects.stop_loop_effect(keyword)
+
+    def stop_all_loop_effects(self) -> None:
+        self._effects.stop_all_loop_effects()
+
+    def start_ambient_effect(self, keyword: str, asset: Any, layer: str = "") -> bool:
+        return self._ambient.start_ambient_effect(keyword, asset, layer=layer)
+
+    def stop_ambient_effect(self, keyword: str) -> bool:
+        return self._ambient.stop_ambient_effect(keyword)
+
+    def stop_all_ambient_effects(self) -> None:
+        self._ambient.stop_all_ambient_effects()
+
+    def restore_ambient_directives(self, directives: Any) -> None:
+        self._ambient.restore_ambient_directives(directives)
+
+    def resolve_effect(
+        self, effect: str, args: Dict[str, Any], after_dialog: bool = False
+    ) -> bool:
+        return self._effects.resolve_effect(effect, args, after_dialog=after_dialog)
 
     def queue_player_portrait(self, name: str, sprite_id: int) -> None:
-        if getattr(self, "_player_input_visible", False):
-            self.update_player_portrait(name, sprite_id)
-        else:
-            self._pending_player_portrait = (name, sprite_id)
+        self._dialog.queue_player_portrait(name, sprite_id)
 
     def _apply_player_portrait_for_dialog(self, name: str, speech: str) -> None:
-        from core.messaging.dialog_tokens import NARR_ALIASES, normalize_character_name
-        player = str(getattr(self, "player_character", "") or "")
-        def compact(value: object) -> str:
-            return re.sub(r'\s+', '', str(value or ''))
-        relevant = bool(player) and (
-            compact(name) == compact(player) or
-            (normalize_character_name(name) in NARR_ALIASES and compact(player) in compact(speech))
-        )
-        self._player_input_visible = False
-        pending = getattr(self, "_pending_player_portrait", None)
-        self._pending_player_portrait = None
-        if relevant and pending is not None:
-            self.update_player_portrait(*pending)
+        self._dialog.apply_player_portrait_for_dialog(name, speech)
 
     def update_dialog(
-        self,
-        name: str,
-        speech: str,
-        color: str,
-        is_system: bool = True,
-        voice_id: str = "",
-        dialog_id: str = "",
-        *,
-        animate: bool | None = None,
+        self, name: str, speech: str, color: str, is_system: bool = True,
+        voice_id: str = "", dialog_id: str = "", *, animate: bool | None = None,
     ) -> None:
-        if animate is None:
-            self._apply_player_portrait_for_dialog(name, speech)
-        formatted = _format_dialog_html(name, speech, color, is_system)
-        if re.fullmatch(r"[0-9a-f]{64}", dialog_id):
-            formatted = formatted.replace("<p ", f"<p data-dialog-id='{dialog_id}' ", 1)
-        if re.fullmatch(r"[0-9a-f]{32}", voice_id):
-            formatted = formatted.replace("<p ", f"<p data-voice-id='{voice_id}' ", 1)
-        if animate is None and (str(speech or "").strip() or str(name or "").strip()):
-            self.chat_history.append(formatted)
-        self._emit(
-            {
-                "type": "dialog.end",
-                "speaker": name or "",
-                "color": color or "",
-                "isSystem": bool(is_system),
-                "fullHtml": formatted,
-                **({"animate": animate} if animate is not None else {}),
-            }
+        self._dialog.update_dialog(
+            name, speech, color, is_system, voice_id=voice_id, dialog_id=dialog_id, animate=animate
         )
-        if animate is None:
-            self.sync_history_entries()
 
     def record_user_message(self, text: str) -> None:
-        self._player_input_visible = True
-        self._pending_player_portrait = None
-        super().record_user_message(text)
-        self.sync_history_entries()
+        self._dialog.record_user_message(text)
 
     def post_dialog_html(
-        self,
-        full_html: str,
-        *,
-        append_history: bool = True,
-        speaker: str = "",
-        color: str = "",
-        is_system: bool = True,
+        self, full_html: str, *, append_history: bool = True,
+        speaker: str = "", color: str = "", is_system: bool = True,
     ) -> None:
-        self._apply_player_portrait_for_dialog(speaker, html.unescape(re.sub(r'<[^>]*>', '', full_html)))
-        if append_history and str(full_html or "").strip():
-            self.chat_history.append(full_html)
-        self._emit(
-            {
-                "type": "dialog.end",
-                "speaker": speaker,
-                "color": color,
-                "isSystem": bool(is_system),
-                "fullHtml": full_html,
-            }
+        self._dialog.post_dialog_html(
+            full_html, append_history=append_history, speaker=speaker, color=color, is_system=is_system
         )
-        self.sync_history_entries()
+
+    def _get_or_create_sprite_slot(self, character_name: str) -> int:
+        return self._sprites.get_or_create_slot(character_name)
+
+    def _resolve_replay_sprite(self, character: Any, preferred_index: int | None):
+        return self._sprites.resolve_replay_sprite(character, preferred_index)
 
     def update_sprite(
-        self,
-        character_name: str,
-        sprite_id: int | None,
-        *,
-        slot: int | None = None,
-        display_name: str = "",
+        self, character_name: str, sprite_id: int | None, *,
+        slot: int | None = None, display_name: str = "",
     ) -> None:
-        try:
-            character_config = get_character_by_name(character_name)
-            if character_config is None:
-                raise ValueError(f"未找到角色配置: {character_name}")
-            visual = (
-                self._resolve_replay_sprite(character_config, sprite_id)
-                if slot is not None
-                else resolve_character_visual(character_config, sprite_id, self._resource_urls)
-            )
-            if visual is None:
-                return
-        except Exception as e:
-            print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
-            return
-        stage_name = (
-            str(display_name or "").strip()
-            or str(getattr(character_config, "name", "") or character_name)
-        )
-        display_slot = self._get_or_create_sprite_slot(stage_name) if slot is None else slot
-        self._emit(
-            {
-                "type": "sprite.show",
-                "characterName": stage_name,
-                **visual.event_fields(),
-                "slot": display_slot,
-            }
-        )
-
-    def _resolve_replay_sprite(self, character, preferred_index):
-        assets = get_character_assets(character)
-        if assets.model_path and not resource_path(assets.model_path).is_file():
-            return None
-        indices = list(range(len(assets.sprites)))
-        if preferred_index in indices:
-            indices.remove(preferred_index)
-            indices.insert(0, preferred_index)
-        for index in indices:
-            path = sprite_entry_path(assets.sprites[index])
-            try:
-                if not path or not resource_path(path).is_file():
-                    continue
-                return resolve_character_visual(character, index, self._resource_urls)
-            except (OSError, ValueError):
-                continue
-        return None
+        self._sprites.update_sprite(character_name, sprite_id, slot=slot, display_name=display_name)
 
     def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
-        try:
-            character_config = get_character_by_name(character_name)
-            if character_config is None:
-                raise ValueError(f"未找到角色配置: {character_name}")
-            sprite = character_config.sprites[sprite_id]
-            image_path = str(
-                Path(sprite.get("path", ""))
-                if isinstance(sprite, dict)
-                else Path(getattr(sprite, "path", ""))
-            )
-        except Exception as error:
-            print(f"StreamingUIUpdateManager: 主控头像解析失败: {error}")
-            return
-        crop = (
-            sprite.get("portrait_crop")
-            if isinstance(sprite, dict)
-            else getattr(sprite, "portrait_crop", None)
-        )
-        crop = crop or getattr(character_config, "portrait_crop", None)
-        self._emit(
-            {
-                "type": "player.portrait.show",
-                "characterName": character_name,
-                "url": self._media_url(image_path),
-                "crop": (
-                    crop.model_dump()
-                    if hasattr(crop, "model_dump")
-                    else (crop or {"x": 0.5, "y": 0.2, "zoom": 1})
-                ),
-            }
-        )
+        self._sprites.update_player_portrait(character_name, sprite_id)
 
     def update_sprite_from_path(
-        self,
-        image_path: str,
-        *,
-        character_name: str = "",
-        scale: float = 1.0,
+        self, image_path: str, *, character_name: str = "", scale: float = 1.0
     ) -> bool:
-        path = str(image_path or "").strip()
-        if not path:
-            return False
-        resolved_character_name = character_name or Path(path).stem or "initial"
-        portrait_crop: dict[str, float] | None = None
-        if character_name:
-            try:
-                character_config = get_character_by_name(character_name)
-                if character_config is not None:
-                    from .character_visual import _resolve_portrait_crop
-
-                    target_norm = os.path.normcase(str(resolve_runtime_path(path)))
-                    matched_sprite = next(
-                        (
-                            item
-                            for item in getattr(character_config, "sprites", []) or []
-                            if os.path.normcase(str(resolve_runtime_path(sprite_entry_path(item)))) == target_norm
-                        ),
-                        None,
-                    )
-                    portrait_crop = _resolve_portrait_crop(character_config, matched_sprite)
-            except Exception:
-                portrait_crop = None
-        self._emit(
-            {
-                "type": "sprite.show",
-                "characterName": resolved_character_name,
-                "identityKey": image_visual_identity(path),
-                "url": self._media_url(path),
-                "scale": float(scale or 1.0),
-                "slot": self._get_or_create_sprite_slot(resolved_character_name),
-                "avatarType": "static",
-                "modelUrl": "",
-                **({"portraitCrop": portrait_crop} if portrait_crop else {}),
-            }
+        return self._sprites.update_sprite_from_path(
+            image_path, character_name=character_name, scale=scale
         )
-        return True
 
     def remove_character_sprite(self, character_name: str) -> None:
-        name_key = character_name_key(character_name)
-        character_name = next(
-            (name for name in self._sprite_lru if character_name_key(name) == name_key),
-            character_name,
-        )
-        self._sprite_lru.pop(character_name, None)
-        self._emit({"type": "sprite.remove", "characterName": character_name})
+        self._sprites.remove_character_sprite(character_name)
 
     def post_sprite_reaction(
-        self,
-        character_name: str,
-        text: str,
-        *,
-        duration_ms: int = 3600,
+        self, character_name: str, text: str, *, duration_ms: int = 3600
     ) -> None:
-        cleaned = str(text or "").strip()
-        if not cleaned:
-            return
-        self._emit(
-            {
-                "type": "sprite.reaction",
-                "characterName": str(character_name or "").strip(),
-                "text": cleaned[:80],
-                "durationMs": max(800, int(duration_ms or 3600)),
-            }
-        )
+        self._sprites.post_sprite_reaction(character_name, text, duration_ms=duration_ms)
 
     def post_sprite_motion(self, character_name: str, motion: str) -> None:
-        normalized = normalize_character_motion(motion)
-        name = str(character_name or "").strip()
-        if not normalized or not name:
-            return
-        self._emit(
-            {
-                "type": "sprite.motion",
-                "characterName": name,
-                "motion": normalized,
-                "durationMs": character_motion_duration_ms(normalized),
-            }
-        )
+        self._sprites.post_sprite_motion(character_name, motion)
 
-    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> bool:
-        raw = str(effect or "").strip()
-        if not raw:
-            return False
-        if raw.upper() == "LEAVE" and after_dialog:
-            self.remove_character_sprite(str(args.get("character_name") or ""))
-            return True
-        if raw.upper() == "LEAVE":
-            return True
 
-        ambient_directive = parse_ambient_directive(raw)
-        if ambient_directive is not None:
-            mode, raw = ambient_directive
-            if mode == "ambient-stop-all":
-                self.stop_all_ambient_effects()
-                return True
-        else:
-            mode = "once"
-            if raw.startswith("loop:"):
-                mode = "loop"
-                raw = raw[5:]
-            elif raw.startswith("stop:"):
-                mode = "stop"
-                raw = raw[5:]
-            else:
-                timing = "before"
-                if raw.startswith("before:"):
-                    raw = raw[7:]
-                elif raw.startswith("after:"):
-                    timing = "after"
-                    raw = raw[6:]
-                if (timing == "before" and after_dialog) or (
-                    timing == "after" and not after_dialog
-                ):
-                    return True
-
-        keyword = raw.strip()
-        if not keyword:
-            return
-        keyword_key = keyword.casefold()
-        audio_map: dict[str, str] = {}
-        image_map: dict[str, Any] = {}
-        ambient_map: dict[str, Any] = {}
-        try:
-            from application.runtime.context import get_app_runtime
-
-            runtime = get_app_runtime()
-            audio_map = getattr(runtime, "effect_keyword_map", {}) or {}
-            image_map = getattr(runtime, "effect_image_keyword_map", {}) or {}
-            ambient_map = getattr(runtime, "ambient_effect_keyword_map", {}) or {}
-        except Exception:
-            pass
-
-        audio_path = str(SOUND_EFFECTS_PATH.get(keyword.upper()) or "").strip()
-        audio_key = keyword if audio_path else ""
-        image_path = ""
-        image_audio_path = ""
-        image_key = ""
-        ambient_asset = None
-        ambient_key = ""
-        exact_audio = bool(audio_path) or keyword_key in audio_map
-        exact_image = keyword_key in image_map
-        exact_ambient = keyword_key in ambient_map
-        has_exact_label = exact_audio or exact_image or exact_ambient
-
-        if not audio_path:
-            if keyword_key in audio_map:
-                audio_key = keyword_key
-                audio_path = str(audio_map[keyword_key] or "").strip()
-            elif not has_exact_label:
-                matched_audio = match_effect_label(keyword, tuple(audio_map))
-                if matched_audio is not None:
-                    audio_key = matched_audio
-                    audio_path = str(audio_map[matched_audio] or "").strip()
-
-        image = image_map.get(keyword_key) if exact_image else None
-        if image is None and not has_exact_label:
-            matched_image = match_effect_label(keyword, tuple(image_map))
-            if matched_image is not None:
-                image_key = matched_image
-                image = image_map[matched_image]
-        if exact_image:
-            image_key = keyword_key
-        if image is not None:
-            image_path = image.image_path
-            image_audio_path = image.audio_path
-
-        ambient_key, ambient_asset = self._match_ambient_asset(
-            keyword,
-            ambient_map,
-            allow_fuzzy=not has_exact_label,
-        )
-
-        if image_audio_path:
-            audio_path = image_audio_path
-
-        if mode in {"ambient", "shelter", "expose"}:
-            if ambient_asset is None:
-                logger.warning(
-                    "chat.effect.unresolved ambient effect=%r keyword=%r", effect, keyword
-                )
-                return False
-            layer = (
-                "front"
-                if mode == "expose"
-                else "back" if mode == "shelter" else ambient_asset.layer
-            )
-            emitted = self.start_ambient_effect(
-                ambient_key or keyword, ambient_asset, layer=layer
-            )
-            if emitted:
-                logger.info(
-                    "chat.effect.ambient effect=%r mode=%s keyword=%r layer=%r",
-                    effect,
-                    mode,
-                    keyword,
-                    layer,
-                )
-            return emitted
-        if mode == "ambient-stop":
-            stop_key = ambient_key
-            if not stop_key or (
-                stop_key not in self._ambient_effects
-                and stop_key not in self._ambient_aliases
-            ):
-                stop_key = self._find_running_effect_key(
-                    keyword,
-                    (*self._ambient_effects, *self._ambient_aliases),
-                )
-            return self.stop_ambient_effect(stop_key) if stop_key else False
-        if mode != "stop" and not audio_path and not image_path:
-            logger.warning("chat.effect.unresolved effect=%r keyword=%r", effect, keyword)
-            return False
-        if mode == "loop":
-            if mode not in effect_modes(has_image=bool(image_path)):
-                return False
-            loop_key = audio_key or keyword
-            self.start_loop_effect(loop_key, audio_path)
-            emitted = loop_key in self._looping_effects
-        elif mode == "stop":
-            stop_key = audio_key
-            if not stop_key or stop_key not in self._looping_effects:
-                stop_key = self._find_running_effect_key(keyword, self._looping_effects)
-            if not stop_key:
-                return False
-            emitted = True
-            self.stop_loop_effect(stop_key)
-        else:
-            if audio_path:
-                self.play_sound_effect(audio_path)
-            if image_path:
-                self.show_image_effect(image_key or keyword, image_path)
-            emitted = bool(audio_path or image_path)
-        if emitted:
-            logger.info(
-                "chat.effect.emitted effect=%r mode=%s keyword=%r path=%r",
-                effect,
-                mode,
-                keyword,
-                audio_path,
-            )
-        return emitted
+__all__ = [
+    "HeadlessUIUpdateManager", "IMAGE_EFFECT_DURATION_MS", "SOUND_EFFECTS_PATH",
+    "StreamingUIUpdateManager", "_format_dialog_html", "_format_token_count",
+    "_format_user_html", "_native_tool_confirmation_options", "_safe_css_color",
+    "bind_presentation_character_catalog", "format_context_token_estimate",
+    "get_character_by_name", "resolve_character_visual",
+]
