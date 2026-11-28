@@ -14,6 +14,17 @@ from urllib.parse import urlparse
 
 import requests
 
+from ai.tts.adapters.fish_audio_llama import (
+    FISH_AUDIO_BACKEND_API,
+    FISH_AUDIO_BACKEND_LLAMA_CPP,
+    FishAudioLlamaPoisonedError,
+    normalize_fish_audio_backend,
+    prepare_fish_audio_llama_launch,
+    request_fish_audio_llama_speech,
+    resolve_fish_audio_llama_endpoints,
+    sanitize_fish_audio_llama_ref_wav,
+    write_fish_audio_wav_response,
+)
 from ai.tts.adapters.fish_audio_protocol import (
     DEFAULT_FISH_AUDIO_DECODER_CONFIG,
     DEFAULT_FISH_AUDIO_MODEL,
@@ -28,7 +39,8 @@ from ai.tts.adapters.fish_audio_protocol import (
     resolve_fish_audio_endpoints,
     resolve_local_fish_speech_launch,
 )
-from ai.tts.adapters.local_http import LocalHttpTTSAdapter, format_http_error, is_local_server_url
+from ai.tts.adapters.local_http import LocalHttpTTSAdapter, is_local_server_url
+from ai.tts.server_process import stop_server_process
 from core.adapters import builtin_adapter
 from core.storage.layout import StorageLayout
 from sdk.logging import get_logger
@@ -69,13 +81,26 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         compile_model: bool = False,
         half_precision: bool = False,
         extra_args: str = "",
+        backend: str = FISH_AUDIO_BACKEND_API,
+        model_path: str = "",
+        mmproj_path: str = "",
+        llama_server_path: str = "",
+        n_gpu_layers: int = 99,
+        ctx_size: int = 4096,
+        threads: int = 0,
         project_root: str | os.PathLike[str] | None = None,
         **_ignored: Any,
     ) -> None:
-        effective_url = str(base_url or DEFAULT_FISH_AUDIO_URL).strip() or DEFAULT_FISH_AUDIO_URL
-        base_root, self._tts_endpoint, self._health_endpoint = resolve_fish_audio_endpoints(
-            effective_url
-        )
+        self.backend = normalize_fish_audio_backend(backend)
+        if self._is_llama_backend:
+            base_root, self._tts_endpoint, self._health_endpoint = (
+                resolve_fish_audio_llama_endpoints(base_url)
+            )
+        else:
+            effective_url = str(base_url or DEFAULT_FISH_AUDIO_URL).strip() or DEFAULT_FISH_AUDIO_URL
+            base_root, self._tts_endpoint, self._health_endpoint = resolve_fish_audio_endpoints(
+                effective_url
+            )
         self.tts_server_url = self._init_http_runtime(base_root)
 
         self.api_key = str(api_key or os.environ.get("FISH_API_KEY", "")).strip()
@@ -110,6 +135,12 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         self.compile_model = bool(compile_model)
         self.half_precision = bool(half_precision)
         self.extra_args = str(extra_args or "").strip()
+        self.model_path = str(model_path or "").strip()
+        self.mmproj_path = str(mmproj_path or "").strip()
+        self.llama_server_path = str(llama_server_path or "").strip()
+        self.n_gpu_layers = int(n_gpu_layers)
+        self.ctx_size = max(512, int(ctx_size))
+        self.threads = max(0, int(threads))
         self.project_root = project_root
 
         self._logs: deque[str] = deque(maxlen=40)
@@ -126,8 +157,12 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         return self.enable_inline_tags
 
     @property
+    def _is_llama_backend(self) -> bool:
+        return self.backend == FISH_AUDIO_BACKEND_LLAMA_CPP
+
+    @property
     def owns_server_process(self) -> bool:
-        """Whether this adapter spawned the local fish-speech server process."""
+        """Whether this adapter spawned the local server process."""
         return self._server_process is not None
 
     def _is_local_server_url(self) -> bool:
@@ -163,10 +198,51 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         except Exception:
             pass
 
+    def _spawn_logged_server(self, cmd: list[str], *, cwd: Path, thread_name: str) -> None:
+        popen_kwargs: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "bufsize": 1,
+            "cwd": str(cwd),
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+        proc = subprocess.Popen(cmd, **popen_kwargs)
+        self._server_process = proc
+        threading.Thread(
+            target=self._drain_logs,
+            args=(proc,),
+            name=thread_name,
+            daemon=True,
+        ).start()
+
+    def _start_llama_server_process(self) -> None:
+        cmd, cwd = prepare_fish_audio_llama_launch(
+            work_path=self.work_path,
+            model_path=self.model_path,
+            mmproj_path=self.mmproj_path,
+            llama_server_path=self.llama_server_path,
+            server_url=self.tts_server_url,
+            n_gpu_layers=self.n_gpu_layers,
+            ctx_size=self.ctx_size,
+            threads=self.threads,
+            extra_args=self.extra_args,
+            project_root=self.project_root,
+        )
+        self._spawn_logged_server(cmd, cwd=cwd, thread_name="fish-audio-s2-pro-llama-logs")
+
     def _start_server_process(self) -> None:
         if not self._is_local_server_url():
             return
         if self._server_is_reachable():
+            return
+        if self._is_llama_backend:
+            self._start_llama_server_process()
             return
         if not self.work_path:
             default_dir = StorageLayout.from_env(self.project_root).model_dir(
@@ -200,28 +276,11 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
             api_key=self.api_key,
             extra_args=self.extra_args,
         )
-
-        popen_kwargs: dict[str, Any] = {
-            "stdin": subprocess.DEVNULL,
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.STDOUT,
-            "text": True,
-            "encoding": "utf-8",
-            "errors": "replace",
-            "bufsize": 1,
-            "cwd": str(work_dir),
-        }
-        if os.name == "nt":
-            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
-        proc = subprocess.Popen(cmd, **popen_kwargs)
-        self._server_process = proc
-        threading.Thread(
-            target=self._drain_logs,
-            args=(proc,),
-            name="fish-audio-s2-pro-logs",
-            daemon=True,
-        ).start()
+        self._spawn_logged_server(
+            cmd,
+            cwd=work_dir,
+            thread_name="fish-audio-s2-pro-logs",
+        )
 
     def wait_until_ready(
         self,
@@ -229,9 +288,9 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         *,
         poll_interval_seconds: float | None = None,
     ) -> None:
-        """Validate cloud credentials or poll the local fish-speech health endpoint."""
+        """Validate cloud credentials or poll the local server health endpoint."""
         if not self._is_local_server_url():
-            if self._is_official_cloud_url() and not self.api_key:
+            if not self._is_llama_backend and self._is_official_cloud_url() and not self.api_key:
                 raise ValueError(
                     "Fish Audio API key is required when using https://api.fish.audio."
                 )
@@ -239,19 +298,11 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
 
         timeout = max(
             0.0,
-            float(
-                self.STARTUP_TIMEOUT_SECONDS
-                if timeout_seconds is None
-                else timeout_seconds
-            ),
+            float(self.STARTUP_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds),
         )
         interval = max(
             0.01,
-            float(
-                self.STARTUP_POLL_INTERVAL_SECONDS
-                if poll_interval_seconds is None
-                else poll_interval_seconds
-            ),
+            float(self.STARTUP_POLL_INTERVAL_SECONDS if poll_interval_seconds is None else poll_interval_seconds),
         )
         deadline = time.monotonic() + timeout
         while True:
@@ -281,6 +332,8 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         if cached is not None:
             return cached
         data = resolved.read_bytes()
+        if self._is_llama_backend:
+            data = sanitize_fish_audio_llama_ref_wav(data)
         if len(self._ref_audio_cache) >= 16:
             oldest_key = next(iter(self._ref_audio_cache))
             self._ref_audio_cache.pop(oldest_key, None)
@@ -298,19 +351,78 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
             return self.character_reference_ids[char_name]
         return self.reference_id
 
+    def _resolve_ref_audio_bytes(self, ref_audio_path: Any) -> tuple[bool, bytes | None]:
+        raw = str(ref_audio_path or "").strip()
+        if not raw:
+            return True, None
+        ref_file = Path(raw).expanduser()
+        if not ref_file.is_file():
+            logger.error("Fish Audio reference audio not found: %s", raw)
+            return False, None
+        return True, self._read_ref_audio(ref_file)
+
+    def _generate_speech_llama(
+        self,
+        clean_text: str,
+        *,
+        file_path: str | None = None,
+        **kwargs: Any,
+    ) -> str | None:
+        ref_ok, ref_bytes = self._resolve_ref_audio_bytes(kwargs.get("ref_audio_path"))
+        if not ref_ok:
+            return None
+
+        headers = self._auth_headers()
+        headers["Content-Type"] = "application/json"
+        try:
+            return request_fish_audio_llama_speech(
+                self._session,
+                self._tts_endpoint,
+                headers,
+                text=clean_text,
+                ref_audio_bytes=ref_bytes,
+                prompt_text=str(kwargs.get("prompt_text") or ""),
+                file_path=file_path,
+                timeout=self.request_timeout,
+            )
+        except FishAudioLlamaPoisonedError as exc:
+            logger.warning(
+                "Fish Audio S2 Pro llama-server returned poisoned NaN buzz (%s); %s",
+                exc,
+                "restarting managed server" if self.owns_server_process else "external server needs restart",
+            )
+            if self.owns_server_process:
+                proc, self._server_process = self._server_process, None
+                stop_server_process(proc)
+                try:
+                    self._start_llama_server_process()
+                    self.wait_until_ready()
+                except Exception as restart_exc:
+                    logger.error("Failed to restart Fish Audio llama-server: %s", restart_exc)
+            return None
+        except Exception as exc:
+            logger.error("Fish Audio S2 Pro llama.cpp TTS generation failed: %s", exc)
+            return None
+
     def generate_speech(
         self,
         text: str,
         file_path: str | None = None,
         **kwargs: Any,
     ) -> str | None:
-        """Synthesize speech audio via ``POST /v1/tts`` as WAV."""
+        """Synthesize speech audio via ``POST /v1/tts`` or llama-server ``POST /v1/audio/speech``."""
         clean_text = str(text or "").strip()
         if not clean_text:
             return None
         voice_instruct = str(kwargs.get("voice_instruct") or "").strip().strip("[]").strip()
         if voice_instruct and not clean_text.startswith("["):
             clean_text = f"[{voice_instruct}] {clean_text}"
+        if self._is_llama_backend:
+            return self._generate_speech_llama(
+                clean_text,
+                file_path=file_path,
+                **kwargs,
+            )
         if self._is_official_cloud_url() and not self.api_key:
             logger.warning("Fish Audio API key is empty.")
             return None
@@ -318,15 +430,11 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         active_ref_id = self._resolve_reference_id(kwargs)
         references: list[dict[str, Any]] | None = None
         if not active_ref_id:
-            ref_audio_path = str(kwargs.get("ref_audio_path") or "").strip()
-            if ref_audio_path:
-                ref_file = Path(ref_audio_path).expanduser()
-                if not ref_file.is_file():
-                    logger.error("Fish Audio reference audio not found: %s", ref_audio_path)
-                    return None
-                ref_bytes = self._read_ref_audio(ref_file)
-                prompt_text = str(kwargs.get("prompt_text") or "").strip()
-                references = [{"audio": ref_bytes, "text": prompt_text}]
+            ref_ok, ref_bytes = self._resolve_ref_audio_bytes(kwargs.get("ref_audio_path"))
+            if not ref_ok:
+                return None
+            if ref_bytes is not None:
+                references = [{"audio": ref_bytes, "text": str(kwargs.get("prompt_text") or "").strip()}]
 
         payload: dict[str, Any] = {
             "text": clean_text,
@@ -356,30 +464,14 @@ class FishAudioS2ProAdapter(LocalHttpTTSAdapter):
         try:
             if "references" in payload:
                 headers["Content-Type"] = "application/msgpack"
-                response = self._session.post(
-                    self._tts_endpoint,
-                    data=pack_msgpack(payload),
-                    headers=headers,
-                    timeout=self.request_timeout,
-                )
+                post_kwargs: dict[str, Any] = {"data": pack_msgpack(payload)}
             else:
                 headers["Content-Type"] = "application/json"
-                response = self._session.post(
-                    self._tts_endpoint,
-                    json=payload,
-                    headers=headers,
-                    timeout=self.request_timeout,
-                )
-            if not response.ok:
-                raise RuntimeError(format_http_error(response, "Fish Audio S2 Pro TTS"))
-            content = response.content
-            if len(content) <= 44 or not content.startswith(b"RIFF"):
-                raise RuntimeError("Fish Audio S2 Pro returned invalid or empty WAV payload.")
-
-            out_path = Path(file_path or "temp_fish_audio_s2_pro.wav")
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(content)
-            return os.path.abspath(out_path)
+                post_kwargs = {"json": payload}
+            response = self._session.post(
+                self._tts_endpoint, headers=headers, timeout=self.request_timeout, **post_kwargs
+            )
+            return write_fish_audio_wav_response(response, file_path)
         except Exception as exc:
             logger.error("Fish Audio S2 Pro TTS generation failed: %s", exc)
             return None
