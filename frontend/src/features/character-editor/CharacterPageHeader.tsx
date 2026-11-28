@@ -7,6 +7,7 @@ import { openExternal } from "../../entities/files/repository";
 import type { AutoSavePhase } from "../../shared/hooks/useDebouncedAutoSave";
 import { useI18n } from "../../shared/i18n";
 import { getCharacterDisplayName } from "../../shared/playerCharacterOptions";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import { AsyncButton, AutoSaveStatus, Button, PathPickerDialog, Select } from "../../shared/ui";
 import { CHARACTER_RESOURCES_URL, isSelfPersonaCharacter } from "./characterEditorUtils";
 
@@ -101,6 +102,11 @@ export function CharacterPageHeader({
           <span className="character-builtin-badge">{t("character.selfPersona.badge")}</span>
         ) : null}
         <div className="character-page__toolbar-group character-page__toolbar-group--primary">
+          <PluginSlot
+            context={{ entityId: currentValue || undefined, entityType: "character", page: "character" }}
+            maxInline={2}
+            slot="character-header-actions"
+          />
           <Button
             className="button--header-icon"
             data-tooltip={t("common.new")}

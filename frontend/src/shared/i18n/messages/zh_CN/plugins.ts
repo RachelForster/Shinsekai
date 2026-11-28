@@ -230,6 +230,14 @@ export const pluginsZhCNMessages = {
   "plugin.trust.pendingBody": "该插件曾通过人工复核，但当前版本或提交仍在等待复核。建议确认更新内容与来源后再安装。",
   "plugin.trust.pendingTitle": "待复核版本",
   "plugin.trust.verifiedHint": "维护者已人工复核",
+  "plugin.slot.moreActions": "更多插件操作",
+  "plugin.section.loading": "正在加载插件区块...",
+  "plugin.section.unavailable": "插件区块暂不可用",
+  "plugin.section.save": "保存区块设置",
+  "plugin.section.saved": "插件区块设置已保存",
+  "plugin.section.saveFailed": "保存插件区块设置失败",
+  "plugin.page.notFound": "未找到对应的插件页面",
+  "plugin.page.backToPlugins": "返回插件管理",
 } satisfies Record<string, string>;
 
 export type PluginsMessageKey = keyof typeof pluginsZhCNMessages;

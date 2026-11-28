@@ -2212,6 +2212,76 @@ describe("http platform", () => {
     );
   });
 
+  it("queries and updates workspace sidebar pages, sections, and contextual slot runs", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse({ pages: [{ pageId: "board", pluginId: "demo", title: "Board" }] }))
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ sections: [{ id: "extra", page: "templates", pluginId: "demo" }] }),
+      )
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ kind: "success", message: "saved", section: { id: "extra", pluginId: "demo" } }),
+      )
+      .mockResolvedValueOnce(
+        await mockJsonResponse({
+          kind: "success",
+          message: "ran",
+          result: { ok: true },
+          section: { id: "extra", pluginId: "demo" },
+        }),
+      )
+      .mockResolvedValueOnce(await mockJsonResponse({ id: "act", kind: "success", message: "ok", pluginId: "demo" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.plugins.listSidebarPages()).resolves.toHaveLength(1);
+    await expect(
+      platform.plugins.listPageSections({ entityId: "tpl-1", entityType: "template", locale: "en", page: "templates" }),
+    ).resolves.toHaveLength(1);
+    await expect(
+      platform.plugins.savePageSectionValues("demo", "extra", { enabled: true }, { page: "templates" }),
+    ).resolves.toMatchObject({ kind: "success" });
+    await expect(
+      platform.plugins.runPageSectionAction("demo", "extra", "sync", { enabled: true }, { page: "templates" }),
+    ).resolves.toMatchObject({ result: { ok: true } });
+    await expect(
+      platform.plugins.runSlotContribution("demo", "act", {
+        entityId: "Alice",
+        entityType: "character",
+        page: "characters",
+      }),
+    ).resolves.toMatchObject({ kind: "success" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://127.0.0.1:8787/api/plugins/sidebar-pages", expect.any(Object));
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/api/plugins/sections?");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("page=templates");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("entityId=tpl-1");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://127.0.0.1:8787/api/plugins/demo/sections/extra/values",
+      expect.objectContaining({
+        body: JSON.stringify({ context: { page: "templates" }, values: { enabled: true } }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://127.0.0.1:8787/api/plugins/demo/sections/extra/actions/sync",
+      expect.objectContaining({
+        body: JSON.stringify({ context: { page: "templates" }, values: { enabled: true } }),
+        method: "POST",
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://127.0.0.1:8787/api/plugins/demo/chat-ui/act/run",
+      expect.objectContaining({
+        body: JSON.stringify({ context: { entityId: "Alice", entityType: "character", page: "characters" } }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("reads and saves plugin UI config through the bridge", async () => {
     const detail = {
       pages: [

@@ -237,4 +237,12 @@ export const pluginsEnMessages: Record<PluginsMessageKey, string> = {
     "This plugin was reviewed before, but the current version or commit is still waiting for review. Check the update and source before installing.",
   "plugin.trust.pendingTitle": "Pending review",
   "plugin.trust.verifiedHint": "Manually reviewed by maintainers",
+  "plugin.slot.moreActions": "More plugin actions",
+  "plugin.section.loading": "Loading plugin section...",
+  "plugin.section.unavailable": "Plugin section unavailable",
+  "plugin.section.save": "Save section",
+  "plugin.section.saved": "Plugin section saved",
+  "plugin.section.saveFailed": "Failed to save plugin section",
+  "plugin.page.notFound": "Plugin page not found",
+  "plugin.page.backToPlugins": "Back to Plugins",
 };

@@ -40,6 +40,7 @@ from sdk.types import (
     ToolsTabContribution,
     WorkflowContribution,
 )
+from sdk.ui_extensions import FrontendSectionContribution
 
 from sdk.tool_protocol import ToolManager
 
@@ -309,6 +310,12 @@ class PluginManager:
         if self._capabilities is None:
             return []
         return self._capabilities.frontend_chat_ui_contributions
+
+    def collect_frontend_section_contributions(self) -> list[FrontendSectionContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.frontend_section_contributions
 
     def collect_chat_ui_contributions(self) -> list[ChatUIContribution]:
         """Return no deprecated Qt chat contributions."""

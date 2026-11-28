@@ -555,6 +555,8 @@ describe("entity repositories", () => {
         getUi: vi.fn().mockResolvedValue({ pages: [], pluginId: "core-tools" }),
         install: vi.fn().mockResolvedValue({ id: "core-tools" }),
         list: vi.fn().mockResolvedValue([]),
+        listPageSections: vi.fn().mockResolvedValue([]),
+        listSidebarPages: vi.fn().mockResolvedValue([]),
         listSlotContributions: vi.fn().mockResolvedValue([]),
         status: vi.fn().mockResolvedValue({ status: "ready" }),
         repoTags: vi.fn().mockResolvedValue(["v0.1.0"]),
@@ -599,6 +601,23 @@ describe("entity repositories", () => {
             tags: ["shinsekai"],
           },
         }),
+        runPageSectionAction: vi.fn().mockResolvedValue({
+          kind: "success",
+          message: "ok",
+          result: {},
+          section: {
+            id: "sec",
+            navLabel: "Sec",
+            order: 1,
+            page: "system",
+            pluginId: "core-tools",
+            pluginVersion: "1.0",
+            renderer: "schema",
+            slot: "main",
+            title: "Sec",
+            description: "",
+          },
+        }),
         runUiAction: vi.fn().mockResolvedValue({
           message: "ok",
           page: {
@@ -617,6 +636,22 @@ describe("entity repositories", () => {
           kind: "success",
           message: "ok",
           pluginId: "core-tools",
+        }),
+        savePageSectionValues: vi.fn().mockResolvedValue({
+          kind: "success",
+          message: "saved",
+          section: {
+            id: "sec",
+            navLabel: "Sec",
+            order: 1,
+            page: "system",
+            pluginId: "core-tools",
+            pluginVersion: "1.0",
+            renderer: "schema",
+            slot: "main",
+            title: "Sec",
+            description: "",
+          },
         }),
         saveUiConfig: vi.fn().mockResolvedValue({ message: "ok", values: {} }),
         setEnabled: vi.fn().mockResolvedValue({ id: "core-tools" }),
@@ -719,6 +754,10 @@ describe("entity repositories", () => {
     await plugin.installPlugin({ source: "repo", tagName: "v0.1.0" }, taskOptions);
     await plugin.listPluginSlotContributions();
     await plugin.runPluginSlotContribution("core-tools", "demo");
+    await plugin.listPluginSidebarPages();
+    await plugin.listPluginPageSections({ entityId: "Alice", entityType: "character", page: "characters" });
+    await plugin.savePluginSectionValues("core-tools", "sec", { flag: true }, { page: "system" });
+    await plugin.runPluginSectionAction("core-tools", "sec", "sync", { flag: true }, { page: "system" });
     await plugin.setPluginEnabled("core-tools", false);
     await plugin.uninstallPlugin("core-tools");
     await plugin.getMcpConfig();

@@ -3,6 +3,7 @@ import { ExternalLink, FolderInput, FolderOutput, Plus, Save, X } from "lucide-r
 
 import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import {
   AsyncButton,
   AutoSaveStatus,
@@ -62,6 +63,15 @@ export function BackgroundPageHeader({ ctx, navItems }: BackgroundPageHeaderProp
           </Select>
         </label>
         <div className="background-page__package-actions">
+          <PluginSlot
+            context={{
+              entityId: ctx.isCreating ? undefined : ctx.selectedName || undefined,
+              entityType: "background",
+              page: "background",
+            }}
+            maxInline={2}
+            slot="background-header-actions"
+          />
           <Button
             className="button--header-icon"
             data-tooltip={t("common.new")}

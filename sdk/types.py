@@ -20,15 +20,36 @@ else:
     ChatUIContext = Any
     PluginSettingsUIContext = Any
 
+from sdk.ui_extensions import (
+    PLUGIN_ACTION_SLOTS,
+    PLUGIN_CHAT_ACTION_SLOTS,
+    PLUGIN_SECTION_PAGE_SLOTS,
+    PLUGIN_UI_ICONS,
+    PLUGIN_WORKSPACE_ACTION_SLOTS,
+    FrontendActionContext,
+    FrontendSectionContext,
+    FrontendSectionContribution,
+    load_plugin_locales,
+)
+
 __all__ = [
     "ChatUIContext",
     "ChatUIContribution",
     "ChatOutputContract",
     "FieldPatch",
+    "FrontendActionContext",
+    "FrontendActionContribution",
     "FrontendConfigAction",
     "FrontendChatUIContribution",
     "FrontendConfigContribution",
     "FrontendPageContribution",
+    "FrontendSectionContext",
+    "FrontendSectionContribution",
+    "PLUGIN_ACTION_SLOTS",
+    "PLUGIN_CHAT_ACTION_SLOTS",
+    "PLUGIN_SECTION_PAGE_SLOTS",
+    "PLUGIN_UI_ICONS",
+    "PLUGIN_WORKSPACE_ACTION_SLOTS",
     "OutputContractPatch",
     "OutputFieldSpec",
     "PluginDescriptor",
@@ -39,6 +60,7 @@ __all__ = [
     "SettingsUIContribution",
     "ToolsTabContribution",
     "WorkflowContribution",
+    "load_plugin_locales",
 ]
 
 
@@ -172,29 +194,38 @@ class FrontendPageContribution:
     order: float = 100.0
     plugin_id: str | None = None
     plugin_version: str | None = None
+    i18n: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    nav_icon: str = "puzzle"
+    nav_label: str = ""
+    show_in_sidebar: bool = False
+    inject_host_theme: bool = True
 
 
 @dataclass(frozen=True)
 class FrontendChatUIContribution:
-    """Serializable Chat UI contribution rendered entirely by the React host.
+    """Serializable UI action contribution rendered by the React host.
 
     Plugins provide metadata plus an optional server-side callback. No HTML,
     JavaScript, React element, or arbitrary CSS crosses the bridge.
     """
 
     contribution_id: str
-    slot: Literal["chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar", "chat-workspace-actions"]
+    slot: str
     title: str
-    action: Callable[[], Mapping[str, Any] | str | None] | Mapping[str, str] | None = None
+    action: Callable[..., Mapping[str, Any] | str | None] | Mapping[str, str] | None = None
     action_label: str = ""
     description: str = ""
-    icon: Literal["info", "play", "puzzle", "settings", "smartphone", "sparkles"] = "puzzle"
+    icon: str = "puzzle"
     order: float = 100.0
     presentation: Literal["button", "icon-only"] = "button"
     variant: Literal["danger", "ghost", "primary"] = "ghost"
     plugin_id: str | None = None
     plugin_version: str | None = None
     external_launch: bool = False
+    i18n: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+
+
+FrontendActionContribution = FrontendChatUIContribution
 
 
 @dataclass(frozen=True)

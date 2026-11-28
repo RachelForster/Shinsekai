@@ -12,8 +12,10 @@ from frontend_bridge_core.plugin_auth import (
     PLUGIN_AUTH_COOKIE,
     is_plugin_route_allowed,
     is_sensitive_master_only_read,
+    normalize_bridge_path,
     verify_plugin_token,
 )
+from frontend_bridge_core.plugin_sdk_assets import SDK_ASSET_PATHS
 from frontend_bridge_core.routes.plugin_routes import inject_bridge_token
 from frontend_bridge_core.security import safe_header_value
 from sdk.path_utils import reject_control_chars
@@ -202,6 +204,8 @@ class BridgeHttpAuthMixin:
             if path.startswith("/api/agent/"):
                 raise PermissionError("invalid Agent bridge authorization")
             raise PermissionError("invalid bridge auth token")
+        if normalize_bridge_path(path) in SDK_ASSET_PATHS:
+            return
         if is_sensitive_master_only_read(path):
             if not self._request_origin_allowed() or auth_kind != "master":
                 if path.startswith("/api/agent/"):

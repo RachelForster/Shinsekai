@@ -26,6 +26,7 @@ def list_session_behavior_contributions() -> list[dict[str, Any]]:
         if not behavior_id:
             continue
         plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
+        raw_i18n = _to_json_dict(getattr(contribution, "i18n", None))
         items.append(
             {
                 "behaviorId": behavior_id,
@@ -37,6 +38,7 @@ def list_session_behavior_contributions() -> list[dict[str, Any]]:
                 "defaultConfig": _to_json_dict(
                     getattr(contribution, "default_config", None)
                 ),
+                **({"i18n": raw_i18n} if raw_i18n else {}),
             }
         )
     return items

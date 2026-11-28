@@ -1,7 +1,11 @@
+import { useMemo } from "react";
+
 import { useI18n } from "../../shared/i18n";
+import { usePluginPageSectionDescriptors } from "../../shared/plugin/PluginPageSections";
 import { AlertDialog, PageSectionHost, PageSectionNav, useVisibleSectionNavItems } from "../../shared/ui";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterRenameTextDialog } from "./CharacterRenameTextDialog";
+import type { CharacterPageContext, CharacterSectionSlot } from "./characterContext";
 import { CHARACTER_EDITOR_SECTIONS } from "./characterSections";
 import { SpriteGenerationPage } from "./SpriteGenerationPage";
 import { useCharacterPageController } from "./controllers/useCharacterPageController";
@@ -12,7 +16,13 @@ export { mergeSprites } from "./characterContext";
 export function CharacterEditorPage() {
   const { t } = useI18n();
   const ctx = useCharacterPageController();
-  const navItems = useVisibleSectionNavItems(CHARACTER_EDITOR_SECTIONS, ctx);
+  const entityId = ctx.isCreating ? undefined : ctx.currentCharacterName || undefined;
+  const pluginSections = usePluginPageSectionDescriptors<CharacterPageContext, CharacterSectionSlot>(
+    { entityId, entityType: "character", page: "character" },
+    { context: { entityId, entityType: "character", page: "character" }, defaultSlot: "body", orderBase: 1000 },
+  );
+  const allSections = useMemo(() => [...CHARACTER_EDITOR_SECTIONS, ...pluginSections], [pluginSections]);
+  const navItems = useVisibleSectionNavItems(allSections, ctx);
 
   if (ctx.spriteGenerationOpen) {
     return (
@@ -51,9 +61,9 @@ export function CharacterEditorPage() {
 
       <div className="settings-grid character-page__content">
         <div className="character-page__top-grid">
-          <PageSectionHost ctx={ctx} sections={CHARACTER_EDITOR_SECTIONS} slot="top-grid" />
+          <PageSectionHost ctx={ctx} sections={allSections} slot="top-grid" />
         </div>
-        <PageSectionHost ctx={ctx} sections={CHARACTER_EDITOR_SECTIONS} slot="body" />
+        <PageSectionHost ctx={ctx} sections={allSections} slot="body" />
       </div>
 
       <AlertDialog

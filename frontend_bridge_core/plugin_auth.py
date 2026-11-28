@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote, unquote, urlparse
 
+from frontend_bridge_core.plugin_sdk_assets import SDK_ASSET_PATHS
 from frontend_bridge_core.security import safe_header_value
 from sdk.path_utils import reject_control_chars
 
@@ -49,6 +50,7 @@ _SAFE_PLUGIN_GET_EXACT = frozenset(
         "/api/media",
         "/api/avatar/file",
         "/api/avatar/runtime/file",
+        *SDK_ASSET_PATHS,
     }
 )
 _SELF_PLUGIN_POST_SUFFIXES = (
@@ -56,6 +58,8 @@ _SELF_PLUGIN_POST_SUFFIXES = (
     re.compile(r"^/ui/[^/]+/actions/[^/]+$"),
     re.compile(r"^/ui/[^/]+/config$"),
     re.compile(r"^/chat-ui/[^/]+/run$"),
+    re.compile(r"^/sections/[^/]+/values$"),
+    re.compile(r"^/sections/[^/]+/actions/[^/]+$"),
 )
 
 
@@ -212,6 +216,41 @@ def _resolve_page_plugin_id(
     return explicit_owner or path_owner
 
 
+def _attach_scoped_token_to_url(
+    master_token: str,
+    plugin_id: str,
+    url: str,
+) -> str:
+    if not master_token or not plugin_id or not url.startswith("/api/") or BRIDGE_AUTH_QUERY in url:
+        return url
+    scoped = issue_plugin_token(master_token, plugin_id)
+    if not scoped:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{BRIDGE_AUTH_QUERY}={quote(scoped, safe='')}"
+
+
+def inject_scoped_plugin_token_urls(
+    state: Any,
+    items: list[dict[str, Any]],
+    *,
+    url_key: str = "frontendUrl",
+) -> list[dict[str, Any]]:
+    """Attach per-plugin scoped tokens to each entry carrying a ``frontendUrl``."""
+    master_token = str(getattr(state, "auth_token", "") or "").strip()
+    if not master_token:
+        return items
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get(url_key) or "")
+        if not url:
+            continue
+        plugin_id = _resolve_page_plugin_id({}, item, url)
+        item[url_key] = _attach_scoped_token_to_url(master_token, plugin_id, url)
+    return items
+
+
 def inject_scoped_plugin_tokens(state: Any, detail: dict[str, Any]) -> dict[str, Any]:
     """Attach plugin-scoped tokens (never the master bridge token) to page URLs."""
     master_token = str(getattr(state, "auth_token", "") or "").strip()
@@ -224,13 +263,7 @@ def inject_scoped_plugin_tokens(state: Any, detail: dict[str, Any]) -> dict[str,
         if not url.startswith("/api/") or BRIDGE_AUTH_QUERY in url:
             continue
         plugin_id = _resolve_page_plugin_id(detail, page, url)
-        scoped = issue_plugin_token(master_token, plugin_id)
-        if not scoped:
-            continue
-        separator = "&" if "?" in url else "?"
-        page["frontendUrl"] = (
-            f"{url}{separator}{BRIDGE_AUTH_QUERY}={quote(scoped, safe='')}"
-        )
+        page["frontendUrl"] = _attach_scoped_token_to_url(master_token, plugin_id, url)
     return detail
 
 
@@ -350,6 +383,7 @@ __all__ = [
     "PLUGIN_TOKEN_PREFIX",
     "build_plugin_cookie_header",
     "extract_plugin_path_owner",
+    "inject_scoped_plugin_token_urls",
     "inject_scoped_plugin_tokens",
     "is_plugin_route_allowed",
     "is_sensitive_master_only_read",

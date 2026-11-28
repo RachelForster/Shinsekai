@@ -3,12 +3,16 @@ import type { TaskProgressOptions } from "../../shared/platform/types";
 import type {
   AppUpdateRefKind,
   AppUpdateResult,
+  PluginActionRunContext,
   PluginConfigActionResult,
   PluginConfigSaveResult,
   McpConfig,
   McpToolPreview,
   PluginInstallInput,
   PluginManifest,
+  PluginSectionActionResult,
+  PluginSectionQuery,
+  PluginSectionSaveResult,
   PluginSubmissionInput,
   PluginUIDetail,
 } from "./types";
@@ -16,8 +20,13 @@ import type {
 export const pluginCatalogQueryKey = ["plugins", "catalog"] as const;
 export const pluginLoadStatusQueryKey = ["plugins", "status"] as const;
 export const pluginsQueryKey = ["plugins"] as const;
+export const pluginSidebarPagesQueryKey = ["plugins", "sidebar-pages"] as const;
 export const pluginSlotContributionsQueryKey = ["plugins", "slot-contributions"] as const;
 export const mcpConfigQueryKey = ["plugins", "mcp", "config"] as const;
+
+export function pluginPageSectionsQueryKey(page: string, entityType?: string, entityId?: string) {
+  return ["plugins", "sections", page, entityType ?? "", entityId ?? ""] as const;
+}
 
 export function pluginUiQueryKey(id: string) {
   return ["plugins", "ui", id] as const;
@@ -25,6 +34,33 @@ export function pluginUiQueryKey(id: string) {
 
 export function listPlugins() {
   return getPlatform().plugins.list();
+}
+
+export function listPluginSidebarPages() {
+  return getPlatform().plugins.listSidebarPages();
+}
+
+export function listPluginPageSections(query: PluginSectionQuery) {
+  return getPlatform().plugins.listPageSections(query);
+}
+
+export function savePluginSectionValues(
+  pluginId: string,
+  sectionId: string,
+  values: Record<string, unknown>,
+  context?: PluginActionRunContext,
+): Promise<PluginSectionSaveResult> {
+  return getPlatform().plugins.savePageSectionValues(pluginId, sectionId, values, context);
+}
+
+export function runPluginSectionAction(
+  pluginId: string,
+  sectionId: string,
+  actionId: string,
+  values: Record<string, unknown>,
+  context?: PluginActionRunContext,
+): Promise<PluginSectionActionResult> {
+  return getPlatform().plugins.runPageSectionAction(pluginId, sectionId, actionId, values, context);
 }
 
 export function getPluginLoadStatus() {
@@ -35,8 +71,8 @@ export function listPluginSlotContributions() {
   return getPlatform().plugins.listSlotContributions();
 }
 
-export function runPluginSlotContribution(pluginId: string, contributionId: string) {
-  return getPlatform().plugins.runSlotContribution(pluginId, contributionId);
+export function runPluginSlotContribution(pluginId: string, contributionId: string, context?: PluginActionRunContext) {
+  return getPlatform().plugins.runSlotContribution(pluginId, contributionId, context);
 }
 
 export function getPluginUiDetail(id: string): Promise<PluginUIDetail> {

@@ -1,6 +1,10 @@
+import { useMemo } from "react";
+
 import { useI18n } from "../../shared/i18n";
+import { usePluginPageSectionDescriptors } from "../../shared/plugin/PluginPageSections";
 import { AlertDialog, PageSectionHost, useVisibleSectionNavItems } from "../../shared/ui";
 import { EffectPageHeader } from "./EffectPageHeader";
+import type { EffectPageContext } from "./effectContext";
 import { EFFECT_MANAGER_SECTIONS } from "./effectSections";
 import { useEffectPageController } from "./controllers/useEffectPageController";
 import "./EffectManagerPage.css";
@@ -8,14 +12,20 @@ import "./EffectManagerPage.css";
 export function EffectManagerPage() {
   const { t } = useI18n();
   const ctx = useEffectPageController();
-  const navItems = useVisibleSectionNavItems(EFFECT_MANAGER_SECTIONS, ctx);
+  const entityId = ctx.isCreating ? undefined : ctx.selectedName || undefined;
+  const pluginSections = usePluginPageSectionDescriptors<EffectPageContext>(
+    { entityId, entityType: "effect", page: "effect" },
+    { context: { entityId, entityType: "effect", page: "effect" }, defaultSlot: "body", orderBase: 1000 },
+  );
+  const allSections = useMemo(() => [...EFFECT_MANAGER_SECTIONS, ...pluginSections], [pluginSections]);
+  const navItems = useVisibleSectionNavItems(allSections, ctx);
 
   return (
     <div className="page effect-page">
       <EffectPageHeader ctx={ctx} navItems={navItems} />
 
       <section className="settings-grid effect-page__content">
-        <PageSectionHost ctx={ctx} sections={EFFECT_MANAGER_SECTIONS} />
+        <PageSectionHost ctx={ctx} sections={allSections} />
       </section>
 
       <AlertDialog

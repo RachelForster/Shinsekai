@@ -1,20 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
-import { Info, Play, Puzzle, Settings, Smartphone, Sparkles } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { MoreHorizontal } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useInRouterContext, useNavigate, type NavigateFunction } from "react-router-dom";
 
 import {
   listPluginSlotContributions,
   pluginSlotContributionsQueryKey,
   runPluginSlotContribution,
 } from "../../entities/plugin/repository";
+import { useOptionalI18n } from "../i18n";
 import type {
+  PluginActionRunContext,
   PluginConfigGroupSchema,
   PluginSlotContribution,
-  PluginSlotContributionIcon,
   PluginSlotContributionPageMode,
   PluginSlotId,
 } from "../platform/types";
-import { Button, useToast } from "../ui";
+import { Button, useOptionalToast } from "../ui";
+import { hasUseQueryExport, useOptionalQueryClient } from "./optionalQueryClient";
+import { localizePluginSlotContribution, resolveLocalizedText } from "./pluginI18n";
+import { renderPluginIcon } from "./pluginIcons";
+import { invalidatePluginRefreshTargets } from "./pluginRefresh";
 import { isPluginSlotId } from "./slotIds";
 import "./PluginSlot.css";
 
@@ -44,7 +50,9 @@ export interface PluginUIContribution {
 }
 
 interface PluginSlotProps {
+  context?: PluginActionRunContext;
   contributions?: PluginUIContribution[];
+  maxInline?: number;
   onOpenPluginPage?: (target: PluginPageTarget) => void;
   onLaunchConversation?: (id: string) => Promise<void>;
   slot: PluginSlotId;
@@ -107,33 +115,45 @@ export function normalizeSerializablePluginContributions(
     .sort((left, right) => left.order - right.order || left.title.localeCompare(right.title));
 }
 
-const hostIcons: Record<PluginSlotContributionIcon, ReactNode> = {
-  info: <Info aria-hidden className="button__icon" />,
-  play: <Play aria-hidden className="button__icon" />,
-  puzzle: <Puzzle aria-hidden className="button__icon" />,
-  settings: <Settings aria-hidden className="button__icon" />,
-  smartphone: <Smartphone aria-hidden className="button__icon" />,
-  sparkles: <Sparkles aria-hidden className="button__icon" />,
-};
-
-function SerializableContribution({
+function usePluginContributionRunner({
+  context,
   contribution,
-  onOpenPluginPage,
+  navigate,
   onLaunchConversation,
+  onOpenPluginPage,
 }: {
+  context?: PluginActionRunContext;
   contribution: PluginSlotContribution;
-  onOpenPluginPage?: (target: PluginPageTarget) => void;
+  navigate?: NavigateFunction;
   onLaunchConversation?: (id: string) => Promise<void>;
+  onOpenPluginPage?: (target: PluginPageTarget) => void;
 }) {
   const [running, setRunning] = useState(false);
-  const { showToast } = useToast();
+  const queryClient = useOptionalQueryClient();
+  const { language } = useOptionalI18n();
+  const { showToast } = useOptionalToast();
+
+  const canRun =
+    contribution.actionable &&
+    (contribution.actionType === "callback" ||
+      (contribution.actionType === "open-plugin-page" &&
+        Boolean(contribution.pageId) &&
+        Boolean(onOpenPluginPage || navigate)));
+
   const run = async () => {
     if (!contribution.actionable || running) {
       return;
     }
     if (contribution.actionType === "open-plugin-page") {
-      if (contribution.pageId && onOpenPluginPage) {
+      if (!contribution.pageId) {
+        return;
+      }
+      if (onOpenPluginPage) {
         onOpenPluginPage({ mode: contribution.pageMode, pageId: contribution.pageId, pluginId: contribution.pluginId });
+      } else if (navigate) {
+        navigate(
+          `/settings/plugins/${encodeURIComponent(contribution.pluginId)}/${encodeURIComponent(contribution.pageId)}`,
+        );
       }
       return;
     }
@@ -142,14 +162,21 @@ function SerializableContribution({
     }
     setRunning(true);
     try {
-      const result = await runPluginSlotContribution(contribution.pluginId, contribution.id);
+      const runContext = context ? { ...context, locale: context.locale ?? language } : undefined;
+      const result = runContext
+        ? await runPluginSlotContribution(contribution.pluginId, contribution.id, runContext)
+        : await runPluginSlotContribution(contribution.pluginId, contribution.id);
+      if (queryClient) {
+        invalidatePluginRefreshTargets(queryClient, result.refresh);
+      }
       if (result.conversationId && onLaunchConversation) {
         await onLaunchConversation(result.conversationId);
         return;
       }
+      const message = resolveLocalizedText(result.i18nMessage, language, result.message);
       showToast({
-        kind: result.kind,
-        message: result.message || undefined,
+        kind: result.kind === "warning" ? "info" : result.kind,
+        message: message || undefined,
         title: contribution.title,
       });
     } catch (error) {
@@ -163,10 +190,34 @@ function SerializableContribution({
     }
   };
 
+  return { canRun, run, running };
+}
+
+function SerializableContribution({
+  context,
+  contribution,
+  navigate,
+  onOpenPluginPage,
+  onLaunchConversation,
+}: {
+  context?: PluginActionRunContext;
+  contribution: PluginSlotContribution;
+  navigate?: NavigateFunction;
+  onOpenPluginPage?: (target: PluginPageTarget) => void;
+  onLaunchConversation?: (id: string) => Promise<void>;
+}) {
+  const { canRun, run, running } = usePluginContributionRunner({
+    context,
+    contribution,
+    navigate,
+    onLaunchConversation,
+    onOpenPluginPage,
+  });
+
   if (contribution.slot === "chat-output") {
     return (
       <article className="plugin-slot__output">
-        <span className="plugin-slot__output-icon">{hostIcons[contribution.icon]}</span>
+        <span className="plugin-slot__output-icon">{renderPluginIcon(contribution.icon)}</span>
         <span className="plugin-slot__output-copy">
           <strong>{contribution.title}</strong>
           {contribution.description ? <small>{contribution.description}</small> : null}
@@ -181,10 +232,6 @@ function SerializableContribution({
   }
 
   const iconOnly = contribution.presentation === "icon-only" || contribution.slot === "chat-top-toolbar";
-  const canRun =
-    contribution.actionable &&
-    (contribution.actionType === "callback" ||
-      (contribution.actionType === "open-plugin-page" && Boolean(contribution.pageId && onOpenPluginPage)));
   const className =
     contribution.slot === "chat-dialog-actions"
       ? "dialog-stage-controls__button"
@@ -197,7 +244,7 @@ function SerializableContribution({
       aria-label={iconOnly ? contribution.title : undefined}
       className={className}
       disabled={!canRun}
-      icon={hostIcons[contribution.icon]}
+      icon={renderPluginIcon(contribution.icon)}
       loading={running}
       onClick={() => void run()}
       tooltip={contribution.description || contribution.title}
@@ -208,28 +255,114 @@ function SerializableContribution({
   );
 }
 
-function ConnectedPluginSlot({
-  onOpenPluginPage,
+function OverflowMenuItem({
+  context,
+  contribution,
+  navigate,
+  onDone,
   onLaunchConversation,
-  slot,
+  onOpenPluginPage,
 }: {
+  context?: PluginActionRunContext;
+  contribution: PluginSlotContribution;
+  navigate?: NavigateFunction;
+  onDone: () => void;
+  onLaunchConversation?: (id: string) => Promise<void>;
+  onOpenPluginPage?: (target: PluginPageTarget) => void;
+}) {
+  const { canRun, run, running } = usePluginContributionRunner({
+    context,
+    contribution,
+    navigate,
+    onLaunchConversation,
+    onOpenPluginPage,
+  });
+
+  return (
+    <button
+      className="plugin-slot__more-item"
+      disabled={!canRun || running}
+      onClick={() => {
+        onDone();
+        void run();
+      }}
+      role="menuitem"
+      title={contribution.description || contribution.title}
+      type="button"
+    >
+      {renderPluginIcon(contribution.icon)}
+      <span>{contribution.actionLabel || contribution.title}</span>
+    </button>
+  );
+}
+
+interface ConnectedPluginSlotProps {
+  context?: PluginActionRunContext;
+  maxInline?: number;
+  navigate?: NavigateFunction;
   onOpenPluginPage?: (target: PluginPageTarget) => void;
   onLaunchConversation?: (id: string) => Promise<void>;
   slot: PluginSlotId;
-}) {
+}
+
+function ConnectedPluginSlotInner({
+  context,
+  maxInline,
+  navigate,
+  onOpenPluginPage,
+  onLaunchConversation,
+  slot,
+}: ConnectedPluginSlotProps) {
+  const { language, t } = useOptionalI18n();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const hasContributionApi = typeof listPluginSlotContributions === "function";
+
   const query = useQuery({
-    queryFn: listPluginSlotContributions,
+    enabled: hasContributionApi,
+    queryFn: () => listPluginSlotContributions(),
     queryKey: pluginSlotContributionsQueryKey,
     retry: false,
     staleTime: 30_000,
   });
-  const items = normalizeSerializablePluginContributions(query.data ?? []).filter((item) => item.slot === slot);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  const items = normalizeSerializablePluginContributions(query.data ?? [])
+    .filter((item) => item.slot === slot)
+    .map((item) => localizePluginSlotContribution(item, language));
+
   if (!items.length) {
     return null;
   }
+
+  const shouldCollapse = maxInline !== undefined && maxInline > 0 && slot !== "chat-output" && items.length > maxInline;
+  const inlineItems = shouldCollapse ? items.slice(0, maxInline) : items;
+  const overflowItems = shouldCollapse ? items.slice(maxInline) : [];
+
   return (
     <div className="plugin-slot" data-plugin-slot={slot}>
-      {items.map((item) => (
+      {inlineItems.map((item) => (
         <div
           data-plugin-contribution={item.id}
           data-plugin-id={item.pluginId}
@@ -237,20 +370,73 @@ function ConnectedPluginSlot({
           key={`${item.pluginId}:${item.id}`}
         >
           <SerializableContribution
+            context={context}
             contribution={item}
+            navigate={navigate}
             onOpenPluginPage={onOpenPluginPage}
             onLaunchConversation={onLaunchConversation}
           />
         </div>
       ))}
+      {overflowItems.length ? (
+        <div className="plugin-slot__more" ref={moreRef}>
+          <Button
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label={t("plugin.slot.moreActions")}
+            icon={<MoreHorizontal aria-hidden className="button__icon" />}
+            onClick={() => setMenuOpen((open) => !open)}
+            tooltip={t("plugin.slot.moreActions")}
+            variant="ghost"
+          />
+          {menuOpen ? (
+            <div className="plugin-slot__more-menu" role="menu">
+              {overflowItems.map((item) => (
+                <OverflowMenuItem
+                  context={context}
+                  contribution={item}
+                  key={`${item.pluginId}:${item.id}`}
+                  navigate={navigate}
+                  onDone={() => setMenuOpen(false)}
+                  onLaunchConversation={onLaunchConversation}
+                  onOpenPluginPage={onOpenPluginPage}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-export function PluginSlot({ contributions, onOpenPluginPage, onLaunchConversation, slot }: PluginSlotProps) {
+function RouterPluginSlot(props: ConnectedPluginSlotProps) {
+  const navigate = useNavigate();
+  return <ConnectedPluginSlotInner {...props} navigate={navigate} />;
+}
+
+function QueryGuardedPluginSlot(props: ConnectedPluginSlotProps) {
+  const inRouter = useInRouterContext();
+  const queryClient = useOptionalQueryClient();
+  if (!queryClient || !hasUseQueryExport()) {
+    return null;
+  }
+  return inRouter ? <RouterPluginSlot {...props} /> : <ConnectedPluginSlotInner {...props} />;
+}
+
+export function PluginSlot({
+  context,
+  contributions,
+  maxInline,
+  onOpenPluginPage,
+  onLaunchConversation,
+  slot,
+}: PluginSlotProps) {
   if (contributions === undefined) {
     return (
-      <ConnectedPluginSlot
+      <QueryGuardedPluginSlot
+        context={context}
+        maxInline={maxInline}
         onOpenPluginPage={onOpenPluginPage}
         onLaunchConversation={onLaunchConversation}
         slot={slot}

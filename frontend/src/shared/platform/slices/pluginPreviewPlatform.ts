@@ -1,150 +1,27 @@
 import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import { sampleMcpConfig, sampleMcpTools, samplePluginCatalog, samplePlugins } from "../sampleData";
+import {
+  normalizePreviewPluginSubmission,
+  PREVIEW_PLUGIN_SUBMIT_URL,
+  previewCatalogForSource,
+  previewCatalogKeys,
+  previewManifestKeys,
+  previewModuleToken,
+  previewNormalizePluginKey,
+  previewPluginDirectory,
+  previewPluginIssueUrl,
+  previewPluginSubmissionErrors,
+  previewPluginSubmissionJson,
+  previewUpsertPlugin,
+} from "./pluginPreviewSubmission";
 import type {
   McpPlatform,
-  PluginCatalogItem,
   PluginManifest,
+  PluginSectionContribution,
   PluginsPlatform,
-  PluginSubmissionInput,
   PluginUIPage,
 } from "./pluginTypes";
 import { clone, delay, previewTask } from "./previewContext";
-
-const PREVIEW_PLUGIN_SUBMIT_URL =
-  "https://github.com/RachelForster/Shinsekai-Plugin-Registry/issues/new?template=PLUGIN_PUBLISH.yml";
-
-function previewNormalizePluginKey(value: string | null | undefined) {
-  return (value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/^git@github\.com:/i, "")
-    .replace(/^https?:\/\/github\.com\//i, "")
-    .replace(/^github\.com\//i, "")
-    .replace(/\.git$/i, "")
-    .replace(/[^\p{L}\p{N}]+/gu, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function previewModuleToken(value: string | null | undefined) {
-  const moduleName = (value ?? "").split(":", 1)[0] ?? "";
-  const parts = moduleName.split(".").filter(Boolean);
-  if (!parts.length) {
-    return "";
-  }
-  if (parts.at(-1) === "plugin" && parts.length > 1) {
-    return parts.at(-2) ?? "";
-  }
-  return parts.at(-1) ?? "";
-}
-
-function previewPluginDirectory(entry: string, fallback: string) {
-  const token = previewModuleToken(entry) || previewNormalizePluginKey(fallback) || "preview";
-  return `plugins/${token.replace(/[^A-Za-z0-9_\u3040-\u30ff\u3400-\u9fff]+/g, "_")}`;
-}
-
-function previewCatalogKeys(plugin: PluginCatalogItem) {
-  return new Set(
-    [plugin.id, plugin.name, plugin.repo, plugin.entry, previewModuleToken(plugin.entry)]
-      .map(previewNormalizePluginKey)
-      .filter((key) => key.length >= 2),
-  );
-}
-
-function previewManifestKeys(plugin: PluginManifest) {
-  return new Set(
-    [
-      plugin.id,
-      plugin.entry,
-      plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
-      plugin.install?.repo,
-      plugin.install?.entry,
-      previewModuleToken(plugin.entry),
-    ]
-      .map(previewNormalizePluginKey)
-      .filter((key) => key.length >= 2),
-  );
-}
-
-function previewCatalogForSource(source: string, catalogItems: PluginCatalogItem[]) {
-  const sourceKey = previewNormalizePluginKey(source);
-  const rawLower = source.trim().toLowerCase();
-  return catalogItems.find(
-    (item) =>
-      previewCatalogKeys(item).has(sourceKey) ||
-      Boolean(rawLower && (item.displayName ?? "").trim().toLowerCase() === rawLower),
-  );
-}
-
-function previewUpsertPlugin(currentPlugins: PluginManifest[], plugin: PluginManifest, catalog?: PluginCatalogItem) {
-  const keys = new Set([...previewManifestKeys(plugin), ...(catalog ? previewCatalogKeys(catalog) : [])]);
-  let replaced = false;
-  const nextPlugins = currentPlugins.map((item) => {
-    for (const key of previewManifestKeys(item)) {
-      if (keys.has(key)) {
-        replaced = true;
-        return plugin;
-      }
-    }
-    return item;
-  });
-  if (!replaced) {
-    return [...nextPlugins, plugin];
-  }
-  return nextPlugins;
-}
-
-function normalizePreviewPluginSubmission(input: PluginSubmissionInput): PluginSubmissionInput {
-  const submission: PluginSubmissionInput = {
-    author: input.author.trim(),
-    desc: input.desc.trim(),
-    display_name: input.display_name.trim(),
-    repo: input.repo.trim().replace(/\.git$/i, ""),
-    social_link: (input.social_link ?? "").trim(),
-    tags: (input.tags ?? [])
-      .map((tag) => tag.trim())
-      .filter(Boolean)
-      .slice(0, 5),
-  };
-  const lowestShinsekaiVersion = (input.lowest_shinsekai_version ?? "").trim();
-  if (lowestShinsekaiVersion) {
-    submission.lowest_shinsekai_version = lowestShinsekaiVersion;
-  }
-  return submission;
-}
-
-function previewPluginSubmissionErrors(input: PluginSubmissionInput) {
-  const submission = normalizePreviewPluginSubmission(input);
-  const errors: string[] = [];
-  for (const field of ["display_name", "desc", "author", "repo"] as const) {
-    if (!submission[field]) {
-      errors.push(`${field} is required`);
-    }
-  }
-  if (submission.desc.length > 200) {
-    errors.push("desc must be 200 characters or less");
-  }
-  if (!/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+$/i.test(submission.repo)) {
-    errors.push("repo must be a GitHub repository URL");
-  }
-  if ((input.tags ?? []).filter((tag) => tag.trim()).length > 5) {
-    errors.push("tags must contain 5 items or fewer");
-  }
-  return errors;
-}
-
-function previewPluginSubmissionJson(input: PluginSubmissionInput) {
-  return JSON.stringify(normalizePreviewPluginSubmission(input), null, 2);
-}
-
-function previewPluginIssueUrl(input: PluginSubmissionInput) {
-  const submission = normalizePreviewPluginSubmission(input);
-  const params = new URLSearchParams({
-    "plugin-info": ["```json", previewPluginSubmissionJson(submission), "```", ""].join("\n"),
-    template: "PLUGIN_PUBLISH.yml",
-    title: `[Plugin] ${submission.display_name}`,
-  });
-  return `${PREVIEW_PLUGIN_SUBMIT_URL.split("?")[0]}?${params.toString()}`;
-}
 
 export function createPluginsPreviewPlatform(): PluginsPlatform {
   let plugins = clone(samplePlugins);
@@ -292,6 +169,8 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
       return delay(plugin, 400);
     },
     list: () => delay(plugins),
+    listPageSections: () => Promise.resolve([]),
+    listSidebarPages: () => Promise.resolve([]),
     listSlotContributions: () =>
       delay(
         plugins.some((plugin) => plugin.id === "core-tools" && plugin.enabled)
@@ -380,6 +259,31 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
         submission,
       });
     },
+    runPageSectionAction(pluginId, sectionId, actionId, values) {
+      const plugin = plugins.find((item) => item.id === pluginId || item.entry === pluginId);
+      if (!plugin) {
+        return Promise.reject(new Error(translateRuntimeMessage("plat.preview.plugin.notFound", { id: pluginId })));
+      }
+      const section: PluginSectionContribution = {
+        description: "",
+        id: sectionId,
+        navLabel: sectionId,
+        order: 0,
+        page: "system",
+        pluginId: plugin.id,
+        pluginVersion: plugin.version,
+        renderer: "schema",
+        slot: "main",
+        title: sectionId,
+        values,
+      };
+      return delay({
+        kind: "success" as const,
+        message: translateRuntimeMessage("plat.preview.plugin.actionDone", { action: actionId }),
+        result: {} as Record<string, unknown>,
+        section,
+      });
+    },
     runUiAction(id, pageId, actionId, values) {
       const plugin = plugins.find((item) => item.id === id || item.entry === id);
       if (!plugin) {
@@ -399,6 +303,30 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
         } satisfies PluginUIPage,
         plugin,
         result: {} as Record<string, unknown>,
+      });
+    },
+    savePageSectionValues(pluginId, sectionId, values) {
+      const plugin = plugins.find((item) => item.id === pluginId || item.entry === pluginId);
+      if (!plugin) {
+        return Promise.reject(new Error(translateRuntimeMessage("plat.preview.plugin.notFound", { id: pluginId })));
+      }
+      const section: PluginSectionContribution = {
+        description: "",
+        id: sectionId,
+        navLabel: sectionId,
+        order: 0,
+        page: "system",
+        pluginId: plugin.id,
+        pluginVersion: plugin.version,
+        renderer: "schema",
+        slot: "main",
+        title: sectionId,
+        values,
+      };
+      return delay({
+        kind: "success" as const,
+        message: translateRuntimeMessage("plat.preview.plugin.saved"),
+        section,
       });
     },
     saveUiConfig(id, pageId, values) {

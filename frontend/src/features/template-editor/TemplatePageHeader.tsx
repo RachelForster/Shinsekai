@@ -1,6 +1,7 @@
 import { Save } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import { AsyncButton, EmptyState, QueryErrorState, Select, TextInput } from "../../shared/ui";
 import type { TemplateEditorContext } from "./templateContext";
 
@@ -56,6 +57,15 @@ export function TemplatePageHeader({ ctx }: TemplatePageHeaderProps) {
                 {t("common.save")}
               </AsyncButton>
             )}
+            <PluginSlot
+              context={{
+                entityId: ctx.templateSelectValue || ctx.draft.id || undefined,
+                entityType: "template",
+                page: "template",
+              }}
+              maxInline={2}
+              slot="template-header-actions"
+            />
           </span>
           {ctx.nameError ? <span className="field-error">{ctx.nameError}</span> : null}
         </label>

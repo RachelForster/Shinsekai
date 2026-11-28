@@ -11,6 +11,10 @@ import type {
   PluginLoadStatus,
   PluginLocalScanResult,
   PluginManifest,
+  PluginSectionActionResult,
+  PluginSectionContribution,
+  PluginSectionSaveResult,
+  PluginSidebarPageContribution,
   PluginSlotActionResult,
   PluginSlotContribution,
   PluginsPlatform,
@@ -52,6 +56,23 @@ export function createPluginsHttpPlatform(transport: HttpTransport): PluginsPlat
     },
     getUi: (id) => requestJson<PluginUIDetail>(`/api/plugins/${encodePath(id)}/ui`),
     list: () => requestJson<PluginManifest[]>("/api/plugins"),
+    listPageSections: async (query) => {
+      const search = new URLSearchParams({ page: query.page });
+      if (query.entityType) search.set("entityType", query.entityType);
+      if (query.entityId) search.set("entityId", query.entityId);
+      if (query.locale) search.set("locale", query.locale);
+      if (query.extra && Object.keys(query.extra).length > 0) {
+        search.set("extra", JSON.stringify(query.extra));
+      }
+      const data = await requestJson<{ sections?: PluginSectionContribution[] }>(
+        `/api/plugins/sections?${search.toString()}`,
+      );
+      return Array.isArray(data.sections) ? data.sections : [];
+    },
+    listSidebarPages: async () => {
+      const data = await requestJson<{ pages?: PluginSidebarPageContribution[] }>("/api/plugins/sidebar-pages");
+      return Array.isArray(data.pages) ? data.pages : [];
+    },
     listSlotContributions: () => requestJson<PluginSlotContribution[]>("/api/plugins/chat-ui-contributions"),
     status: () => requestJson<PluginLoadStatus>("/api/plugins/status"),
     async repoTags(repo) {
@@ -86,15 +107,25 @@ export function createPluginsHttpPlatform(transport: HttpTransport): PluginsPlat
       }
       return result;
     },
+    runPageSectionAction: (pluginId, sectionId, actionId, values, context) =>
+      requestJson<PluginSectionActionResult>(
+        `/api/plugins/${encodePath(pluginId)}/sections/${encodePath(sectionId)}/actions/${encodePath(actionId)}`,
+        { body: JSON.stringify(context ? { context, values } : { values }), method: "POST" },
+      ),
     runUiAction: (id, pageId, actionId, values) =>
       requestJson<PluginConfigActionResult>(
         `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/actions/${encodePath(actionId)}`,
         { body: JSON.stringify({ values }), method: "POST" },
       ),
-    runSlotContribution: (pluginId, contributionId) =>
+    runSlotContribution: (pluginId, contributionId, context) =>
       requestJson<PluginSlotActionResult>(
         `/api/plugins/${encodePath(pluginId)}/chat-ui/${encodePath(contributionId)}/run`,
-        { body: JSON.stringify({}), method: "POST" },
+        { body: JSON.stringify(context ? { context } : {}), method: "POST" },
+      ),
+    savePageSectionValues: (pluginId, sectionId, values, context) =>
+      requestJson<PluginSectionSaveResult>(
+        `/api/plugins/${encodePath(pluginId)}/sections/${encodePath(sectionId)}/values`,
+        { body: JSON.stringify(context ? { context, values } : { values }), method: "POST" },
       ),
     saveUiConfig: (id, pageId, values) =>
       requestJson<PluginConfigSaveResult>(`/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/config`, {

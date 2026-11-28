@@ -433,6 +433,7 @@ class SessionBehaviorContribution:
     description: str = ""
     default_config: dict[str, Any] = field(default_factory=dict)
     order: int = 100
+    i18n: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
 
 __all__ = [

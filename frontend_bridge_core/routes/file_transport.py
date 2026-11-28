@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+import os
 import re
 from http import HTTPStatus
 from pathlib import Path
@@ -15,7 +16,12 @@ from frontend_bridge_core.media_paths import (
     resolve_external_media_file,
     validate_readable_media_file,
 )
+from frontend_bridge_core.plugin_sdk_assets import (
+    inject_plugin_sdk_into_html,
+    resolve_sdk_asset,
+)
 from frontend_bridge_core.plugin_ui import _resolve_plugin_frontend_file
+from frontend_bridge_core.plugin_ui_extensions import _should_inject_host_theme
 from frontend_bridge_core.security import (
     safe_content_disposition,
     safe_header_value,
@@ -212,6 +218,27 @@ class FileTransport:
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
+    def send_bytes(
+        self,
+        payload: bytes,
+        *,
+        content_type: str,
+        cache_control: str = "",
+        send_body: bool = True,
+    ) -> None:
+        self.handler.send_response(HTTPStatus.OK)
+        self.handler._send_cors()
+        self.handler.send_header("Content-Type", safe_header_value(content_type))
+        if cache_control:
+            self.handler.send_header("Cache-Control", safe_header_value(cache_control))
+        self.handler.send_header("Content-Length", str(len(payload)))
+        try:
+            self.handler.end_headers()
+            if send_body and payload:
+                self.handler.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
+
     def send_range_not_satisfiable(self, file_size: int) -> None:
         self.handler.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
         self.handler._send_cors()
@@ -342,16 +369,38 @@ def dispatch_file_request(
     *,
     send_body: bool,
 ) -> bool:
+    raw_root = getattr(getattr(handler, "state", None), "project_root", None)
+    project_root = Path(raw_root) if isinstance(raw_root, (str, os.PathLike)) else None
+    sdk_asset = resolve_sdk_asset(path, project_root=project_root)
+    if sdk_asset is not None:
+        content_type, payload = sdk_asset
+        FileTransport(handler).send_bytes(
+            payload,
+            content_type=content_type,
+            cache_control="no-cache",
+            send_body=send_body,
+        )
+        return True
     if path.startswith("/api/plugins/") and "/frontend/" in path:
         rest = path[len("/api/plugins/") :]
         plugin_part, _, frontend_tail = rest.partition("/frontend/")
         page_part, _, asset_part = frontend_tail.partition("/")
+        plugin_lookup = unquote(plugin_part)
+        page_lookup = unquote(page_part)
+        target = _resolve_plugin_frontend_file(
+            plugin_lookup,
+            page_lookup,
+            unquote(asset_part),
+        )
+        if target.suffix.lower() in {".html", ".htm"} and _should_inject_host_theme(plugin_lookup, page_lookup):
+            FileTransport(handler).send_bytes(
+                inject_plugin_sdk_into_html(target.read_bytes()),
+                content_type="text/html; charset=utf-8",
+                send_body=send_body,
+            )
+            return True
         handler._send_local_file(
-            _resolve_plugin_frontend_file(
-                unquote(plugin_part),
-                unquote(page_part),
-                unquote(asset_part),
-            ),
+            target,
             send_body=send_body,
         )
         return True

@@ -3,6 +3,7 @@ import { ExternalLink, FolderInput, FolderOutput, Plus, Save, X } from "lucide-r
 
 import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import {
   AsyncButton,
   AutoSaveStatus,
@@ -63,6 +64,15 @@ export function EffectPageHeader({ ctx, navItems }: EffectPageHeaderProps) {
           </Select>
         </label>
         <div className="effect-page__package-actions">
+          <PluginSlot
+            context={{
+              entityId: ctx.isCreating ? undefined : ctx.selectedName || undefined,
+              entityType: "effect",
+              page: "effect",
+            }}
+            maxInline={2}
+            slot="effect-header-actions"
+          />
           <Button
             className="button--header-icon"
             data-tooltip={t("common.new")}
