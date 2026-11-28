@@ -20,6 +20,7 @@ from application.chat.host.session_lifecycle import ChatSessionLifecycle
 from application.chat.host.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
+    read_history_behavior_id,
     resolve_chat_history_path,
     resume_template_outfit_preferences,
 )
@@ -60,6 +61,7 @@ from application.story.coordinator import (
 )
 from frontend_bridge_core.effects import EffectConfigAdapter
 from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
+from sdk.exception import AppError
 from sdk.logging import get_logger
 
 
@@ -372,6 +374,31 @@ def _launch_chat_locked(
     behavior_plugin_id = (
         find_session_behavior_plugin_id(behavior_id) if behavior_id else ""
     )
+    effective_behavior_id = behavior_id or ("novel_theater" if is_novel_launch else "")
+    if effective_behavior_id and not start_fresh_history:
+        existing_behavior_id = read_history_behavior_id(history_path)
+        if existing_behavior_id and existing_behavior_id != effective_behavior_id:
+            if str(body.get("historyPath") or "").strip():
+                raise AppError(
+                    "behavior.identity_mismatch",
+                    params={
+                        "expectedBehaviorId": effective_behavior_id,
+                        "actualBehaviorId": existing_behavior_id,
+                    },
+                    fallback_message=(
+                        f"History is bound to behavior '{existing_behavior_id}', "
+                        f"not '{effective_behavior_id}'."
+                    ),
+                    http_status=409,
+                )
+            history_target = plan_chat_history_launch(
+                state,
+                {**body, "characters": characters},
+                row,
+                start_fresh=True,
+            )
+            history_path = history_target.history_path
+            clear_story_session(state)
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),

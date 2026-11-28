@@ -159,3 +159,106 @@ def test_close_reports_session_conflict(monkeypatch):
     response = route.handler(request)
     assert response.status is HTTPStatus.CONFLICT
     assert response.data == {"error": "chat changed", "errorCode": "chat_session_changed"}
+
+
+def test_launch_chat_isolates_mismatched_behavior_histories(
+    tmp_path, monkeypatch
+) -> None:
+    from application.chat.host.launch_history import resolve_chat_history_path
+    from core.chat_history.behavior_state_store import (
+        BehaviorStateStore,
+        read_latest_behavior_id_readonly,
+    )
+    from core.chat_history.storage import (
+        chat_history_session_dir,
+        close_session_store,
+        open_session_store,
+    )
+    from frontend_bridge_core.chat_session import _launch_chat_locked
+    from sdk.exception.types import AppError
+
+    history_dir = tmp_path / "history"
+    template_dir = tmp_path / "templates"
+    history_dir.mkdir()
+    template_dir.mkdir()
+
+    state = SimpleNamespace(
+        project_root_dir=str(tmp_path),
+        history_dir=str(history_dir),
+        template_dir_path=str(template_dir),
+        chat_session={},
+        chat_stream=None,
+        auth_token="",
+        config_manager=SimpleNamespace(
+            config=SimpleNamespace(
+                system_config=SimpleNamespace(
+                    live_room_id="",
+                    voice_language="ja",
+                    chat_ui_runtime_mode="react",
+                    use_agent_chat_pipeline=False,
+                ),
+                characters=[],
+                background_list=[],
+            ),
+            get_character_by_name=lambda _n: None,
+            get_background_by_name=lambda _n: None,
+            save_system_config=lambda: None,
+        ),
+    )
+
+    body_base = {
+        "templateId": "tpl.txt",
+        "scenario": "Werewolf village",
+        "system": "System rules",
+        "characters": [],
+        "behaviorId": "mafia",
+    }
+    default_history = resolve_chat_history_path(state, body_base, body_base)
+    session_dir = chat_history_session_dir(default_history)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    store = open_session_store(default_history)
+    try:
+        BehaviorStateStore(store, session_dir).initialize_state(  # type: ignore[arg-type]
+            branch_id="main",
+            behavior_id="werewolf",
+            state={"phase": "day"},
+        )
+    finally:
+        close_session_store(default_history)
+
+    monkeypatch.setattr("frontend_bridge_core.chat_session._chat_runtime_closing", lambda _s: False)
+    monkeypatch.setattr("frontend_bridge_core.chat_session._chat_process_running", lambda: False)
+    monkeypatch.setattr("frontend_bridge_core.chat_session.configure_mobile_access", lambda *_a, **_kw: None)
+    monkeypatch.setattr("frontend_bridge_core.chat_session.build_effect_context", lambda *_a, **_kw: SimpleNamespace(selected_names=[]))
+    monkeypatch.setattr("frontend_bridge_core.chat_session.find_session_behavior_plugin_id", lambda bid: "com.demo." + bid)
+    monkeypatch.setattr(
+        "frontend_bridge_core.chat_session._session_lifecycle",
+        lambda *_a, **_kw: SimpleNamespace(
+            begin=lambda *_a2, **_kw2: "launch-1",
+            launch=lambda fn: fn() or "ok",
+        ),
+    )
+    monkeypatch.setattr("frontend_bridge_core.chat_session._complete_chat_launch", lambda *_a, **_kw: None)
+    monkeypatch.setattr("frontend_bridge_core.chat_session.remember_conversation", lambda *_a, **_kw: None)
+    monkeypatch.setattr("frontend_bridge_core.chat_session._chat_snapshot", lambda _s, status, err, extra=None: {"status": status, **(extra or {})})
+
+    launched_paths: list[str] = []
+    monkeypatch.setattr(
+        "frontend_bridge_core.chat_session._launch_runtime_chat",
+        lambda _s, **kw: launched_paths.append(kw["history_file"]) or "ok",
+    )
+
+    # 1. Implicit default path owned by another behavior opens a fresh sibling history.
+    _launch_chat_locked(state, dict(body_base))
+    assert len(launched_paths) == 1
+    assert launched_paths[0] != default_history.as_posix()
+    assert read_latest_behavior_id_readonly(session_dir) == "werewolf"
+
+    # 2. Explicit historyPath owned by another behavior raises HTTP 409 mismatch.
+    with pytest.raises(AppError) as mismatch:
+        _launch_chat_locked(
+            state,
+            {**body_base, "historyPath": default_history.as_posix()},
+        )
+    assert mismatch.value.error_code == "behavior.identity_mismatch"
+    assert mismatch.value.http_status == 409

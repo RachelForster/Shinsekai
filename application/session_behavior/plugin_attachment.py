@@ -64,7 +64,7 @@ def try_attach_plugin_behavior(
     if getattr(capability, "behavior", None) is not None or args is None:
         return False
     behavior_id = str(getattr(args, "behavior_id", "") or "").strip()
-    if not behavior_id:
+    if not behavior_id or behavior_id == "novel_theater":
         return False
 
     manager = getattr(startup, "plugin_manager", None) if startup is not None else None
@@ -111,12 +111,17 @@ def try_attach_plugin_behavior(
             initial_state = dict(built)
 
     state_store = _build_state_store(str(getattr(args, "history", "") or ""), capability)
+    previous_port = getattr(capability, "runtime_port", None)
     capability.set_runtime_port(port)
-    capability.attach_behavior(
-        behavior,
-        state_store=state_store,
-        initial_state=initial_state,
-    )
+    try:
+        capability.attach_behavior(
+            behavior,
+            state_store=state_store,
+            initial_state=initial_state,
+        )
+    except Exception:
+        capability.set_runtime_port(previous_port)
+        raise
     return True
 
 

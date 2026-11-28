@@ -39,6 +39,7 @@ from sdk.session_behavior import (
 )
 from core.chat_history.behavior_state_models import (
     BehaviorCommitResult,
+    BehaviorIdentityMismatchError,
     BehaviorStateSnapshot,
     BehaviorVersionConflictError,
 )
@@ -118,43 +119,27 @@ class SessionBehaviorCapability(BaseSessionCapability):
             self._emit_event(dict(payload))
 
     def _current_branch(self) -> str:
-        if callable(self._branch_id_provider):
-            branch = str(self._branch_id_provider() or "main").strip()
-            return branch or "main"
-        return "main"
+        if not callable(self._branch_id_provider):
+            return "main"
+        return str(self._branch_id_provider() or "main").strip() or "main"
 
     def _emit_replace(self, envelope: BehaviorStateEnvelope | None) -> None:
         with self._lock:
             self._last_envelope = envelope
         if callable(self._emit_event):
-            self._emit_event(
-                {
-                    "type": "behavior.state.replace",
-                    "behavior": envelope.to_camel_dict() if envelope is not None else None,
-                }
-            )
+            payload = envelope.to_camel_dict() if envelope is not None else None
+            self._emit_event({"type": "behavior.state.replace", "behavior": payload})
 
     def _active_casting_map(self) -> CastingMap | None:
-        behavior = self._behavior
-        store = self._state_store
-        if behavior is None or store is None:
-            return None
-        latest = store.get_latest_state(self._current_branch())
-        if latest is None:
-            return None
-        return behavior.get_casting_map(latest.state)
+        snapshot = self.read_active_snapshot()
+        return snapshot[0].get_casting_map(snapshot[2].state) if snapshot is not None else None
 
     def _resolve_character_media_handler(self) -> Any | None:
-        if self._character_media_handler is not None:
-            return self._character_media_handler
-        found = resolve_character_media_handler(
-            self._runtime_components,
-            self._app_runtime,
-        )
-        if found is not None:
-            self._character_media_handler = found
-            return found
-        return None
+        if self._character_media_handler is None:
+            self._character_media_handler = resolve_character_media_handler(
+                self._runtime_components, self._app_runtime
+            )
+        return self._character_media_handler
 
     def _bind_ui_worker(self) -> None:
         ui_worker = resolve_ui_worker(self._runtime_components, self._app_runtime)
@@ -196,18 +181,30 @@ class SessionBehaviorCapability(BaseSessionCapability):
     ) -> BehaviorStateEnvelope:
         """Bind a SessionBehavior to this session, recover pending state, and publish."""
         with self._lock:
+            state_store.recover_pending()
+            target_branch = branch_id or self._current_branch()
+            try:
+                snap = state_store.initialize_state(
+                    branch_id=target_branch,
+                    behavior_id=behavior.behavior_id,
+                    state=initial_state,
+                )
+            except BehaviorIdentityMismatchError as exc:
+                raise AppError(
+                    "behavior.identity_mismatch",
+                    params={
+                        "expectedBehaviorId": exc.expected_behavior_id,
+                        "actualBehaviorId": exc.actual_behavior_id,
+                        "branchId": exc.branch_id,
+                    },
+                    fallback_message=str(exc),
+                    http_status=409,
+                ) from exc
             self._behavior = behavior
             self._state_store = state_store
             self._initial_state = copy.deepcopy(dict(initial_state))
             self._idempotency.clear_branch()
             self._ensure_compact_hook()
-            state_store.recover_pending()
-            target_branch = branch_id or self._current_branch()
-            snap = state_store.initialize_state(
-                branch_id=target_branch,
-                behavior_id=behavior.behavior_id,
-                state=initial_state,
-            )
             behavior.on_state_restored(snap)
             self._bind_ui_worker()
             self._sync_media_policy(snap.state)
@@ -277,6 +274,22 @@ class SessionBehaviorCapability(BaseSessionCapability):
     ) -> tuple[bool, str | None]:
         return dispatch_behavior_user_input(self, text, attachments)
 
+    def _publish_transition(
+        self,
+        behavior: SessionBehavior,
+        branch_id: str,
+        envelope: BehaviorStateEnvelope,
+        commit_result: BehaviorCommitResult,
+    ) -> BehaviorStateEnvelope:
+        self._emit_replace(envelope)
+        after_behavior_transition_committed(
+            behavior,
+            branch_id=branch_id,
+            state_version=commit_result.snapshot.state_version,
+            appended_turn_seqs=commit_result.appended_turn_seqs,
+        )
+        return envelope
+
     def commit_external_transition(
         self, *, expected_state_version: int, transition: BehaviorTransition, branch_id: str | None = None
     ) -> BehaviorStateEnvelope:
@@ -286,20 +299,10 @@ class SessionBehaviorCapability(BaseSessionCapability):
                 raise AppError("behavior.not_active", fallback_message="No SessionBehavior is active for this session.", http_status=400)
             resolved_branch = branch_id or self._current_branch()
             envelope, commit_result = self._commit_transition(
-                behavior=behavior,
-                store=store,
-                branch_id=resolved_branch,
-                expected_state_version=expected_state_version,
-                transition=transition,
+                behavior=behavior, store=store, branch_id=resolved_branch,
+                expected_state_version=expected_state_version, transition=transition,
             )
-        self._emit_replace(envelope)
-        after_behavior_transition_committed(
-            behavior,
-            branch_id=resolved_branch,
-            state_version=commit_result.snapshot.state_version,
-            appended_turn_seqs=commit_result.appended_turn_seqs,
-        )
-        return envelope
+        return self._publish_transition(behavior, resolved_branch, envelope, commit_result)
 
     def is_free_text_allowed(self) -> bool:
         snapshot = self.read_active_snapshot()
@@ -415,23 +418,14 @@ class SessionBehaviorCapability(BaseSessionCapability):
                 return outcome
             try:
                 envelope, commit_result = self._commit_transition(
-                    behavior=behavior,
-                    store=store,
-                    branch_id=branch_id,
-                    expected_state_version=latest.state_version,
-                    transition=outcome,
+                    behavior=behavior, store=store, branch_id=branch_id,
+                    expected_state_version=latest.state_version, transition=outcome,
                 )
             except BehaviorVersionConflictError as exc:
                 return self._stale_resolution(behavior, store.get_latest_state(branch_id), str(exc))
             accepted = CommandResolution(status="accepted", envelope=envelope)
             self._idempotency.record(branch_id, command.command_id, accepted)
-        self._emit_replace(envelope)
-        after_behavior_transition_committed(
-            behavior,
-            branch_id=branch_id,
-            state_version=commit_result.snapshot.state_version,
-            appended_turn_seqs=commit_result.appended_turn_seqs,
-        )
+        self._publish_transition(behavior, branch_id, envelope, commit_result)
         return accepted
 
     def on_playback_idle(self, turn: Any = None) -> BehaviorStateEnvelope | None:
@@ -451,28 +445,15 @@ class SessionBehaviorCapability(BaseSessionCapability):
             if transition is None:
                 return None
             envelope, commit_result = self._commit_transition(
-                behavior=behavior,
-                store=store,
-                branch_id=branch_id,
-                expected_state_version=latest.state_version,
-                transition=transition,
+                behavior=behavior, store=store, branch_id=branch_id,
+                expected_state_version=latest.state_version, transition=transition,
             )
-        self._emit_replace(envelope)
-        after_behavior_transition_committed(
-            behavior,
-            branch_id=branch_id,
-            state_version=commit_result.snapshot.state_version,
-            appended_turn_seqs=commit_result.appended_turn_seqs,
-        )
-        return envelope
+        return self._publish_transition(behavior, branch_id, envelope, commit_result)
 
     def on_before_compact(self, context: BeforeCompactContext) -> None:
-        behavior, store = self._behavior, self._state_store
-        if behavior is None or store is None:
-            return
-        latest = store.get_latest_state(self._current_branch())
-        if latest is not None:
-            behavior.on_before_compact(context, state=latest.state)
+        snapshot = self.read_active_snapshot()
+        if snapshot is not None:
+            snapshot[0].on_before_compact(context, state=snapshot[2].state)
 
     def on_history_mutated(
         self, reason: str, *, branch_id: str | None = None

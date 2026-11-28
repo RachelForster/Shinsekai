@@ -14,6 +14,7 @@ from application.chat.host.history import _serialize_history_entries_from_messag
 from application.perception.hooks import PerceptionAutoHooks
 from core.chat_history.behavior_state_models import (
     BEHAVIOR_TURN_JOURNAL_FILENAME,
+    BehaviorIdentityMismatchError,
     BehaviorTurnJournalRecord,
     atomic_write_journal,
     ensure_behavior_state_schema,
@@ -21,6 +22,7 @@ from core.chat_history.behavior_state_models import (
 from core.chat_history.behavior_state_store import (
     BehaviorStateStore,
     BehaviorVersionConflictError,
+    read_latest_behavior_id_readonly,
 )
 from core.chat_history.sqlite_session_store import SqliteSessionStore
 from core.chat_history.storage import (
@@ -414,3 +416,43 @@ def test_remove_and_prune_cleans_crashed_atomic_temp_files(tmp_path: Path) -> No
     assert not branch_tmp.exists()
     assert not journal_tmp.exists()
     assert not session_dir.exists()
+
+
+def test_behavior_state_store_rejects_mismatched_behavior_identity_and_reads_readonly(
+    tmp_path: Path,
+) -> None:
+    missing_dir = tmp_path / "never_created"
+    assert read_latest_behavior_id_readonly(missing_dir) == ""
+    assert not missing_dir.exists()
+
+    db_store, behavior_store, session_dir = _new_store(tmp_path)
+    try:
+        v1 = behavior_store.initialize_state(
+            branch_id="main",
+            behavior_id="werewolf",
+            state={"phase": "day"},
+        )
+        assert v1.behavior_id == "werewolf"
+
+        with pytest.raises(BehaviorIdentityMismatchError) as init_err:
+            behavior_store.initialize_state(
+                branch_id="main",
+                behavior_id="mafia",
+                state={"phase": "lobby"},
+            )
+        assert init_err.value.expected_behavior_id == "mafia"
+        assert init_err.value.actual_behavior_id == "werewolf"
+
+        with pytest.raises(BehaviorIdentityMismatchError) as commit_err:
+            behavior_store.commit_behavior_turn(
+                branch_id="main",
+                behavior_id="mafia",
+                expected_state_version=1,
+                next_state={"phase": "hijacked"},
+            )
+        assert commit_err.value.actual_behavior_id == "werewolf"
+        assert behavior_store.get_latest_state("main").behavior_id == "werewolf"  # type: ignore[union-attr]
+        assert read_latest_behavior_id_readonly(session_dir) == "werewolf"
+    finally:
+        db_store.close()
+    assert read_latest_behavior_id_readonly(session_dir) == "werewolf"

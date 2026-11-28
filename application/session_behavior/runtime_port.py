@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
+import threading
 from typing import Any
 import uuid
 
 from ai.llm.adapter_factory import LLMAdapterFactory
 from ai.llm.adapters.common import filter_adapter_chat_params
+from core.chat_history.identity import DialogIdentities
 from sdk.frontend_ui import _controller_for_plugin
 from sdk.messages import LLMDialogMessage
 from sdk.session_behavior import (
@@ -22,9 +24,7 @@ def _extract_chat_completion_text(adapter: Any, response: Any) -> str:
         return ""
     if isinstance(response, str):
         return response
-    if (
-        isinstance(response, Iterator) or hasattr(response, "__iter__")
-    ) and not isinstance(response, (Mapping, bytes, bytearray, str)):
+    if isinstance(response, Iterator):
         parts: list[str] = []
         iter_stream = getattr(adapter, "iter_response_stream", None)
         if callable(iter_stream):
@@ -39,8 +39,35 @@ def _extract_chat_completion_text(adapter: Any, response: Any) -> str:
             else:
                 parts.append(str(getattr(chunk, "content", "") or ""))
         return "".join(parts)
-    decoded = adapter.decode_response(response)
-    return str(getattr(decoded, "content", "") or "")
+    decode = getattr(adapter, "decode_response", None)
+    if callable(decode):
+        try:
+            decoded = decode(response)
+            content = getattr(decoded, "content", None)
+            if isinstance(content, str):
+                return content
+        except (AttributeError, IndexError, KeyError, TypeError):
+            pass
+    text = getattr(response, "text", None)
+    if isinstance(text, str):
+        return text
+    content = getattr(response, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, (list, tuple)):
+        return "".join(
+            block_text
+            for block in content
+            if isinstance((block_text := getattr(block, "text", None)), str)
+        )
+    choices = getattr(response, "choices", None)
+    if choices:
+        message = getattr(choices[0], "message", None)
+        if message is not None:
+            msg_content = getattr(message, "content", None)
+            if isinstance(msg_content, str):
+                return msg_content
+    return ""
 
 
 class HostSessionRuntimePort:
@@ -60,7 +87,9 @@ class HostSessionRuntimePort:
         self._runtime_components = runtime_components
         self._app_runtime = app_runtime
         self._capability = capability
-        self._last_presentation_id: str = ""
+        self._presentation_lock = threading.RLock()
+        self._presentations_by_page: dict[str, list[str]] = {}
+        self._presentation_order: list[tuple[str, str]] = []
 
     def complete_llm(
         self,
@@ -172,21 +201,21 @@ class HostSessionRuntimePort:
         queue = self._resolve_dialog_queue()
         if queue is None:
             raise RuntimeError("Dialog delivery queue is unavailable.")
+        identities = DialogIdentities(f"plugin:{self._plugin_id}:{uuid.uuid4().hex}")
         delivered = 0
         for item in dialogs:
             if isinstance(item, LLMDialogMessage):
-                msg = item.model_copy(
-                    update={"turn_id": None, "dialog_id": uuid.uuid4().hex}
-                )
+                parsed = item
             elif isinstance(item, Mapping):
                 parsed = LLMDialogMessage.model_validate(dict(item))
-                msg = parsed.model_copy(
-                    update={"turn_id": None, "dialog_id": uuid.uuid4().hex}
-                )
             else:
                 raise TypeError(
                     "deliver_dialogs entries must be LLMDialogMessage or mapping objects"
                 )
+            dialog_id = identities.next(parsed.model_dump(by_alias=True))
+            msg = parsed.model_copy(
+                update={"turn_id": None, "dialog_id": dialog_id}
+            )
             queue.put(msg)
             delivered += 1
         return delivered
@@ -213,33 +242,71 @@ class HostSessionRuntimePort:
         *,
         title: str = "",
         params: Mapping[str, Any] | None = None,
-    ) -> None:
+    ) -> str:
         """Present a registered overlay page scoped to this behavior's plugin_id."""
         if not self._plugin_id:
             raise RuntimeError("Behavior plugin_id is unavailable.")
+        clean_page_id = str(page_id or "").strip()
         payload: dict[str, Any] = {}
         if title:
             payload["title"] = str(title)
         if params:
             payload["params"] = dict(params)
         controller = _controller_for_plugin(self._plugin_id)
-        self._last_presentation_id = controller.present_page(
-            page_id,
+        presentation_id = controller.present_page(
+            clean_page_id,
             mode="overlay",
             payload=payload or None,
         )
+        with self._presentation_lock:
+            self._presentations_by_page.setdefault(clean_page_id, []).append(
+                presentation_id
+            )
+            self._presentation_order.append((clean_page_id, presentation_id))
+        return presentation_id
+
+    def _drop_page_presentation_locked(self, page_id: str, pres_id: str) -> None:
+        ids = self._presentations_by_page.get(page_id)
+        if not ids:
+            return
+        ids[:] = [item for item in ids if item != pres_id]
+        if not ids:
+            del self._presentations_by_page[page_id]
 
     def dismiss_plugin_page(self, page_id: str | None = None) -> None:
-        """Dismiss the active overlay page previously presented by this plugin."""
+        """Dismiss overlay presentation(s) by page_id, presentation_id, or most recent."""
         if not self._plugin_id:
             return
-        target = str(page_id or self._last_presentation_id or "").strip()
-        if not target:
+        target = str(page_id or "").strip()
+        to_dismiss: list[str] = []
+        with self._presentation_lock:
+            if not target:
+                if self._presentation_order:
+                    pid_page, pres_id = self._presentation_order.pop()
+                    self._drop_page_presentation_locked(pid_page, pres_id)
+                    to_dismiss.append(pres_id)
+            elif target in self._presentations_by_page:
+                popped = self._presentations_by_page.pop(target)
+                popped_set = set(popped)
+                self._presentation_order = [
+                    pair
+                    for pair in self._presentation_order
+                    if pair[1] not in popped_set
+                ]
+                to_dismiss.extend(reversed(popped))
+            else:
+                for idx in range(len(self._presentation_order) - 1, -1, -1):
+                    pid_page, pres_id = self._presentation_order[idx]
+                    if pres_id == target:
+                        self._presentation_order.pop(idx)
+                        self._drop_page_presentation_locked(pid_page, pres_id)
+                        to_dismiss.append(pres_id)
+                        break
+        if not to_dismiss:
             return
         controller = _controller_for_plugin(self._plugin_id)
-        controller.dismiss_page(target)
-        if target == self._last_presentation_id:
-            self._last_presentation_id = ""
+        for pres_id in to_dismiss:
+            controller.dismiss_page(pres_id)
 
     def emit_custom_event(
         self,

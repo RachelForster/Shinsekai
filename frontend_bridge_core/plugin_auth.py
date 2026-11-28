@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import base64
+from collections import OrderedDict
+from dataclasses import dataclass
 import hashlib
 import hmac
 import posixpath
 import re
+import threading
 from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote, unquote, urlparse
@@ -20,6 +23,19 @@ BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
 
 _SIGNING_KEY_DOMAIN = b"shinsekai:plugin-token-key:v1"
 _TOKEN_PAYLOAD_DOMAIN = b"v1:"
+_MAX_ISSUED_TOKENS = 4096
+
+
+@dataclass(frozen=True)
+class _IssuedPluginToken:
+    signing_key_id: bytes
+    plugin_id: str
+    token: str
+    cookie_header: str
+
+
+_ISSUED_LOCK = threading.RLock()
+_ISSUED_TOKENS: OrderedDict[tuple[bytes, str], _IssuedPluginToken] = OrderedDict()
 
 _SAFE_PLUGIN_GET_EXACT = frozenset(
     {
@@ -60,6 +76,10 @@ def _b64url_decode(encoded: str) -> bytes:
     return base64.urlsafe_b64decode(f"{encoded}{padding}".encode("ascii"))
 
 
+def _signing_key_id(signing_key: bytes) -> bytes:
+    return hashlib.sha256(signing_key).digest()
+
+
 def issue_plugin_token(master_token: str, plugin_id: str) -> str:
     """Issue an HMAC-signed token scoped to a single plugin_id."""
     secret = str(master_token or "").strip()
@@ -67,13 +87,33 @@ def issue_plugin_token(master_token: str, plugin_id: str) -> str:
     if not secret or not cleaned_plugin:
         return ""
     cleaned_plugin = reject_control_chars(cleaned_plugin, field="plugin_id")
+    signing_key = _derive_signing_key(secret)
     payload_b64 = _b64url_encode(cleaned_plugin.encode("utf-8"))
     signature = hmac.new(
-        _derive_signing_key(secret),
+        signing_key,
         _TOKEN_PAYLOAD_DOMAIN + payload_b64.encode("ascii"),
         hashlib.sha256,
     ).digest()
-    return f"{PLUGIN_TOKEN_PREFIX}{payload_b64}.{_b64url_encode(signature)}"
+    token = f"{PLUGIN_TOKEN_PREFIX}{payload_b64}.{_b64url_encode(signature)}"
+    cookie_path = f"/api/plugins/{safe_header_value(quote(cleaned_plugin, safe=''))}/"
+    cookie_header = (
+        f"{PLUGIN_AUTH_COOKIE}={safe_header_value(token)}; "
+        f"Path={cookie_path}; "
+        "HttpOnly; SameSite=Strict"
+    )
+    key_id = _signing_key_id(signing_key)
+    cache_key = (key_id, cleaned_plugin)
+    with _ISSUED_LOCK:
+        _ISSUED_TOKENS[cache_key] = _IssuedPluginToken(
+            signing_key_id=key_id,
+            plugin_id=cleaned_plugin,
+            token=token,
+            cookie_header=cookie_header,
+        )
+        _ISSUED_TOKENS.move_to_end(cache_key)
+        while len(_ISSUED_TOKENS) > _MAX_ISSUED_TOKENS:
+            _ISSUED_TOKENS.popitem(last=False)
+    return token
 
 
 def verify_plugin_token(master_token: str, supplied_token: str) -> str | None:
@@ -266,14 +306,42 @@ def build_plugin_cookie_header(
     owner_pair = extract_plugin_path_owner(raw_path)
     if owner_pair is None or owner_pair[1] != plugin_id:
         return None
-    raw_seg = owner_pair[0]
     if not supplied_token:
         return None
+    canonical_seg = quote(owner_pair[1], safe="")
     return (
         f"{PLUGIN_AUTH_COOKIE}={safe_header_value(supplied_token)}; "
-        f"Path=/api/plugins/{safe_header_value(raw_seg)}/; "
+        f"Path=/api/plugins/{safe_header_value(canonical_seg)}/; "
         "HttpOnly; SameSite=Strict"
     )
+
+
+def resolve_issued_plugin_cookie_header(
+    master_token: str,
+    path: str,
+    supplied_token: str,
+) -> str | None:
+    """Look up a server-constructed Set-Cookie string for a previously issued token."""
+    secret = str(master_token or "").strip()
+    raw_token = str(supplied_token or "").strip()
+    if not secret or not raw_token or not raw_token.startswith(PLUGIN_TOKEN_PREFIX):
+        return None
+    raw_path = str(path or "").split("?", 1)[0]
+    owner_pair = extract_plugin_path_owner(raw_path)
+    if owner_pair is None:
+        return None
+    target_plugin_id = owner_pair[1]
+    key_id = _signing_key_id(_derive_signing_key(secret))
+    with _ISSUED_LOCK:
+        for cache_key, entry in tuple(_ISSUED_TOKENS.items()):
+            if (
+                entry.signing_key_id == key_id
+                and entry.plugin_id == target_plugin_id
+                and hmac.compare_digest(raw_token, entry.token)
+            ):
+                _ISSUED_TOKENS.move_to_end(cache_key)
+                return entry.cookie_header
+    return None
 
 
 __all__ = [
@@ -287,5 +355,6 @@ __all__ = [
     "is_sensitive_master_only_read",
     "issue_plugin_token",
     "normalize_bridge_path",
+    "resolve_issued_plugin_cookie_header",
     "verify_plugin_token",
 ]

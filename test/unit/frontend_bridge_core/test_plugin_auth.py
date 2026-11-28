@@ -18,6 +18,7 @@ from frontend_bridge_core.plugin_auth import (
     build_plugin_cookie_header,
     is_plugin_route_allowed,
     issue_plugin_token,
+    resolve_issued_plugin_cookie_header,
     verify_plugin_token,
 )
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
@@ -294,3 +295,56 @@ def test_live_bridge_enforces_plugin_isolation_cookies_and_ownership(
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_resolve_issued_plugin_cookie_header_and_cors_use_server_cookie() -> None:
+    master = "server-master-secret"
+    issued = issue_plugin_token(master, "demo/plugin")
+
+    header = resolve_issued_plugin_cookie_header(
+        master,
+        "/api/plugins/demo%2Fplugin/frontend/board/index.html",
+        issued,
+    )
+    assert header is not None
+    assert header.startswith(f"{PLUGIN_AUTH_COOKIE}={issued};")
+    assert "Path=/api/plugins/demo%2Fplugin/;" in header
+    assert "HttpOnly" in header
+    assert "SameSite=Strict" in header
+
+    assert (
+        resolve_issued_plugin_cookie_header(
+            master,
+            "/api/plugins/other.plugin/frontend/board/index.html",
+            issued,
+        )
+        is None
+    )
+    assert (
+        resolve_issued_plugin_cookie_header(
+            master,
+            "/api/plugins/demo%2Fplugin/../other/frontend/",
+            issued,
+        )
+        is None
+    )
+    assert (
+        resolve_issued_plugin_cookie_header(
+            master,
+            "/api/plugins/demo%2Fplugin/frontend/board/index.html",
+            "shp1.forged.token",
+        )
+        is None
+    )
+
+    handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+    sent_headers: list[tuple[str, str]] = []
+    handler.server = SimpleNamespace(state=SimpleNamespace(auth_token=master))  # type: ignore[assignment]
+    handler.path = (
+        "/api/plugins/demo%2Fplugin/frontend/board/index.html"
+        f"?shinsekai_bridge_token={issued}"
+    )
+    handler.headers = {}  # type: ignore[assignment]
+    handler.send_header = lambda k, v: sent_headers.append((k, v))  # type: ignore[method-assign]
+    handler._send_cors()
+    assert ("Set-Cookie", header) in sent_headers
