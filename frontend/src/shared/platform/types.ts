@@ -5,10 +5,12 @@ import type { ConfigPlatform, ModelAssetsPlatform, MusicCoverPlatform } from "./
 import type { KnowledgePlatform } from "./slices/knowledgeTypes";
 import type { PerceptionPlatform } from "./slices/perceptionTypes";
 import type { McpPlatform, PluginsPlatform } from "./slices/pluginTypes";
+import type { NovelPlatform } from "./slices/novelTypes";
 import type { FilesPlatform, LogsPlatform, RuntimePlatform, TasksPlatform } from "./slices/taskTypes";
 import type { BackgroundsPlatform, EffectsPlatform, TemplatesPlatform, ToolsPlatform } from "./slices/workspaceTypes";
 
 export type * from "./slices/storyTypes";
+export type * from "./slices/novelTypes";
 export type * from "./slices/behaviorTypes";
 export type * from "./slices/taskTypes";
 export type * from "./slices/characterTypes";
@@ -24,6 +26,7 @@ export interface ShinsekaiPlatform {
   backgrounds: BackgroundsPlatform;
   effects: EffectsPlatform;
   chat: ChatPlatform;
+  novel: NovelPlatform;
   story: StoryPlatform;
   knowledge: KnowledgePlatform;
   characterRelation: CharacterRelationPlatform;

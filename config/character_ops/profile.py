@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 import shutil
 from typing import Any
+from uuid import uuid4
 
 from config.character_ops.relations import (
     parse_relation_graph,
@@ -22,8 +23,12 @@ from i18n import err_tr, tr
 from config.schema import (
     Character,
     PortraitCrop,
+    SELF_PERSONA_ID,
     SELF_PERSONA_NAME,
     SELF_PERSONA_SPRITE_PREFIX,
+    find_self_persona,
+    is_self_persona,
+    is_self_persona_id,
     is_self_persona_name,
 )
 from config.sprite_groups import normalize_sprite_group_list, set_sprite_group_value
@@ -49,9 +54,15 @@ def resolve_mutable_character(
     name: str,
 ) -> Character | None:
     """Resolve an existing character for mutation, materializing self-persona if needed."""
-    if is_self_persona_name(name):
+    cleaned = str(name or "").strip()
+    if is_self_persona_id(cleaned):
         return target.ensure_self_persona()
-    return target.get_by_name(name)
+    found = target.get_by_name(cleaned)
+    if found is not None and is_self_persona(found):
+        return target.ensure_self_persona()
+    if found is None and is_self_persona_name(cleaned):
+        return target.ensure_self_persona()
+    return found
 
 
 def _normalize_patch_value(key: str, value: Any) -> Any:
@@ -107,14 +118,26 @@ def _validate_prefix_uniqueness(
     *,
     raw_name: str,
     trimmed_edit_as: str,
+    cleaned_id: str,
     existing: Character | None,
 ) -> None:
     if not prefix:
         return
-    owner_ref_name = existing.name if existing is not None else (trimmed_edit_as or raw_name)
-    if prefix == SELF_PERSONA_SPRITE_PREFIX and not is_self_persona_name(owner_ref_name):
+    owner_is_self = (
+        is_self_persona(existing)
+        if existing is not None
+        else (
+            is_self_persona_id(cleaned_id)
+            or (not trimmed_edit_as and is_self_persona_name(raw_name))
+        )
+    )
+    if existing is not None and is_self_persona(existing) and prefix != SELF_PERSONA_SPRITE_PREFIX:
+        raise CharacterProfileError(tr("crud.char.self_prefix_locked"))
+    if prefix == SELF_PERSONA_SPRITE_PREFIX and not owner_is_self:
+        self_char = find_self_persona(target.list_all())
+        self_name = str(getattr(self_char, "name", "") or SELF_PERSONA_NAME)
         raise CharacterProfileError(
-            tr("crud.char.prefix_taken_self", prefix=prefix, self_name=SELF_PERSONA_NAME)
+            tr("crud.char.prefix_taken_self", prefix=prefix, self_name=self_name)
         )
     for candidate in target.list_all():
         c_prefix = str(getattr(candidate, "sprite_prefix", "") or "").strip()
@@ -134,7 +157,7 @@ def _validate_prefix_uniqueness(
                 raise CharacterProfileError(
                     tr("crud.char.prefix_taken_other", prefix=prefix, owner=candidate.name)
                 )
-        elif not (is_self_persona_name(raw_name) and is_self_persona_name(candidate.name)):
+        elif not (owner_is_self and is_self_persona(candidate)):
             raise CharacterProfileError(
                 tr("crud.char.prefix_taken_other", prefix=prefix, owner=candidate.name)
             )
@@ -158,44 +181,51 @@ def save_character_patch(
     trimmed_edit_as = str(original_name).strip() if original_name else ""
     cleaned_id = str(target_id or patch.get("id") or "").strip()
 
-    if trimmed_edit_as and is_self_persona_name(trimmed_edit_as) and not is_self_persona_name(raw_name):
-        raise CharacterProfileError(tr("crud.char.self_rename_forbidden"))
-    if trimmed_edit_as and not is_self_persona_name(trimmed_edit_as) and is_self_persona_name(raw_name):
-        raise CharacterProfileError(tr("crud.char.rename_to_self_forbidden"))
-
     existing: Character | None = target.get_by_id(cleaned_id) if cleaned_id else None
+    if existing is None and is_self_persona_id(cleaned_id):
+        existing = target.ensure_self_persona()
     if existing is None and trimmed_edit_as:
         existing = resolve_mutable_character(target, trimmed_edit_as)
-    if existing is None:
-        existing = resolve_mutable_character(target, raw_name)
+    if existing is None and not trimmed_edit_as:
+        if is_self_persona_name(raw_name):
+            existing_self = find_self_persona(target.list_all())
+            if existing_self is not None and not is_self_persona_name(existing_self.name):
+                raise CharacterProfileError(tr("crud.char.rename_to_self_forbidden"))
+            existing = target.ensure_self_persona()
+        else:
+            existing = resolve_mutable_character(target, raw_name)
 
     if existing is not None:
-        if is_self_persona_name(existing.name) and not is_self_persona_name(raw_name):
-            raise CharacterProfileError(tr("crud.char.self_rename_forbidden"))
-        if not is_self_persona_name(existing.name) and is_self_persona_name(raw_name):
+        existing_is_self = is_self_persona(existing)
+        if not existing_is_self and is_self_persona_name(raw_name):
             raise CharacterProfileError(tr("crud.char.rename_to_self_forbidden"))
-        if getattr(existing, "undeletable", False) and existing.name != raw_name:
+        if (
+            getattr(existing, "undeletable", False)
+            and not existing_is_self
+            and existing.name != raw_name
+        ):
             raise CharacterProfileError(tr("crud.char.builtin_rename_forbidden", name=existing.name))
-        taken = (
-            None
-            if is_self_persona_name(raw_name) and is_self_persona_name(existing.name)
-            else target.get_by_name(raw_name)
-        )
+        taken = target.get_by_name(raw_name)
         if taken is not None and taken is not existing:
             same_id = (
                 getattr(taken, "id", None) is not None
                 and getattr(taken, "id", None) == getattr(existing, "id", None)
             )
-            if not same_id:
+            legacy_self_alias = (
+                is_self_persona(taken)
+                and str(getattr(taken, "name", "") or "").strip().casefold() != raw_name.casefold()
+            )
+            if not same_id and not legacy_self_alias:
                 raise CharacterProfileError(tr("crud.char.duplicate_name", name=raw_name))
 
+    existing_is_self = is_self_persona(existing) if existing is not None else False
     raw_prefix = (
         patch["sprite_prefix"]
         if "sprite_prefix" in patch
         else (existing.sprite_prefix if existing is not None else "")
     )
     prefix = str(raw_prefix or "").strip()
-    if is_self_persona_name(raw_name) and not prefix:
+    if (existing_is_self or is_self_persona_id(cleaned_id)) and not prefix:
         prefix = SELF_PERSONA_SPRITE_PREFIX
 
     _validate_prefix_uniqueness(
@@ -203,6 +233,7 @@ def save_character_patch(
         prefix,
         raw_name=raw_name,
         trimmed_edit_as=trimmed_edit_as,
+        cleaned_id=cleaned_id,
         existing=existing,
     )
 
@@ -211,9 +242,11 @@ def save_character_patch(
         for key, value in patch.items():
             if key in _PROTECTED_PROFILE_FIELDS:
                 continue
-            if key == "display_name" and not is_self_persona_name(raw_name):
+            if key == "display_name" and not existing_is_self:
                 continue
             merged[key] = _normalize_patch_value(key, value)
+        if existing_is_self and existing.name != raw_name and "display_name" not in patch:
+            merged["display_name"] = ""
         if existing.name != raw_name:
             merged["relation_graph"] = rename_relation_graph_owner(
                 existing.relation_graph, existing.name, raw_name
@@ -225,7 +258,7 @@ def save_character_patch(
             sprite_group_map,
         )
         merged["sprites"] = merged_sprites
-        merged["id"] = existing.id
+        merged["id"] = SELF_PERSONA_ID if existing_is_self else existing.id
         merged["name"] = raw_name
         merged["sprite_prefix"] = prefix
         if "portrait_sprite_index" in patch and patch["portrait_sprite_index"] is not None:
@@ -250,8 +283,8 @@ def save_character_patch(
         for key, value in patch.items()
         if key not in _PROTECTED_PROFILE_FIELDS
     }
-    if not is_self_persona_name(raw_name):
-        merged.pop("display_name", None)
+    merged.pop("display_name", None)
+    merged["id"] = uuid4().hex
     merged["name"] = raw_name
     merged["sprite_prefix"] = prefix
     merged["color"] = (
@@ -289,6 +322,8 @@ def delete_character_and_assets(
     character = target.get_by_name(name)
     if character is None:
         return err_tr("crud.char.not_found", name=name), current_names
+    if is_self_persona(character):
+        return err_tr("crud.char.self_delete_forbidden"), current_names
     if getattr(character, "undeletable", False):
         return err_tr("crud.char.builtin_delete_forbidden", name=character.name), current_names
 

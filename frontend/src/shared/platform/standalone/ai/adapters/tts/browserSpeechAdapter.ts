@@ -1,4 +1,5 @@
 import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
+import { normalizeVoiceLanguageCode } from "../../voiceLanguage";
 import type { StandaloneTtsAdapter, StandaloneTtsInput } from "../types";
 
 export function stopBrowserSpeechSynthesis(): void {
@@ -62,7 +63,17 @@ export const browserSpeechTtsAdapter: StandaloneTtsAdapter = {
       utterance.rate = typeof extra.rate === "number" ? extra.rate : (input.speed ?? 1.0);
       utterance.pitch = typeof extra.pitch === "number" ? extra.pitch : 1.0;
       utterance.volume = Math.min(1, Math.max(0, input.volume ?? 1.0));
-      utterance.lang = input.voiceLanguage === "ja" ? "ja-JP" : input.voiceLanguage === "en" ? "en-US" : "zh-CN";
+      const langCode = normalizeVoiceLanguageCode(input.voiceLanguage);
+      utterance.lang =
+        langCode === "ja"
+          ? "ja-JP"
+          : langCode === "en"
+            ? "en-US"
+            : langCode === "ko"
+              ? "ko-KR"
+              : langCode === "yue"
+                ? "zh-HK"
+                : "zh-CN";
       const cleanupAbort = () => {
         input.signal?.removeEventListener("abort", onAbort);
       };

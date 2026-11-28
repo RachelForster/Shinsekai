@@ -3,12 +3,13 @@
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from ai.llm.formats import resolve_dialog_format
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.types import RequirementSpec
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
+from ..format_context import build_dialog_format_prompt_context
 from ..patches import apply_requirement_patches
 from .field_requirements import build_field_requirements, removed_optional_fields
 
@@ -30,199 +31,82 @@ class _RequirementRuleSection(Section[DialogTemplateContext]):
         return f"- {self.requirement_text(context)}\n"
 
 
-def _requirement_arguments(
-    context: DialogTemplateContext,
-) -> dict[str, dict[str, Any]]:
-    tokens = {
-        "narr": context.translate("narr_token"),
-        "choice": CHOICE,
-        "stat": STAT,
-        "scn": SCENE,
-        "bgm_t": BGM,
-        "cg": CG,
-        "cot": COT,
-    }
-    fixed_roles = Section(
-        "fixed_roles",
-        separator="、",
-        children=(
-            TextSection("narr", text=tokens["narr"], enabled=context.use_narration),
-            TextSection("choice", text=CHOICE, enabled=context.use_choice),
-            TextSection("stat", text=STAT, enabled=context.use_stat),
-        ),
-    ).render(context)
-    optional_tokens = (
-        TextSection("cot_part", text=f"{COT},", enabled=context.use_cot),
-        TextSection("fixed_roles", text=f" {fixed_roles}", enabled=bool(fixed_roles)),
-        TextSection(
-            "opt_scene", text=f", {SCENE}", enabled=context.has_real_background
-        ),
-        TextSection("opt_bgm", text=f", {BGM}", enabled=context.has_real_background),
-        TextSection("opt_cg", text=f", {CG}", enabled=context.use_cg),
-    )
-    token_rules = (
-        "r_scene",
-        "r_bgm",
-        "r_narration",
-        "r_choice_pos",
-        "r_choice_format",
-        "r_choice_balance",
-        "r_stats",
-        "r_cg",
-        "r_cot",
-    )
-    return {
-        **dict.fromkeys(token_rules, tokens),
-        "r_cname": {
-            "names": context.names,
-            **{section.id: section.render(context) for section in optional_tokens},
-        },
-        "r_non_sprite": {"fixed_roles_non_sprite": fixed_roles},
-        "r_vibe": {},
-        "r_speech": {"speech_lang_name": context.translate("speech_lang_name")},
-        "r_speech_max_chars": {"n": context.max_speech_chars},
-        "r_dialog_max_items": {"n": context.max_dialog_items},
-        "r_translate": {"target_voice_name": context.target_voice_name},
-    }
-
-
-def build_requirement_sections(
+def _fallback_requirement_sections(
     context: DialogTemplateContext,
 ) -> tuple[_RequirementRuleSection, ...]:
-    arguments = _requirement_arguments(context)
-    format_id = str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-    if format_id == XML_DIALOG_FORMAT_ID:
-        xml_system_tags = tuple(
-            tag
-            for enabled, tag in (
-                (context.use_cot, "<cot>"),
-                (context.has_real_background, "<scene>"),
-                (context.has_real_background, "<bgm>"),
-                (context.use_narration, "<narr>"),
-                (context.use_stat, "<stat>"),
-                (context.use_cg, "<cg>"),
-                (context.use_choice, "<choice>"),
-            )
-            if enabled
-        )
-        arguments["r_cname"] = (
-            {
-                "names": context.names,
-                "xml_tags": context.translate("name_sep").join(xml_system_tags),
-            }
-            if xml_system_tags
-            else {"names": context.names}
-        )
-        definitions: tuple[tuple[str, int, bool, str | None], ...] = (
-            ("r_cot", 5, context.use_cot, "xml_r_cot"),
-            ("r_format", 10, True, "xml_r_format"),
-            ("r_user_display_name_tool", 15, True, None),
-            (
-                "r_cname",
-                20,
-                True,
-                "xml_r_cname" if xml_system_tags else "xml_r_cname_say_only",
-            ),
-            (
-                "r_sprite", 30, not context.uses_vibe,
-                "r_full_sprite" if context.uses_full_sprite_ids else None,
-            ),
-            ("r_vibe", 30, context.uses_vibe, None),
-            (
-                "r_scene",
-                50,
-                context.has_real_background,
-                "xml_r_scene_vibe" if context.uses_vibe else "xml_r_scene",
-            ),
-            (
-                "r_bgm",
-                60,
-                context.has_real_background,
-                "xml_r_bgm_vibe" if context.uses_vibe else "xml_r_bgm",
-            ),
-            ("r_speech", 70, True, None),
-            ("r_array", 80, True, "xml_r_sequence"),
-            ("r_speech_max_chars", 90, context.max_speech_chars > 0, None),
-            ("r_dialog_max_items", 95, context.max_dialog_items > 0, "xml_r_dialog_max_items"),
-            ("r_narration", 100, context.use_narration, "xml_r_narration"),
-            ("r_choice_pos", 110, context.use_choice, "xml_r_choice_pos"),
-            ("r_choice_format", 120, context.use_choice, "xml_r_choice_format"),
-            ("r_choice_balance", 130, context.use_choice, None),
-            ("r_stats", 140, context.use_stat, "xml_r_stats"),
-            ("r_cg", 150, context.use_cg, "xml_r_cg"),
-            ("r_translate", 160, context.use_llm_translation, "xml_r_translate"),
-            ("r_effect", 170, context.use_effect, "xml_r_effect"),
-            ("r_scene_transition", 172, context.has_real_background, "xml_r_scene_transition"),
-            ("r_character_motion", 174, True, "xml_r_character_motion"),
-        )
-    elif format_id == DEFAULT_DIALOG_FORMAT_ID:
-        definitions = (
-            ("r_cot", 5, context.use_cot, None),
-            ("r_format", 10, True, None),
-            ("r_user_display_name_tool", 15, True, None),
-            ("r_cname", 20, True, None),
-            (
-                "r_sprite", 30, not context.uses_vibe,
-                "r_full_sprite" if context.uses_full_sprite_ids else None,
-            ),
-            ("r_vibe", 30, context.uses_vibe, None),
-            (
-                "r_non_sprite",
-                40,
-                True,
-                "r_non_vibe" if context.uses_vibe else None,
-            ),
-            (
-                "r_scene",
-                50,
-                context.has_real_background,
-                "r_scene_vibe" if context.uses_vibe else None,
-            ),
-            (
-                "r_bgm",
-                60,
-                context.has_real_background,
-                "r_bgm_vibe" if context.uses_vibe else None,
-            ),
-            ("r_speech", 70, True, None),
-            ("r_array", 80, True, None),
-            ("r_speech_max_chars", 90, context.max_speech_chars > 0, None),
-            ("r_dialog_max_items", 95, context.max_dialog_items > 0, None),
-            ("r_narration", 100, context.use_narration, None),
-            ("r_choice_pos", 110, context.use_choice, None),
-            ("r_choice_format", 120, context.use_choice, None),
-            ("r_choice_balance", 130, context.use_choice, None),
-            ("r_stats", 140, context.use_stat, None),
-            ("r_cg", 150, context.use_cg, None),
-            ("r_translate", 160, context.use_llm_translation, None),
-            ("r_effect", 170, context.use_effect, None),
-        )
-    else:
-        definitions = (
-            ("r_format", 10, True, "custom_r_format"),
-            ("r_user_display_name_tool", 15, True, None),
-            (
-                "r_sprite",
-                30,
-                not context.uses_vibe,
-                "r_full_sprite" if context.uses_full_sprite_ids else None,
-            ),
-            ("r_vibe", 30, context.uses_vibe, None),
-            ("r_speech", 70, True, None),
-            ("r_speech_max_chars", 90, context.max_speech_chars > 0, "custom_r_speech_max_chars"),
-            ("r_dialog_max_items", 95, context.max_dialog_items > 0, "custom_r_dialog_max_items"),
-            ("r_choice_balance", 130, context.use_choice, None),
-        )
+    definitions: tuple[tuple[str, int, bool, str | None, dict[str, Any]], ...] = (
+        ("r_format", 10, True, "custom_r_format", {}),
+        ("r_user_display_name_tool", 15, True, None, {}),
+        (
+            "r_sprite",
+            30,
+            not context.uses_vibe,
+            "r_full_sprite" if context.uses_full_sprite_ids else None,
+            {},
+        ),
+        ("r_vibe", 30, context.uses_vibe, None, {}),
+        (
+            "r_speech",
+            70,
+            True,
+            None,
+            {"speech_lang_name": context.translate("speech_lang_name")},
+        ),
+        (
+            "r_speech_max_chars",
+            90,
+            context.max_speech_chars > 0,
+            "custom_r_speech_max_chars",
+            {"n": context.max_speech_chars},
+        ),
+        (
+            "r_dialog_max_items",
+            95,
+            context.max_dialog_items > 0,
+            "custom_r_dialog_max_items",
+            {"n": context.max_dialog_items},
+        ),
+        ("r_choice_balance", 130, context.use_choice, None, {}),
+    )
     return tuple(
         _RequirementRuleSection(
             id=rule_id,
             priority=priority,
             enabled=enabled,
-            arguments=arguments.get(rule_id, {}),
+            arguments=args,
             translation_key=translation_key,
         )
-        for rule_id, priority, enabled, translation_key in definitions
+        for rule_id, priority, enabled, translation_key, args in definitions
     )
+
+
+def build_requirement_sections(
+    context: DialogTemplateContext,
+) -> tuple[_RequirementRuleSection, ...]:
+    format_id = str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+    fmt = resolve_dialog_format(format_id)
+    format_specs = fmt.render_requirements(build_dialog_format_prompt_context(context))
+    if format_specs:
+        sections = [
+            _RequirementRuleSection(
+                id=spec.id,
+                priority=spec.order,
+                enabled=spec.enabled,
+                resolved_text=spec.text,
+            )
+            for spec in format_specs
+        ]
+        if not any(spec.id == "r_user_display_name_tool" for spec in format_specs):
+            sections.append(
+                _RequirementRuleSection(
+                    id="r_user_display_name_tool",
+                    priority=15,
+                    enabled=True,
+                )
+            )
+        sections.sort(key=lambda section: section.priority)
+        return tuple(sections)
+    return _fallback_requirement_sections(context)
 
 
 def _resolve_requirement_specs(
@@ -280,9 +164,12 @@ class RequirementsSection(Section[DialogTemplateContext]):
             "rules",
             priority=20,
             text=context.translate("requirements_header"),
-            children=(*_resolve_requirement_sections(
-                build_requirement_sections(context), context
-            ), build_field_requirements(context)),
+            children=(
+                *_resolve_requirement_sections(
+                    build_requirement_sections(context), context
+                ),
+                build_field_requirements(context),
+            ),
         )
         extra_bgm = TextSection(
             "extra_bgm",

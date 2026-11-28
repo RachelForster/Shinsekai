@@ -6,12 +6,18 @@ import type { Background, Effect } from "../../slices/workspaceTypes";
 import { createStandaloneTemplateTranslator } from "./standaloneTemplateLocales";
 import {
   buildStandaloneEffectCatalogBlock,
+  characterNameKey,
+  findCharacterByName,
+  findSelfPersona,
   generateStandaloneDialogSystemTemplate,
+  isSelfPersonaCharacter,
+  isSelfPersonaId,
   isSelfPersonaName,
   SELF_PERSONA_NAME,
 } from "./templateGenerator";
 
 const SELF_PERSONA_SENTINEL = "__SELF_PERSONA_SETTING_PLACEHOLDER__";
+const SELF_PERSONA_NAME_SENTINEL = "__SELF_PERSONA_NAME_PLACEHOLDER__";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -21,19 +27,27 @@ function stripStandaloneSelfPersonaBlock(text: string): string {
   if (!text) return text;
   let cleaned = text;
   let changed = false;
-  for (const locale of ["zh_CN", "en", "ja"] as const) {
-    const translator = createStandaloneTemplateTranslator(locale);
-    const sample = translator("self_persona_block", { setting: SELF_PERSONA_SENTINEL });
-    const markerIndex = sample.indexOf(SELF_PERSONA_SENTINEL);
-    if (markerIndex < 0) continue;
-    const head = sample.slice(0, markerIndex).trim();
-    const tail = sample.slice(markerIndex + SELF_PERSONA_SENTINEL.length).trim();
-    if (!head || !tail) continue;
-    const pattern = new RegExp(`[ \\t]*${escapeRegExp(head)}[\\s\\S]*?${escapeRegExp(tail)}[ \\t]*(?:\\r?\\n)*`, "g");
-    const updated = cleaned.replace(pattern, "\n");
-    if (updated !== cleaned) {
-      cleaned = updated;
-      changed = true;
+  for (const key of ["self_persona_block", "self_persona_block_named"] as const) {
+    for (const locale of ["zh_CN", "en", "ja"] as const) {
+      const translator = createStandaloneTemplateTranslator(locale);
+      const sample =
+        key === "self_persona_block_named"
+          ? translator(key, { name: SELF_PERSONA_NAME_SENTINEL, setting: SELF_PERSONA_SENTINEL })
+          : translator(key, { setting: SELF_PERSONA_SENTINEL });
+      const markerIndex = sample.indexOf(SELF_PERSONA_SENTINEL);
+      if (markerIndex < 0) continue;
+      const head = sample.slice(0, markerIndex).trim();
+      const tail = sample.slice(markerIndex + SELF_PERSONA_SENTINEL.length).trim();
+      if (!head || !tail) continue;
+      const escapedName = escapeRegExp(SELF_PERSONA_NAME_SENTINEL);
+      const headRe = escapeRegExp(head).split(escapedName).join("[^\\n]+?");
+      const tailRe = escapeRegExp(tail).split(escapedName).join("[^\\n]+?");
+      const pattern = new RegExp(`[ \\t]*${headRe}[\\s\\S]*?${tailRe}[ \\t]*(?:\\r?\\n)*`, "g");
+      const updated = cleaned.replace(pattern, "\n");
+      if (updated !== cleaned) {
+        cleaned = updated;
+        changed = true;
+      }
     }
   }
   if (!changed) return text;
@@ -102,10 +116,9 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
   const t = createStandaloneTemplateTranslator(uiLanguage);
 
   const hadPersistedSystem = Boolean((payload.system ?? "").trim());
-  const selectedCharacterNames = (payload.characters ?? []).filter((name) => {
-    const key = name.trim().toLowerCase();
-    return Boolean(key) && characters.some((c) => c.name.trim().toLowerCase() === key);
-  });
+  const selectedCharacterNames = (payload.characters ?? [])
+    .map((rawName) => findCharacterByName(characters, rawName)?.name)
+    .filter((name): name is string => Boolean(name));
   const effectiveCastNames = selectedCharacterNames.length ? selectedCharacterNames : characters.map((c) => c.name);
   let systemTemplate = (payload.system ?? "").trim();
   if (!systemTemplate) {
@@ -143,25 +156,42 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
     }
   }
 
+  const selfChar = findSelfPersona(characters);
+  const selfCharName = (selfChar?.name ?? "").trim();
+  const isSelfRef = (rawName: string): boolean => {
+    const cleaned = rawName.trim();
+    if (!cleaned) return false;
+    if (isSelfPersonaName(cleaned) || isSelfPersonaId(cleaned)) return true;
+    if (selfCharName && characterNameKey(cleaned) === characterNameKey(selfCharName)) return true;
+    const matched = findCharacterByName(characters, cleaned);
+    return Boolean(matched && isSelfPersonaCharacter(matched));
+  };
+
   const playerCharacter = (payload.playerCharacter ?? "").trim();
-  const hasSelfInCast = effectiveCastNames.some((name) => isSelfPersonaName(name));
-  const selfAsPlayer = isSelfPersonaName(playerCharacter);
+  const hasSelfInCast = effectiveCastNames.some((name) => isSelfRef(name));
+  const selfAsPlayer = isSelfRef(playerCharacter);
   const selfAsNpcCast = hasSelfInCast && !selfAsPlayer;
+  const selfLabel = selfCharName || SELF_PERSONA_NAME;
   if (hadPersistedSystem && (hasSelfInCast || selfAsPlayer)) {
     const strippedSystem = stripStandaloneSelfPersonaBlock(systemTemplate);
     if (strippedSystem !== systemTemplate) {
       systemTemplate = strippedSystem;
-      if (selfAsNpcCast) {
-        const selfChar = characters.find((c) => isSelfPersonaName(c.name));
-        const selfSetting = (selfChar?.character_setting ?? "").trim();
-        if (selfSetting && !systemTemplate.includes(selfSetting)) {
-          const profileHeader = `${t("profile_for", { name: SELF_PERSONA_NAME })}${selfSetting}`;
+      if (selfAsNpcCast && selfChar) {
+        const selfSetting = (selfChar.character_setting ?? "").trim();
+        const identityNote = t("self_persona_identity_note").trim();
+        if (
+          (selfSetting && !systemTemplate.includes(selfSetting)) ||
+          (!selfSetting && identityNote && !systemTemplate.includes(identityNote))
+        ) {
+          const bodyLines = identityNote ? [identityNote] : [];
+          if (selfSetting) bodyLines.push(selfSetting);
+          const profileHeader = `${t("profile_for", { name: selfLabel })}${bodyLines.join("\n")}`;
           systemTemplate = systemTemplate ? `${systemTemplate}\n\n${profileHeader}` : profileHeader;
         }
       }
     }
     if (selfAsNpcCast) {
-      const castOverride = t("self_persona_cast_runtime_override").trim();
+      const castOverride = t("self_persona_cast_runtime_override", { name: selfLabel }).trim();
       if (castOverride && !systemTemplate.includes(castOverride)) {
         systemTemplate = systemTemplate ? `${systemTemplate}\n\n${castOverride}` : castOverride;
       }

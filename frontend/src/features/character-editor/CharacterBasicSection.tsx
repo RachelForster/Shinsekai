@@ -2,7 +2,6 @@ import { Palette, Trash2 } from "lucide-react";
 
 import type { Character } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
-import { SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
 import { Button, handleIdentityKeyDown, InlineIdentityConfirm, TextArea, TextInput } from "../../shared/ui";
 import { isSelfPersonaCharacter, type CharacterFieldChange } from "./characterEditorUtils";
 
@@ -51,8 +50,7 @@ export function CharacterBasicSection({
 }: CharacterBasicSectionProps) {
   const { t } = useI18n();
   const lockedPersona = isSelfPersonaCharacter(draft);
-  const canEditDisplayName = draft.name === SELF_PERSONA_NAME;
-  const nameFieldLabel = t(canEditDisplayName ? "character.selfPersona.displayName" : "character.field.name");
+  const nameFieldLabel = t("character.field.name");
   const spritePrefixLabel = t("character.field.spritePrefix");
 
   return (
@@ -82,37 +80,28 @@ export function CharacterBasicSection({
             <div className="identity-field-group">
               <TextInput
                 className={nameError ? "input--error" : ""}
-                disabled={lockedPersona && !canEditDisplayName}
                 id="character-basic-name-input"
-                maxLength={canEditDisplayName ? 24 : undefined}
-                onChange={(event) => onChange(canEditDisplayName ? "display_name" : "name", event.target.value)}
-                onKeyDown={
-                  !canEditDisplayName
-                    ? (event) =>
-                        handleIdentityKeyDown(event, {
-                          canConfirm: !nameError && identitySavingField === null && !identityConfirmDisabled,
-                          disabled: identitySavingField !== null,
-                          isDirty: nameDirty,
-                          onCancel: () => onCancelName?.(),
-                          onConfirm: () => onConfirmName?.(),
-                        })
-                    : undefined
+                onChange={(event) => onChange("name", event.target.value)}
+                onKeyDown={(event) =>
+                  handleIdentityKeyDown(event, {
+                    canConfirm: !nameError && identitySavingField === null && !identityConfirmDisabled,
+                    disabled: identitySavingField !== null,
+                    isDirty: nameDirty,
+                    onCancel: () => onCancelName?.(),
+                    onConfirm: () => onConfirmName?.(),
+                  })
                 }
-                placeholder={canEditDisplayName ? draft.name : undefined}
-                readOnly={lockedPersona && !canEditDisplayName}
-                value={canEditDisplayName ? (draft.display_name ?? "") : draft.name}
+                value={draft.name}
               />
-              {!canEditDisplayName ? (
-                <InlineIdentityConfirm
-                  confirmDisabled={Boolean(nameError) || identityConfirmDisabled}
-                  disabled={identitySavingField !== null && identitySavingField !== "name"}
-                  fieldLabel={nameFieldLabel}
-                  loading={identitySavingField === "name"}
-                  onCancel={() => onCancelName?.()}
-                  onConfirm={() => onConfirmName?.()}
-                  visible={nameDirty}
-                />
-              ) : null}
+              <InlineIdentityConfirm
+                confirmDisabled={Boolean(nameError) || identityConfirmDisabled}
+                disabled={identitySavingField !== null && identitySavingField !== "name"}
+                fieldLabel={nameFieldLabel}
+                loading={identitySavingField === "name"}
+                onCancel={() => onCancelName?.()}
+                onConfirm={() => onConfirmName?.()}
+                visible={nameDirty}
+              />
             </div>
             {nameError ? <span className="field-error">{nameError}</span> : null}
           </span>

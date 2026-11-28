@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 from config.character_assets import get_character_assets
+from config.schema import is_self_persona
 from config.sprite_groups import (
     filter_sprite_indices_for_group,
     has_multiple_sprite_groups,
@@ -49,15 +50,30 @@ def _character_sprite_catalog_text(
     )
 
 
+def _with_self_persona_note(
+    context: DialogTemplateContext,
+    body: str,
+    character: Any,
+) -> str:
+    if not is_self_persona(character):
+        return body
+    note = context.translate("self_persona_identity_note").strip()
+    if not note:
+        return body
+    return f"{note}\n{body}" if body else note
+
+
 def _profile_node(
     index: int, name: str, character: Any
 ) -> TextSection[DialogTemplateContext]:
     setting = str(getattr(character, "character_setting", "") or "")
+    self_flagged = is_self_persona(character)
     return TextSection(
         f"profile.{index}",
-        enabled=bool(setting),
+        enabled=bool(setting) or self_flagged,
         text=lambda context: context.translate("profile_for", name=name)
-        + f"{setting}\n\n",
+        + _with_self_persona_note(context, setting, character)
+        + "\n\n",
     )
 
 
@@ -67,11 +83,13 @@ def _brief_node(
     brief = str(getattr(character, "character_brief", "") or "").strip()
     setting = str(getattr(character, "character_setting", "") or "")
     content = brief or setting
+    self_flagged = is_self_persona(character)
     return TextSection(
         f"brief.{index}",
-        enabled=bool(content),
+        enabled=bool(content) or self_flagged,
         text=lambda context: context.translate("brief_for", name=name)
-        + f"{content}\n\n",
+        + _with_self_persona_note(context, content, character)
+        + "\n\n",
     )
 
 
@@ -115,6 +133,7 @@ class CharacterSection(Section[DialogTemplateContext]):
         )
         profiles = TextSection(
             "profiles",
+            enabled=context.include_character_profiles,
             text=context.translate("profile_header"),
             children=tuple(
                 _profile_node(index, name, character)
@@ -123,7 +142,7 @@ class CharacterSection(Section[DialogTemplateContext]):
         )
         briefs = TextSection(
             "briefs",
-            enabled=bool(supporting_characters),
+            enabled=context.include_character_profiles and bool(supporting_characters),
             text=context.translate("brief_header"),
             children=tuple(
                 _brief_node(index, name, character)

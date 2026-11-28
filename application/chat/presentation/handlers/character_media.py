@@ -136,6 +136,7 @@ class CharacterMediaHandler(MessageHandler):
     def _presentation_messages(
         *,
         character_name: str,
+        display_name: str = "",
         message: LLMDialogMessage,
         sprite: ResolvedSpriteAsset,
         audio_paths: Iterable[str],
@@ -154,6 +155,7 @@ class CharacterMediaHandler(MessageHandler):
                 voice_id=voice_id,
                 dialog_id=message.dialog_id,
                 name=character_name,
+                display_name=display_name,
                 text=speech if first else "",
                 asset_id=sprite.asset_id,
                 effect=(message.effect or "") if (
@@ -195,6 +197,7 @@ class CharacterMediaHandler(MessageHandler):
         cc = _cc()
 
         lookup_name = raw_name
+        display_name = ""
         casting_map = (
             self.casting_map_provider() if callable(self.casting_map_provider) else None
         )
@@ -206,6 +209,7 @@ class CharacterMediaHandler(MessageHandler):
                 )
                 return
             lookup_name = binding.character_name
+            display_name = casting_map.resolve_display_name(raw_name, binding, cc=cc)
 
         name_s = (
             lookup_name
@@ -326,6 +330,7 @@ class CharacterMediaHandler(MessageHandler):
                 PresentationMessage(
                     audio_path="",
                     name=name_s,
+                    display_name=display_name,
                     text="",
                     asset_id=sprite.asset_id,
                     effect="",
@@ -353,7 +358,9 @@ class CharacterMediaHandler(MessageHandler):
         )
         show_busy = rt.tts_manager is not None and not player_silent
         if show_busy:
-            _post_media_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
+            _post_media_busy(
+                tr_i18n("desktop.tts_busy_synthesizing", name=(display_name or name_s))
+            )
         try:
             audio_paths = (
                 ("",) if player_silent
@@ -388,6 +395,7 @@ class CharacterMediaHandler(MessageHandler):
 
             for output in self._presentation_messages(
                 character_name=name_s,
+                display_name=display_name,
                 message=msg,
                 sprite=speech_sprite,
                 audio_paths=track_audio(),

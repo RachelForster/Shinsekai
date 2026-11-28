@@ -20,6 +20,12 @@ UPSTREAM_BASELINE_SHA256 = (
 )
 COMPAT_BEGIN = "SHINSEKAI MSI->NSIS COMPAT BEGIN"
 COMPAT_END = "SHINSEKAI MSI->NSIS COMPAT END"
+PORTABLE_BEGIN = "SHINSEKAI PORTABLE UPDATE BEGIN"
+PORTABLE_END = "SHINSEKAI PORTABLE UPDATE END"
+CUSTOM_BLOCK_MARKERS = (
+    (COMPAT_BEGIN, COMPAT_END),
+    (PORTABLE_BEGIN, PORTABLE_END),
+)
 
 
 def _installer_text() -> str:
@@ -31,25 +37,31 @@ def _strip_shinsekai_changes(template: str) -> str:
 
     upstream: list[str] = []
     before_upstream = True
-    inside_change = False
+    active_end: str | None = None
     for line in template.splitlines(keepends=True):
         if before_upstream:
             if line == "Unicode true\n":
                 before_upstream = False
                 upstream.append(line)
             continue
-        if COMPAT_BEGIN in line:
-            assert not inside_change
-            inside_change = True
+        matched_marker = False
+        for begin_marker, end_marker in CUSTOM_BLOCK_MARKERS:
+            if begin_marker in line:
+                assert active_end is None
+                active_end = end_marker
+                matched_marker = True
+                break
+            if end_marker in line:
+                assert active_end == end_marker
+                active_end = None
+                matched_marker = True
+                break
+        if matched_marker:
             continue
-        if COMPAT_END in line:
-            assert inside_change
-            inside_change = False
-            continue
-        if not inside_change:
+        if active_end is None:
             upstream.append(line)
     assert not before_upstream
-    assert not inside_change
+    assert active_end is None
     return "".join(upstream)
 
 
@@ -445,3 +457,52 @@ def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
     assert "choco install nsis" not in workflow
     assert "choco install nsis" not in release_workflow
     assert "frontend/src-tauri/target/release/bundle/nsis/*.exe" in build_job
+
+
+def test_portable_update_mode_updates_in_place_without_registry_or_uninstall_side_effects() -> None:
+    template = _installer_text()
+    on_init = template[template.index("Function .onInit\n") : template.index("Section EarlyChecks")]
+    page_reinstall = template[
+        template.index("Function PageReinstall\n") : template.index(
+            "Function PageReinstallUpdateSelection\n"
+        )
+    ]
+    section_install = template[
+        template.index("Section Install\n") : template.index("Function .onInstSuccess\n")
+    ]
+    on_inst_success = template[
+        template.index("Function .onInstSuccess\n") : template.index("Function un.onInit\n")
+    ]
+
+    assert "Var PortableMode" in template
+    assert '${GetOptions} $CMDLINE "/PORTABLE" $R0' in on_init
+    assert '${AndIf} ${FileExists} "$INSTDIR\\.shinsekai-portable"' in on_init
+    portable_init_skip = on_init.index("Goto shinsekai_oninit_done")
+    silent_wix_call = on_init.index("Call AbortSilentLegacyWixMigration")
+    assert portable_init_skip < silent_wix_call
+
+    portable_reinstall_abort = page_reinstall.index("${If} $PortableMode = 1")
+    wix_enum = page_reinstall.index("EnumRegKey $1 HKLM")
+    assert portable_reinstall_abort < wix_enum
+    assert "Abort" in page_reinstall[portable_reinstall_abort:wix_enum]
+
+    copy_binaries = section_install.index("{{#each binaries}}")
+    portable_jump = section_install.index("Goto shinsekai_portable_install_done")
+    write_uninstaller = section_install.index('WriteUninstaller "$INSTDIR\\uninstall.exe"')
+    write_manu_key = section_install.index('WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR')
+    write_uninst_key = section_install.index('WriteRegStr SHCTX "${UNINSTKEY}"')
+    desktop_shortcut = section_install.index("Call CreateOrUpdateDesktopShortcut")
+    portable_done_label = section_install.index("shinsekai_portable_install_done:")
+    auto_close = section_install.index("SetAutoClose true")
+
+    assert (
+        copy_binaries
+        < portable_jump
+        < write_uninstaller
+        < write_manu_key
+        < write_uninst_key
+        < desktop_shortcut
+        < portable_done_label
+        < auto_close
+    )
+    assert 'nsis_tauri_utils::RunAsUser "$INSTDIR\\${MAINBINARYNAME}.exe" "$R0"' in on_inst_success

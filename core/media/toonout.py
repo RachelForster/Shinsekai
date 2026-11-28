@@ -11,6 +11,7 @@ import sys
 from threading import Thread
 
 from core.media.toonout_assets import model_directory, verify_assets
+from sdk.process_guard import get_process_registry, subprocess_isolation_kwargs
 
 
 class ToonOutUnavailable(RuntimeError):
@@ -87,7 +88,14 @@ class ToonOutSession:
                 text=True,
                 encoding="utf-8",
                 env=env,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                **subprocess_isolation_kwargs(hide_window=True),
+            )
+            get_process_registry().register(
+                self.process,
+                name="toonout-worker",
+                kind="toonout",
+                scope="process",
+                name_hint="python",
             )
             self.responses = Queue()
             self.reader = Thread(target=self._read, daemon=True)
@@ -145,9 +153,9 @@ class ToonOutSession:
                     process.stdin.write('{"close": true}\n')
                     process.stdin.flush()
                     process.wait(timeout=5)
+                get_process_registry().forget(process)
             except (OSError, subprocess.TimeoutExpired):
-                process.kill()
-                process.wait(timeout=5)
+                get_process_registry().stop_process(process, timeout=5)
             finally:
                 for stream in (process.stdin, process.stdout):
                     if stream:

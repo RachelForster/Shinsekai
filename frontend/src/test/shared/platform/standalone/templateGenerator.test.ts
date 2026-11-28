@@ -7,6 +7,8 @@ import type { Character } from "../../../../shared/platform/slices/characterType
 import type { ChatSnapshot, ChatStageEvent } from "../../../../shared/platform/slices/chatTypes";
 import type { Background, Effect } from "../../../../shared/platform/slices/workspaceTypes";
 import { createStandalonePlatform } from "../../../../shared/platform/standalone";
+import { browserSpeechTtsAdapter } from "../../../../shared/platform/standalone/ai/adapters/tts/browserSpeechAdapter";
+import { qwenTtsAdapter } from "../../../../shared/platform/standalone/ai/adapters/tts/qwenTtsAdapter";
 import { parseStandaloneDialogOutput } from "../../../../shared/platform/standalone/ai/dialogOutputParser";
 import { buildStandaloneDialogSystemPrompt } from "../../../../shared/platform/standalone/ai/dialogPromptBuilder";
 import { standaloneHttpRequest } from "../../../../shared/platform/standalone/ai/httpClient";
@@ -729,5 +731,215 @@ describe("standalone template generation & dialog protocol", () => {
       expect(prompt).toContain("Traveler carrying a pocket watch.");
       expect(prompt).toContain("独立出场角色");
     }
+  });
+
+  it("resolves voiceLanguage='auto' from each character's reference audio language", async () => {
+    const zhChar = makeCharacter({ name: "寸策", prompt_lang: "zh", prompt_text: "你好" });
+    const jaChar = makeCharacter({ name: "七海", prompt_lang: "ja", prompt_text: "おはよう" });
+    const koChar = makeCharacter({ name: "Sujin", prompt_lang: "ko", prompt_text: "안녕하세요" });
+
+    const zhRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "zh-auto",
+        characters: ["寸策"],
+        backgroundName: "",
+        scenario: "测试",
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [zhChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN", voice_language: "auto" },
+    });
+    expect(zhRes.system).not.toContain('"translate"');
+
+    const jaRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "ja-auto",
+        characters: ["七海"],
+        backgroundName: "",
+        scenario: "テスト",
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [jaChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN", voice_language: "auto" },
+    });
+    expect(jaRes.system).toContain("该句台词的日语译文");
+
+    const koRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "ko-auto",
+        characters: ["Sujin"],
+        backgroundName: "",
+        scenario: "테스트",
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [koChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "en", voice_language: "auto" },
+    });
+    expect(koRes.system).toContain("Korean translation of the line");
+
+    const controlledPlayerRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "controlled-player-auto",
+        characters: ["寸策", "七海"],
+        backgroundName: "",
+        scenario: "玩家配音测试",
+        playerCharacter: "七海",
+        allowPlayerDialogue: false,
+        readPlayerSpeech: true,
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [zhChar, jaChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN", voice_language: "auto" },
+    });
+    expect(controlledPlayerRes.system).toContain("该角色参考语音对应的语言（寸策:中文，七海:日语）");
+
+    const mixedRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "mixed-auto",
+        characters: ["七海", "寸策"],
+        backgroundName: "",
+        scenario: "混合",
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [jaChar, zhChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN", voice_language: "auto" },
+    });
+    expect(mixedRes.system).toContain("该角色参考语音对应的语言（七海:日语，寸策:中文）");
+
+    // Verify StandaloneChatTurnDriver resolves 'auto' per character and forwards to TTS adapters
+    const spokenLangs: string[] = [];
+    const speakMock = vi.fn((utterance: { lang: string }) => {
+      spokenLangs.push(utterance.lang);
+    });
+    (globalThis as { SpeechSynthesisUtterance?: unknown }).SpeechSynthesisUtterance = class {
+      lang = "";
+      rate = 1;
+      pitch = 1;
+      volume = 1;
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      constructor(public text: string) {}
+    };
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: { cancel: vi.fn(), speak: speakMock },
+    });
+    await browserSpeechTtsAdapter.synthesize(
+      { text: "おはよう", characterName: "七海", voiceLanguage: "ja", apiConfig: sampleConfig.api_config },
+      {},
+      standaloneHttpRequest,
+    );
+    await browserSpeechTtsAdapter.synthesize(
+      { text: "안녕하세요", characterName: "Sujin", voiceLanguage: "ko", apiConfig: sampleConfig.api_config },
+      {},
+      standaloneHttpRequest,
+    );
+    expect(spokenLangs).toEqual(["ja-JP", "ko-KR"]);
+
+    const store = new StandaloneSessionStore();
+    await store.hydrate();
+    const session = await store.ensureSession({
+      historyPath: "./data/history/auto-tts.json",
+      title: "auto-tts",
+      payload: {
+        templateId: "tpl-auto-tts",
+        characters: ["七海"],
+        backgroundName: "",
+        historyPath: "./data/history/auto-tts.json",
+        voiceLanguage: "auto",
+      },
+    });
+    let chatSnapshot: ChatSnapshot = {
+      status: "idle",
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      stats: [],
+      voiceLanguage: "auto",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    dialog: [{ character_name: "七海", sprite: "01", speech: "おはようございます" }],
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ output: {} }), { status: 200, headers: { "content-type": "application/json" } }),
+      );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const events: ChatStageEvent[] = [];
+    let driver!: StandaloneChatTurnDriver;
+    driver = new StandaloneChatTurnDriver({
+      getApiConfig: () => ({
+        ...sampleConfig.api_config,
+        llm_provider: "ChatGPT",
+        llm_api_key: { ChatGPT: "sk-test-token" },
+        llm_base_urls: { ChatGPT: "https://api.openai.com/v1" },
+        llm_model: { ChatGPT: "gpt-4o-mini" },
+        tts_provider: "qwen-tts",
+        tts_extra_configs: { "qwen-tts": { api_key: "sk-qwen-tts" } },
+      }),
+      getCharacters: () => [jaChar],
+      getBackgrounds: () => [],
+      getEffects: () => [],
+      getSystemConfig: () => ({ ui_language: "zh_CN", voice_language: "auto" }),
+      getChat: () => chatSnapshot,
+      setChat: (next) => {
+        chatSnapshot = next;
+      },
+      emitChat: () => {},
+      emitStageEvent: (event) => {
+        events.push(event);
+      },
+      sessionStore: store,
+      httpClient: standaloneHttpRequest,
+      resolveFileUrl: (p) => p,
+    });
+    await driver.runTurn({ session, userText: "早" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const ttsInit = (fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1];
+    expect(JSON.parse(String(ttsInit.body))).toMatchObject({
+      input: { language_type: "Japanese", text: "おはようございます" },
+    });
+
+    const koTtsFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ output: {} }), { status: 200, headers: { "content-type": "application/json" } }),
+      );
+    globalThis.fetch = koTtsFetch as typeof fetch;
+    await qwenTtsAdapter.synthesize(
+      { text: "안녕하세요", characterName: "Sujin", voiceLanguage: "ko", apiConfig: sampleConfig.api_config },
+      { api_key: "sk-qwen-tts" },
+      standaloneHttpRequest,
+    );
+    expect(JSON.parse(String((koTtsFetch.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toMatchObject({
+      input: { language_type: "Korean" },
+    });
   });
 });

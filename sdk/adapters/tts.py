@@ -18,6 +18,16 @@ class TTSAdapter(ABC):
         """Metadata for adapter-specific options; empty ``{}`` means none."""
         return {}
 
+    @property
+    def supports_inline_voice_tags(self) -> bool:
+        """Whether this adapter interprets inline ``[...]`` voice/delivery tags in text."""
+        return False
+
+    @property
+    def supports_voice_instruction(self) -> bool:
+        """Whether this adapter accepts a per-utterance ``voice_instruct`` kwarg."""
+        return False
+
     def wait_until_ready(self, timeout_seconds: float | None = None) -> None:
         """Wait until the adapter can accept requests.
 

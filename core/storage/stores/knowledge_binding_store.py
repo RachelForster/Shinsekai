@@ -116,10 +116,17 @@ class SqliteKnowledgeBindingStore:
         ).fetchone()
         if row is not None:
             return str(row["id"])
-        if create_self_if_missing and is_self_persona_name(character_name):
-            if self._characters is not None:
-                return self._characters.ensure_self_persona().id
-            return SELF_PERSONA_ID
+        if is_self_persona_name(character_name):
+            self_row = connection.execute(
+                "SELECT id FROM characters WHERE id = ? LIMIT 1",
+                (SELF_PERSONA_ID,),
+            ).fetchone()
+            if self_row is not None:
+                return str(self_row["id"])
+            if create_self_if_missing:
+                if self._characters is not None:
+                    return self._characters.ensure_self_persona().id
+                return SELF_PERSONA_ID
         return None
 
     def bind_character_knowledge(self, character_name: str, knowledge_id: str) -> None:

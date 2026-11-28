@@ -76,6 +76,8 @@ export const chatZhCNMessages = {
   "conversation.next": "下一步",
   "conversation.chooseType": "聊天类型",
   "conversation.normalHint": "选择人物和模板，自由对话",
+  "conversation.novel": "小说剧场",
+  "conversation.novelHint": "导入 TXT 或 PDF 小说，配置选角或纯对话演绎",
   "conversation.storyHint": "选择或创作剧本，展开故事",
   "conversation.delete": "删除聊天",
   "conversation.deleteConfirm": "确定删除“{title}”吗？聊天记录、分支和剧本进度将被删除，人物、模板和剧本原稿不受影响。",

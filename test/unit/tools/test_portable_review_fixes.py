@@ -436,3 +436,54 @@ def test_publish_and_plan_modules_import_without_app_dependencies() -> None:
     assert _is_already_exists_error(RuntimeError("repo already exists")) is True
     assert _is_already_exists_error(RuntimeError("仓库已存在")) is True
     assert _is_already_exists_error(RuntimeError("permission denied")) is False
+
+
+def test_bundle_qwen3_tts_gguf_and_pi_agent_download_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib, io, zipfile
+    import core.agent.pi_runtime as pi_runtime
+    from scripts.portable.gguf_runtime import bundle_qwen3_tts_gguf
+    from scripts.portable.pi_bundle import bundle_pi_agent
+    from scripts.portable.targets import QWEN3_TTS_GGUF_FILES, resolve_target
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("pi/pi.exe", b"official-pi-win")
+    pi_zip = buf.getvalue()
+    pi_sha = hashlib.sha256(pi_zip).hexdigest()
+    monkeypatch.setitem(pi_runtime.PI_ARCHIVES, "windows-x64", ("pi-windows-x64.zip", pi_sha))
+
+    llama_buf = io.BytesIO()
+    with zipfile.ZipFile(llama_buf, "w") as zf:
+        zf.writestr("llama-server.exe", b"llama-exe")
+    llama_zip = llama_buf.getvalue()
+
+    def fake_gguf_download(url: str, dest: Path, *_args: object, **_kwargs: object) -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(llama_zip if url.endswith(".zip") else b"qwen3-weights")
+
+    def fake_pi_download(_url: str, dest: Path, *_args: object, **_kwargs: object) -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(pi_zip)
+
+    monkeypatch.setattr("scripts.portable.gguf_runtime.download_archive", fake_gguf_download)
+    monkeypatch.setattr("scripts.portable.pi_bundle.download_archive", fake_pi_download)
+    monkeypatch.setenv("HF_ENDPOINT", "https://example.invalid")
+    monkeypatch.setattr(
+        "huggingface_hub.hf_hub_download",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    warnings: list[str] = []
+    target = resolve_target("windows-x64")
+    out = tmp_path / "standalone"
+    assert bundle_qwen3_tts_gguf(target=target, data_source_root=tmp_path / "empty", output_dir=out, download_missing=True, warnings=warnings)
+    assert bundle_pi_agent(target=target, data_source_root=tmp_path / "empty", output_dir=out, download_missing=True, warnings=warnings)
+    assert warnings == []
+    assert (out / "data" / "models" / "qwen3-tts-gguf" / "llama.cpp" / "llama-server.exe").is_file()
+    for name in QWEN3_TTS_GGUF_FILES:
+        assert (out / "data" / "models" / "qwen3-tts-gguf" / name).is_file()
+    pi_dir = out / "data" / "agent" / "runtimes" / "pi"
+    assert pi_runtime.PiRuntimeManager(pi_dir, platform_key="windows-x64").inspect() is not None
+    assert not (pi_dir / "downloads").exists() and not (pi_dir / "install.lock").exists()

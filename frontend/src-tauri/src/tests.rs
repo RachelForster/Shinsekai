@@ -7,7 +7,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::bridge::{send_bridge_agent_close, send_bridge_chat_close};
+use crate::bridge::{
+    port_pair_available, send_bridge_agent_close, send_bridge_chat_close,
+    send_bridge_runtime_shutdown, summarize_bridge_stderr,
+};
 use crate::frontend_protocol::{
     app_window_url, chat_window_url, live_chat_frontend_url, live_frontend_origin_for_platform,
     live_frontend_reload_targets, live_frontend_url, resolve_published_frontend_dist,
@@ -333,6 +336,27 @@ fn send_bridge_agent_close_posts_authenticated_runtime_shutdown() {
 }
 
 #[test]
+fn send_bridge_runtime_shutdown_posts_authenticated_shutdown() {
+    let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buffer = [0_u8; 1024];
+        let read = stream.read(&mut buffer).unwrap();
+        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+            .unwrap();
+        request
+    });
+    send_bridge_runtime_shutdown(port, "shutdown-token").unwrap();
+    let request = handle.join().unwrap();
+    assert!(request.starts_with("POST /api/runtime/shutdown HTTP/1.1\r\n"));
+    assert!(request.contains("X-Shinsekai-Bridge-Token: shutdown-token\r\n"));
+    assert!(request.ends_with("\r\n\r\n{}"));
+}
+
+#[test]
 fn main_window_default_size_preserves_legacy_aspect_ratio() {
     let legacy_ratio = 1180.0_f64 / 780.0_f64;
     let default_ratio = MAIN_WINDOW_DEFAULT_WIDTH / MAIN_WINDOW_DEFAULT_HEIGHT;
@@ -361,6 +385,45 @@ fn main_window_initial_size_scales_proportionally_for_smaller_work_areas() {
         resolve_main_window_initial_size(Some((700.0, 500.0))),
         (MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
     );
+}
+
+#[test]
+fn is_portable_bundle_detects_portable_marker_file() {
+    let dir = temp_test_dir("portable-marker");
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(!crate::state::is_portable_bundle(&dir));
+
+    std::fs::write(
+        dir.join(crate::project_root::PORTABLE_ROOT_MARKER_FILE),
+        "portable\n",
+    )
+    .unwrap();
+    assert!(crate::state::is_portable_bundle(&dir));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn summarize_bridge_stderr_returns_final_non_empty_line_and_truncates_utf8() {
+    assert_eq!(summarize_bridge_stderr("   \n\r\n  "), None);
+    let traceback = "Traceback (most recent call last):\n  File \"frontend_bridge.py\", line 1\nRuntimeError: port busy  \n\n";
+    assert_eq!(
+        summarize_bridge_stderr(traceback).as_deref(),
+        Some("RuntimeError: port busy")
+    );
+    let long_utf8 = "错".repeat(260);
+    let summary = summarize_bridge_stderr(&long_utf8).unwrap();
+    assert!(summary.ends_with("..."));
+    assert_eq!(summary.chars().count(), 243);
+}
+
+#[test]
+fn port_pair_available_rejects_port_whose_websocket_neighbor_is_bound() {
+    let ws_listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+    let ws_port = ws_listener.local_addr().unwrap().port();
+    assert!(!port_pair_available(ws_port - 1));
+    assert!(!port_pair_available(u16::MAX));
+    drop(ws_listener);
 }
 
 fn runtime_scan_view(selected_candidate_id: Option<&str>) -> runtime::RuntimeScanView {

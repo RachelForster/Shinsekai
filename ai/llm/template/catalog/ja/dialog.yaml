@@ -20,6 +20,9 @@ voice_target_ja: 日本語
 voice_target_en: 英語
 voice_target_zh: 中国語
 voice_target_yue: 広東語
+voice_target_ko: 韓国語
+voice_target_auto: 各キャラクターの参照音声の言語
+voice_target_auto_map: "{base}（{mapping}）"
 json_line_trans: '        "translate": "セリフの{target_voice_name}訳（システムの音声目標言語に合わせる）",
 
   '
@@ -62,13 +65,14 @@ relations_description: |
 relations_owner: '{name}の関係図：'
 relations_edge: '{source}から{target}へ：{content}'
 relations_temperature: (親密度：{temperature})
+self_persona_identity_note: 'この人物はユーザーの自設です。'
 player_portrait_vibe_value: このターンにユーザーが示した表情と動作
 player_runtime_override: '
 
   以下の現在の主控人物設定は、以前の矛盾する設定に優先します。'
 self_persona_cast_runtime_override: '
 
-  以下の現在の登場人物設定は、以前の「自設」に関する矛盾する説明に優先します：「自設」は独立した登場キャラクターとして今回の会話に参加しており、他の登場人物と同様に通常どおり発話し立ち絵を表示してください。'
+  以下の現在の登場人物オプションは、以前のユーザー自設に関する説明と矛盾する場合はこちらを優先します：「{name}」（ユーザー自設）は独立した登場キャラクターとして本会話に参加しているため、他の登場キャラクターと同様に発言および立ち絵表示を許可してください。'
 player_ai_control: '
 
   主控人物：{name}
@@ -157,6 +161,16 @@ self_persona_block: '【ユーザー自設設定】
 
 
   '
+self_persona_block_named: '【ユーザー自設設定】
+
+  キャラクター名：{name}（この人物はユーザーの自設です。）
+
+  {setting}
+
+  （以上は現在対話しているユーザー自身の背景と好みの設定です。やり取りの中で自然に踏まえ、「{name}」と呼んでください。「{name}」を独立した発話キャラクターとして出力しないでください。）
+
+
+  '
 field_spec_required: |
   - {name}（{field_type}、必須）：{description}{aliases_suffix}
 field_spec_optional: |
@@ -239,3 +253,70 @@ custom_tools_intro: 上記の出力形式を守る範囲で、必要に応じて
 closing_custom_reminder: |
   必ず上記の規定出力形式で応答してください。Markdown コードブロックは禁止です。
 closing_custom_tool_protocol: ツール規約：ツールが必要な場合はモデルの実際の function/tool 呼び出し機能を使用してください。上記の出力形式はユーザー向けの最終応答にのみ適用され、ツール呼び出しの代替にはなりません。台詞や本文内でツール呼び出しや結果を捏造しないでください。
+renpy_narr_token: NARR
+renpy_speech_lang_name: 日本語
+renpy_directive_sep: '、'
+renpy_schema_intro: '出力時は有効化された以下の Ren''Py 風スクリプト DSL 行のみを順番に記述してください：'
+renpy_example_cot: 'cot: <摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向>'
+renpy_example_scene_indexed: 'scene 2桁背景ID with 任意の場面転換効果（不要時は with 以降省略）'
+renpy_example_scene_full: 'scene 完全背景ID with 任意の場面転換効果（不要時は with 以降省略）'
+renpy_example_scene_vibe: 'scene vibe="場面と雰囲気のフレーズ" with 任意の場面転換効果（不要時は with 以降省略）'
+renpy_example_bgm_indexed: 'play music 2桁BGM_ID'
+renpy_example_bgm_full: 'play music 完全BGM_ID'
+renpy_example_bgm_vibe: 'play music vibe="音楽の雰囲気・テンポ"'
+renpy_example_effect_attr: ', effect="任意エフェクト"'
+renpy_example_trans_part: ' | tr "{target_voice_name}訳"'
+renpy_example_say_indexed: 'キャラ名 [sprite="2桁立ち絵ID", motion="任意モーション"{effect_attr}] "セリフ本文"{trans_part}'
+renpy_example_say_full: 'キャラ名 [sprite="完全立ち絵ID（変更不要時は -1）", motion="任意モーション"{effect_attr}] "セリフ本文"{trans_part}'
+renpy_example_say_vibe: 'キャラ名 [vibe="表情と動作のフレーズ", motion="任意モーション"{effect_attr}] "セリフ本文"{trans_part}'
+renpy_example_narr: 'narr "地の文・情景描写"'
+renpy_example_stat: 'stat "heart|HP|72|100"'
+renpy_example_cg: 'cg "highres, masterpiece, 8k, 背景またはキャラクターCGプロンプト"'
+renpy_example_choice: 'menu: "選択肢1" | "選択肢2" | "選択肢3"'
+renpy_line_effect: '任意エフェクトと退場：話者行の `[...]` 内に `effect="ラベル"` を記述可（`scene`/`cg` も同様）。明確な退場時は `hide キャラ名` または最後の行に `effect="LEAVE"` を指定。'
+renpy_line_trans: '任意二言語翻訳：二言語出力有効時のみセリフ後に `| tr "{target_voice_name}訳"` を追記し、セリフの意味のみ翻訳してください。'
+renpy_stage_effects: '任意効果：`scene` 末尾に `with fade|fade_black|fade_white|slide_left|slide_right|zoom|cut`、話者行の `[...]` 内に `motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in"` を必要時のみ指定。'
+renpy_stage_effects_motion_only: '任意モーション：強い感情表現時のみ話者行の `[...]` 内に `motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in"` を指定（通常時は省略）。'
+renpy_schema_foot: '1行1ディレクティブで出力し（`# コメント` 可）、セリフ内の二重引用符は `\"` でエスケープしてください。JSON や Markdown コードブロックは禁止です。'
+renpy_r_cot: '思考ログ：本編行の前に 1 行だけ `cot:`（{cot}、非表示ログ）を出力し、`<摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向>` を含めてください。'
+renpy_r_format: '書式厳守：出力は上記の Ren''Py 風 DSL 行のみで構成してください。JSON、XML タグ、Markdown コードブロック、形式外の説明文は禁止です。'
+renpy_r_cname_prefix: '話者とコマンド制限：セリフ行の話者は '
+renpy_r_cname_suffix: ' および登場する人物に限ります。'
+renpy_r_cname_directives: ' および登場する人物に限り、システム演出は対応する専用コマンド（{directives}）を使用してください。'
+renpy_r_sprite: '立ち絵指定：`sprite="01"`・`"02"` のような2桁番号を感情に合わせて指定してください。'
+renpy_r_full_sprite: '立ち絵指定：`sprite` にはリストの完全ID文字列（例：`"01"` や `"111"`）を指定し、変更不要時は `sprite="-1"` としてください。'
+renpy_r_vibe: '雰囲気記述：`vibe="..."` には表情・動作・風景・音楽の雰囲気を簡潔な言葉で記述し、番号を入れないでください。'
+renpy_r_speech: 'セリフ言語：引用符内の本文は {speech_lang_name} で記述し、キャラの口調・設定に沿ってください。'
+renpy_r_sequence: '出力順序：演出コマンドとセリフを時系列順に出力し、1ターンあたり最低2行以上出力してください。'
+renpy_r_speech_max_chars: 'セリフ文字数制限：各セリフ本文は {n} 文字以内にしてください（無言時は `""`）。'
+renpy_r_dialog_max_items: 'ターン上限：1ターン内の DSL ディレクティブ総数は {n} 個以内にしてください。'
+renpy_r_scene: '場面変更（{scn}）：`scene 背景ID` で背景を切り替え、演出上必要な場合は末尾に `with 効果` を付けられます。'
+renpy_r_scene_vibe: '場面変更（{scn}）：`scene vibe="場所・時間帯・天候・雰囲気"` で背景を切り替え、`with 効果` を付けられます。'
+renpy_r_bgm: 'BGM変更（{bgm_t}）：`play music BGM_ID` で音楽を切り替えます。頻繁に変えすぎないでください。'
+renpy_r_bgm_vibe: 'BGM変更（{bgm_t}）：`play music vibe="曲調・雰囲気"` で音楽を切り替えます。頻繁に変えすぎないでください。'
+renpy_r_narration: '{narr}地の文：場面変化・行動・情景描写には `narr "..."` を使用してください（立ち絵番号不要）。'
+renpy_r_choice_pos: '選択肢位置：ターンの最終行は必ず `{choice}`（`menu:`）にしてください。'
+renpy_r_choice_format: '選択肢形式（{choice}）：`menu: "選択肢1" | "選択肢2" | "選択肢3"`（またはインデント付き `menu:` ブロック）で簡潔な選択肢のみを記述してください。'
+renpy_r_choice_balance: '選択肢バランス：おどけ/ユーモア系・理知的/現実系・穏健/標準系の3種を含め、作品と性格に合わせてください。'
+renpy_r_stats: 'ステータス（{stat}）：物語冒頭寄りに `stat "icon|label|value|max"`（max 省略可）を出力（icon: heart, shield, zap, star, sparkles, target, coins, clock, gauge）。'
+renpy_r_cg: 'CG（{cg}）：見せ場では `cg "Stable Diffusion プロンプト..."`（{cg}）を出力し、冒頭に highres, masterpiece, 8k, bestscores（背景のみは no person, pure scenery）を入れてください。'
+renpy_r_translate: '翻訳付記：二言語出力時はセリフ引用符の後に `| tr "{target_voice_name}訳"` を付けてください（セリフのみ翻訳）。'
+renpy_r_effect: '退場とエフェクト：明確な退場時は `hide キャラ名` または最終行に `effect="LEAVE"` を指定（地の文や他キャラには付けないこと）。`effect="ラベル"`（before:/after:/loop:/stop:/ambient:/expose:/shelter:/ambient-stop:/ambient-stop-all 対応）は実際に発生した音・環境・画像のみ記入します。'
+renpy_r_scene_transition: '場面転換効果（任意）：`scene` 末尾に `with <効果>`（fade、fade_black、fade_white、slide_left、slide_right、zoom、cut）を控えめに指定できます。'
+renpy_r_character_motion: 'キャラクター動効果（任意）：強い感情・動きの瞬間のみ話者 `[...]` に `motion="..."`（shake、tremble、jump、bounce、nod、tilt、flash、sink、lean_in）を指定してください。'
+renpy_closing_reminder: |
+  必ず上記の Ren'Py 風 DSL 行（`キャラ名 [sprite/vibe] "セリフ"` 等）のみで応答してください。JSON・XML・Markdown コードブロックは禁止です。
+renpy_player_ai_heading: '操作キャラクター：'
+renpy_player_ai_rules: 'AI はこの操作キャラクターの新しいセリフを生成できます（通常キャラと同じ `話者 [{portrait_field}="..."] "セリフ"` 形式）。無言行のみの出力、ユーザー発言のそのままの反復、勝手な重要判断は避けてください。表情のみ変える場合は `話者 [{portrait_field}="{portrait_value}"] ""` を出力します。ユーザー明示の発言・行動・訂正が優先です。'
+renpy_player_ai_example_prefix: '操作キャラクター書式例：'
+renpy_player_control_heading: 'ユーザー操作キャラクター：'
+renpy_player_control_intro: 'ユーザー入力はこのキャラクターが既に述べた発話・行動・明示された心理です。台詞・返答・重要な行動・選択肢を勝手に代筆しないでください。質問や `menu:` 提示後はユーザーの返答を待ってください。'
+renpy_player_control_portrait_prefix: '他キャラより先に無言で表情だけ更新する場合は次の行を出力：'
+renpy_player_control_portrait_suffix: '（変化なし時は省略）。'
+renpy_player_speech_contract_prefix: 'ユーザー入力を読み上げる場合は表情更新行の前に '
+renpy_player_speech_contract_suffix: ' `[{speech_media}] "ユーザー発言原文" | tr "{target_voice_name}訳"` を出力し、括弧や心理描写を除いた発話のみ記述してください。'
+renpy_player_speech_disabled: '操作キャラクターの読み上げ行は出力せず、表情更新行の引用符は空 `""` にしてください。'
+renpy_player_control_footer: '操作キャラクターに関する描写はキャラクター名を明記し、`menu:` は提案にとどめてください。'
+format_label_xml_v1: 'XML / HTML タグ（場面転換・キャラ動作対応）'
+format_label_renpy_v1: 'Ren''Py 風スクリプト DSL（場面転換・キャラ動作対応）'
+format_label_json_v1: 'JSON（クラシック互換）'

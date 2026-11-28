@@ -41,7 +41,12 @@ def _raise_memory_error(result: dict[str, Any]) -> None:
         raise RuntimeError(str(result["error"]))
 
 
-def _list_character_memories(name: str, *, session_id: str = "") -> dict[str, Any]:
+def _list_character_memories(
+    name: str,
+    *,
+    session_id: str = "",
+    config_manager: Any = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -49,10 +54,13 @@ def _list_character_memories(name: str, *, session_id: str = "") -> dict[str, An
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import list_memories
 
+    extra: dict[str, Any] = {}
+    if config_manager is not None:
+        extra["config_manager"] = config_manager
     try:
         if session_id:
-            return list_memories(name, session_id=session_id)
-        return list_memories(name)
+            return list_memories(name, session_id=session_id, **extra)
+        return list_memories(name, **extra)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
@@ -64,6 +72,7 @@ def _memory_tool_search(
     *,
     session_id: str = "",
     memory_mode: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
@@ -72,6 +81,9 @@ def _memory_tool_search(
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import search_memories
 
+    extra: dict[str, Any] = {}
+    if config_manager is not None:
+        extra["config_manager"] = config_manager
     try:
         return search_memories(
             query,
@@ -79,12 +91,13 @@ def _memory_tool_search(
             limit=limit,
             session_id=session_id,
             memory_mode=memory_mode,
+            **extra,
         )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
 
-def _memory_tool_recall(payload: dict[str, Any]) -> dict[str, Any]:
+def _memory_tool_recall(payload: dict[str, Any], *, config_manager: Any = None) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -93,6 +106,8 @@ def _memory_tool_recall(payload: dict[str, Any]) -> dict[str, Any]:
     from application.memory.manage_memories import recall_turn_memories
 
     try:
+        if config_manager is not None:
+            return recall_turn_memories(payload, config_manager=config_manager)
         return recall_turn_memories(payload)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
@@ -113,6 +128,7 @@ def _memory_tool_remember(
     player_character: str = "",
     source_session_id: str = "",
     source_turn_seq: int | None = None,
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
@@ -121,6 +137,9 @@ def _memory_tool_remember(
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import remember_memory
 
+    extra: dict[str, Any] = {}
+    if config_manager is not None:
+        extra["config_manager"] = config_manager
     try:
         return remember_memory(
             content,
@@ -136,6 +155,7 @@ def _memory_tool_remember(
             player_character=player_character,
             source_session_id=source_session_id,
             source_turn_seq=source_turn_seq,
+            **extra,
         )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
@@ -228,6 +248,7 @@ def _add_character_memory(
     slot_key: str = "",
     kind: str = "",
     session_id: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
@@ -247,6 +268,8 @@ def _add_character_memory(
         extra["kind"] = kind
     if session_id:
         extra["session_id"] = session_id
+    if config_manager is not None:
+        extra["config_manager"] = config_manager
 
     try:
         result = remember_and_list(content, character_name=name, **extra)
@@ -256,7 +279,13 @@ def _add_character_memory(
     return result
 
 
-def _delete_character_memory(name: str, memory_id: str, *, session_id: str = "") -> dict[str, Any]:
+def _delete_character_memory(
+    name: str,
+    memory_id: str,
+    *,
+    session_id: str = "",
+    config_manager: Any = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -264,11 +293,14 @@ def _delete_character_memory(name: str, memory_id: str, *, session_id: str = "")
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import forget_and_list
 
+    extra: dict[str, Any] = {}
+    if config_manager is not None:
+        extra["config_manager"] = config_manager
     try:
         result = (
-            forget_and_list(memory_id, character_name=name, session_id=session_id)
+            forget_and_list(memory_id, character_name=name, session_id=session_id, **extra)
             if session_id
-            else forget_and_list(memory_id, character_name=name)
+            else forget_and_list(memory_id, character_name=name, **extra)
         )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
@@ -282,6 +314,7 @@ def _pin_character_memory(
     pinned: bool,
     *,
     session_id: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
@@ -290,12 +323,16 @@ def _pin_character_memory(
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import pin_and_list
 
+    extra: dict[str, Any] = {}
+    if config_manager is not None:
+        extra["config_manager"] = config_manager
     try:
         result = pin_and_list(
             memory_id,
             pinned=pinned,
             character_name=name,
             session_id=session_id,
+            **extra,
         )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
@@ -308,6 +345,7 @@ def _awaken_character_memory(
     memory_id: str,
     *,
     session_id: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
@@ -316,11 +354,15 @@ def _awaken_character_memory(
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import awaken_and_list
 
+    extra: dict[str, Any] = {}
+    if config_manager is not None:
+        extra["config_manager"] = config_manager
     try:
         result = awaken_and_list(
             memory_id,
             character_name=name,
             session_id=session_id,
+            **extra,
         )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}

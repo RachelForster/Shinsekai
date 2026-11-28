@@ -94,6 +94,7 @@ class BehaviorTransition:
     messages_to_commit: tuple[dict[str, Any], ...] = ()
     envelope: BehaviorStateEnvelope | None = None
     invalidate_prefetch: bool = False
+    reset_history_context: bool = False
 
 
 @dataclass(frozen=True)

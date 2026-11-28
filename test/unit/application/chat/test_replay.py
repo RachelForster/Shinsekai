@@ -292,6 +292,21 @@ def test_synthesis_uses_original_speech_and_keeps_the_shared_server_running(
     manager.shutdown.assert_called_once_with(stop_server=False)
 
 
+def test_synthesis_stops_server_when_replay_spawned_its_own_adapter(replay, tmp_path, monkeypatch):
+    service, source, _, _ = replay
+    source[1]["text"] = "Mio: こんにちは"
+    snapshot = service.prepare()
+    begin(service, snapshot, 1, 1, True)
+    manager, adapter = Mock(), Mock()
+    adapter.owns_server_process = True
+    adapter.wait_until_ready.side_effect = RuntimeError("startup failed")
+    monkeypatch.setattr("ai.tts.tts_manager.TTSManager", Mock(return_value=manager))
+    monkeypatch.setattr("ai.tts.tts_manager.TTSAdapterFactory.create_adapter", Mock(return_value=adapter))
+    with pytest.raises(RuntimeError, match="startup failed"):
+        service.generate(snapshot["id"], snapshot["entries"][1]["key"])
+    manager.shutdown.assert_called_once_with(stop_server=True)
+
+
 def test_cancellation_stops_new_requests_but_can_save_completed_audio(replay, tmp_path):
     service, _, _, _ = replay
     snapshot = service.prepare()
@@ -397,3 +412,63 @@ def test_recorder_tracks_ambient_effects_across_layer_and_stop(tmp_path):
     recorder.observe({"type": "ambient.stop", "key": "rain"})
     recorder.observe({"type": "dialog.end", "fullHtml": f"<p data-dialog-id='{'e' * 64}'>clear</p>"})
     assert store.read("e" * 64, "frame.json")["ambientEffects"] == []
+
+
+def test_replay_allows_reference_free_providers_when_character_lacks_refer_audio(replay):
+    service, _, _, _ = replay
+    character = service.state.config_manager.get_character_by_name("Mio")
+    character.refer_audio_path = ""
+
+    # GPT-SoVITS still requires a per-character reference audio path.
+    gpt_entries = service.prepare()["entries"]
+    assert [entry["canGenerate"] for entry in gpt_entries[1:]] == [False, False, False]
+
+    # Fish Audio S2 Pro supports reference-free / reference_id synthesis.
+    service.state.config_manager.get_gpt_sovits_config = lambda: ("https://api.fish.audio", "", "fish-audio-s2-pro")
+    fish_entries = service.prepare()["entries"]
+    assert [entry["canGenerate"] for entry in fish_entries[1:]] == [True, True, True]
+
+
+def test_replay_preserves_voice_instruct_and_invalidates_cache_when_changed(replay, tmp_path, monkeypatch):
+    service, source, _, history_path = replay
+    dialog = {
+        "character_name": "Mio",
+        "speech": "原始文本",
+        "translate": "[laugh] こんにちは",
+        "voice_instruct": "soft teasing whisper",
+    }
+    source[1]["text"] = "Mio: 原始文本"
+    source[1]["dialogId"] = DialogIdentities("instruct-turn").next(dialog)
+    history_path.write_text(
+        json.dumps([{"role": "assistant", CHAT_TURN_ID: "instruct-turn", "content": json.dumps({"dialog": [dialog]})}]),
+        encoding="utf-8",
+    )
+
+    snapshot = service.prepare()
+    begin(service, snapshot, 1, 1, True)
+    audio = tmp_path / "synthesized.wav"
+    audio.write_bytes(b"audio")
+    manager, adapter = Mock(), Mock()
+    manager.generate_tts.return_value = str(audio)
+    monkeypatch.setattr("ai.tts.tts_manager.TTSManager", Mock(return_value=manager))
+    monkeypatch.setattr("ai.tts.tts_manager.TTSAdapterFactory.create_adapter", Mock(return_value=adapter))
+    monkeypatch.setattr("ai.tts.model_session.tts_model_session", lambda *_: nullcontext())
+
+    service.generate(snapshot["id"], snapshot["entries"][1]["key"])
+    manager.set_language.assert_called_once_with("ja")
+    assert manager.generate_tts.call_args.args == ("[laugh] こんにちは",)
+    assert manager.generate_tts.call_args.kwargs["voice_instruct"] == "soft teasing whisper"
+
+    saved_voice = ReplayStore(history_path).read(source[1]["dialogId"], "voice.json")
+    assert saved_voice is not None and saved_voice["voiceInstruct"] == "soft teasing whisper"
+
+    # Changing voice_instruct invalidates cached replay audio so a new instruction re-synthesizes.
+    dialog["voice_instruct"] = "calm serious tone"
+    history_path.write_text(
+        json.dumps([{"role": "assistant", CHAT_TURN_ID: "instruct-turn", "content": json.dumps({"dialog": [dialog]})}]),
+        encoding="utf-8",
+    )
+    service.plans.clear()
+    updated = service.prepare()
+    assert service.plans[updated["id"]]["private"][source[1]["dialogId"]]["voice_instruct"] == "calm serious tone"
+    assert not updated["entries"][1]["voiceUrls"]

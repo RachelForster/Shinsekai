@@ -64,6 +64,11 @@ class LLMDialogMessage(BaseModel):
         "",
         description="可选的角色立绘动态特效名称（仅角色台词条目使用）",
     )
+    voice_instruct: Optional[str] = Field(
+        "",
+        validation_alias=AliasChoices("voice_instruct", "voice_instruction", "instruct"),
+        description="可选的语音演绎自然语言指导（仅当当前 TTS 适配器支持时使用）",
+    )
     dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     turn_id: Optional[int] = Field(
         None,
@@ -82,6 +87,10 @@ class PresentationMessage(BaseModel):
     voice_id: str = Field("", description="历史语音的稳定标识")
     dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     name: str = Field(..., alias="character_name", description="实体名称")
+    display_name: str = Field(
+        "",
+        description="Optional stage-visible speaker name; falls back to name when empty",
+    )
     text: Optional[str] = Field("", alias="speech", description="文本内容")
     asset_id: Optional[Union[str, int]] = Field(
         "-1", alias="sprite", description="资源编号"

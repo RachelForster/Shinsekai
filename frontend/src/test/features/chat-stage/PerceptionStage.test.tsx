@@ -611,7 +611,10 @@ describe("Perception chat-stage state & components", () => {
       const { container } = render(
         <I18nProvider language="zh_CN">
           <ToastProvider>
-            <PerceptionSettingsSection draft={sampleConfig.api_config} onChange={updateDraft} />
+            <PerceptionSettingsSection
+              draft={{ ...sampleConfig.api_config, perception_ocr_enabled: false, perception_use_gguf: false }}
+              onChange={updateDraft}
+            />
           </ToastProvider>
         </I18nProvider>,
       );
@@ -762,6 +765,7 @@ describe("Perception chat-stage state & components", () => {
     const draft = {
       ...sampleConfig.api_config,
       perception_python_path: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+      perception_use_gguf: false,
     };
 
     try {

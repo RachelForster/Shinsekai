@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -14,12 +15,16 @@ import yaml
 
 from ai.asr.sherpa_onnx_adapter import SHERPA_SENSEVOICE_ASSET, SHERPA_ZIPFORMER_ASSET
 from ai.memory.config import EMBEDDING_MODEL_ASSET
+from core.agent.pi_runtime import PI_ARCHIVES, PI_VERSION
 from scripts.build_portable_bundle import build_portable_bundle, main as build_cli_main
 from scripts.portable.archive import compute_sha256
 from scripts.portable.gguf_runtime import bundle_perception_gguf, safe_extract_tar_gz, safe_extract_zip
 from scripts.portable.hub_providers import UploadTargetConfig, build_remote_url
+from scripts.portable.plan_matrix import CATALOG
 from scripts.portable.targets import (
     PERCEPTION_GGUF_FILES,
+    PLATFORM_TARGETS,
+    QWEN3_TTS_GGUF_FILES,
     SUPPORTED_TARGETS,
     default_models_for_target,
     resolve_target,
@@ -51,7 +56,7 @@ def _seed_runtime(runtime_dir: Path, *, os_family: str, packages: tuple[str, ...
         _write_dist_info(sp, pkg)
 
 
-def _seed_models(data_src: Path, *, llama_executable: str) -> object:
+def _seed_models(data_src: Path, *, llama_executable: str, pi_platform_key: str) -> object:
     hub = data_src / "data" / "cache" / "huggingface" / "hub"
     rev = "c" * 40
     for spec in (SHERPA_ZIPFORMER_ASSET, SHERPA_SENSEVOICE_ASSET):
@@ -92,6 +97,22 @@ def _seed_models(data_src: Path, *, llama_executable: str) -> object:
     for name in PERCEPTION_GGUF_FILES:
         (gguf_dir / name).write_bytes(b"gguf-data")
 
+    tts_dir = data_src / "data" / "models" / "qwen3-tts-gguf"
+    tts_dir.mkdir(parents=True, exist_ok=True)
+    for name in QWEN3_TTS_GGUF_FILES:
+        (tts_dir / name).write_bytes(b"qwen3-tts-gguf")
+
+    pi_inst = data_src / "data" / "agent" / "runtimes" / "pi" / f"{PI_VERSION}-{pi_platform_key}"
+    pi_inst.mkdir(parents=True, exist_ok=True)
+    pi_exe = "pi.exe" if pi_platform_key.startswith("windows-") else "pi"
+    pi_data = b"pi-binary"
+    (pi_inst / pi_exe).write_bytes(pi_data)
+    (pi_inst / pi_exe).chmod(0o755)
+    (pi_inst / "installed.json").write_text(
+        json.dumps({"version": PI_VERSION, "platform": pi_platform_key, "archiveSha256": PI_ARCHIVES[pi_platform_key][1], "executable": pi_exe, "files": {pi_exe: hashlib.sha256(pi_data).hexdigest()}}),
+        encoding="utf-8",
+    )
+
     return test_embedding_spec
 
 
@@ -116,13 +137,13 @@ def test_build_linux_x64_portable_targz_and_sidecars(tmp_path: Path) -> None:
     release_dir.mkdir()
     (release_dir / "shinsekai").write_bytes(b"linux-bin")
     runtime_dir = tmp_path / "runtime"
-    _seed_runtime(runtime_dir, os_family="linux", packages=("onnxruntime", "huggingface-hub", "sherpa-onnx", "Pillow"))
+    _seed_runtime(runtime_dir, os_family="linux", packages=("onnxruntime", "huggingface-hub", "sherpa-onnx", "Pillow", "rapidocr-onnxruntime", "filelock"))
     frontend_dist = tmp_path / "frontend_dist"
     frontend_dist.mkdir()
     (frontend_dist / "index.html").write_text("<html></html>", encoding="utf-8")
 
     data_src = tmp_path / "data_src"
-    emb_spec = _seed_models(data_src, llama_executable="llama-server")
+    emb_spec = _seed_models(data_src, llama_executable="llama-server", pi_platform_key="linux-x64")
 
     out_dir = tmp_path / "Shinsekai-Portable-v2.7.0-linux-x64"
     report = build_portable_bundle(
@@ -140,7 +161,7 @@ def test_build_linux_x64_portable_targz_and_sidecars(tmp_path: Path) -> None:
     )
 
     assert report.target == "linux-x64"
-    assert set(report.included_models) == {"embedding", "sherpa-asr", "perception-gguf"}
+    assert set(report.included_models) == {"embedding", "sherpa-asr", "perception-gguf", "qwen3-tts-gguf", "pi-agent"}
     assert report.archive_path is not None and report.archive_path.name.endswith(".tar.gz")
     assert report.sha256_path is not None and report.metadata_path is not None
 
@@ -150,13 +171,15 @@ def test_build_linux_x64_portable_targz_and_sidecars(tmp_path: Path) -> None:
     assert meta["platform"] == "linux-x64"
     assert meta["archive_format"] == "tar.gz"
     assert meta["sha256"] == expected_digest
-    assert set(meta["included_models"]) == {"embedding", "sherpa-asr", "perception-gguf"}
+    assert set(meta["included_models"]) == {"embedding", "sherpa-asr", "perception-gguf", "qwen3-tts-gguf", "pi-agent"}
 
     with tarfile.open(report.archive_path, "r:gz") as tf:
         names = set(tf.getnames())
     assert f"{out_dir.name}/.shinsekai-portable" in names
     assert f"{out_dir.name}/shinsekai" in names
     assert f"{out_dir.name}/data/models/perception-gguf/llama.cpp/llama-server" in names
+    assert f"{out_dir.name}/data/models/qwen3-tts-gguf/{QWEN3_TTS_GGUF_FILES[0]}" in names
+    assert f"{out_dir.name}/data/agent/runtimes/pi/{PI_VERSION}-linux-x64/pi" in names
 
 
 def test_build_macos_arm64_app_bundle_layout(tmp_path: Path) -> None:
@@ -170,11 +193,11 @@ def test_build_macos_arm64_app_bundle_layout(tmp_path: Path) -> None:
     _seed_runtime(
         app_dir / "Resources" / "runtime",
         os_family="macos",
-        packages=("onnxruntime", "huggingface-hub", "sherpa-onnx", "Pillow"),
+        packages=("onnxruntime", "huggingface-hub", "sherpa-onnx", "Pillow", "rapidocr-onnxruntime", "filelock"),
     )
 
     data_src = tmp_path / "data_src"
-    emb_spec = _seed_models(data_src, llama_executable="llama-server")
+    emb_spec = _seed_models(data_src, llama_executable="llama-server", pi_platform_key="darwin-arm64")
 
     out_dir = tmp_path / "Shinsekai-Portable-v2.7.0-macos-arm64"
     report = build_portable_bundle(
@@ -190,10 +213,12 @@ def test_build_macos_arm64_app_bundle_layout(tmp_path: Path) -> None:
         embedding_asset=emb_spec,
     )
 
-    assert set(report.included_models) == {"embedding", "sherpa-asr", "perception-gguf"}
+    assert set(report.included_models) == {"embedding", "sherpa-asr", "perception-gguf", "qwen3-tts-gguf", "pi-agent"}
     assert (out_dir / ".shinsekai-portable").is_file()
     assert (out_dir / "Shinsekai.app" / "Contents" / "MacOS" / "shinsekai").is_file()
     assert (out_dir / "data" / "models" / "perception-gguf" / "llama.cpp" / "llama-server").is_file()
+    assert (out_dir / "data" / "models" / "qwen3-tts-gguf" / QWEN3_TTS_GGUF_FILES[0]).is_file()
+    assert (out_dir / "data" / "agent" / "runtimes" / "pi" / f"{PI_VERSION}-darwin-arm64" / "pi").is_file()
     assert report.archive_path is not None
     with tarfile.open(report.archive_path, "r:gz") as tf:
         names = set(tf.getnames())
@@ -204,7 +229,7 @@ def test_build_macos_arm64_app_bundle_layout(tmp_path: Path) -> None:
     _seed_runtime(
         override_runtime,
         os_family="macos",
-        packages=("onnxruntime", "huggingface-hub", "sherpa-onnx", "Pillow"),
+        packages=("onnxruntime", "huggingface-hub", "sherpa-onnx", "Pillow", "rapidocr-onnxruntime", "filelock"),
     )
     override_frontend = tmp_path / "override_frontend"
     override_frontend.mkdir()
@@ -457,6 +482,11 @@ def test_portable_artifacts_workflow_contract() -> None:
     assert 'channel = "1.96.0"' in rust_toolchain
     assert "dtolnay/rust-toolchain@1.96.0" in workflow_text
     assert "actions/upload-artifact@v4" in workflow_text
+    assert "qwen3-tts-gguf" in workflow_text
+    assert "pi-agent" in workflow_text
+    for platform_name, target_cfg in PLATFORM_TARGETS.items():
+        assert CATALOG[platform_name]["default_models"] == ",".join(target_cfg.default_models)
+        assert "qwen3-tts-gguf" in target_cfg.default_models and "pi-agent" in target_cfg.default_models
 
     for placeholder in (
         "secrets.HF_TOKEN",

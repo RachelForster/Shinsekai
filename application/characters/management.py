@@ -104,7 +104,11 @@ def parse_character_request(
 
 
 def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths: bool = False) -> None:
-    from config.schema import SELF_PERSONA_SPRITE_PREFIX, is_self_persona_name
+    from config.schema import (
+        SELF_PERSONA_SPRITE_PREFIX,
+        is_self_persona_id,
+        is_self_persona_name,
+    )
     from sdk.ui.validators import (
         ascii_only,
         audio_duration_between,
@@ -115,7 +119,11 @@ def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths
     )
 
     sprite_prefix = str(body.get("sprite_prefix") or "").strip()
-    if is_self_persona_name(body.get("name")) and not sprite_prefix:
+    if (
+        is_self_persona_id(body.get("id"))
+        or bool(body.get("is_builtin"))
+        or is_self_persona_name(body.get("name"))
+    ) and not sprite_prefix:
         sprite_prefix = SELF_PERSONA_SPRITE_PREFIX
     gpt_model_path = str(body.get("gpt_model_path") or "").strip()
     sovits_model_path = str(body.get("sovits_model_path") or "").strip()
@@ -315,6 +323,8 @@ class CharacterUseCase:
             Character,
             PortraitCrop,
             SELF_PERSONA_SPRITE_PREFIX,
+            is_self_persona,
+            is_self_persona_id,
             is_self_persona_name,
         )
 
@@ -324,13 +334,43 @@ class CharacterUseCase:
         explicit_original_name = str(payload.get("originalName") or "").strip()
         target_id = str(payload.get("id") or body.get("id") or "").strip()
         target_name = str(body.get("name") or "").strip()
-        if explicit_original_name and is_self_persona_name(explicit_original_name) and not is_self_persona_name(target_name):
-            raise ValueError(tr("crud.char.self_rename_validation"))
-        if explicit_original_name and not is_self_persona_name(explicit_original_name) and is_self_persona_name(target_name):
+
+        target = self._catalog_target()
+        mgr = getattr(self._state, "character_manager", None)
+        existing = None
+        if target is not None:
+            existing = (
+                (target.get_by_id(target_id) if target_id else None)
+                or (target.ensure_self_persona() if is_self_persona_id(target_id) else None)
+                or (target.get_by_name(explicit_original_name) if explicit_original_name else None)
+            )
+        elif isinstance(mgr, CharacterManager):
+            mgr_target = mgr._target()
+            existing = (
+                (mgr_target.get_by_id(target_id) if target_id else None)
+                or (mgr_target.ensure_self_persona() if is_self_persona_id(target_id) else None)
+                or (mgr_target.get_by_name(explicit_original_name) if explicit_original_name else None)
+            )
+
+        is_self = (
+            (existing is not None and is_self_persona(existing))
+            or is_self_persona_id(target_id)
+            or bool(body.get("is_builtin"))
+            or (
+                existing is None
+                and not explicit_original_name
+                and is_self_persona_name(target_name)
+            )
+        )
+        if (
+            existing is not None
+            and not is_self_persona(existing)
+            and is_self_persona_name(target_name)
+        ):
             raise ValueError(tr("crud.char.rename_to_self_validation"))
-        if is_self_persona_name(target_name) and not str(body.get("sprite_prefix") or "").strip():
+        if is_self and not str(body.get("sprite_prefix") or "").strip():
             body = {**body, "sprite_prefix": SELF_PERSONA_SPRITE_PREFIX}
-        if is_self_persona_name(target_name) and "display_name" in body:
+        if is_self and "display_name" in body:
             from core.chat_history.text import sanitize_user_display_name
 
             raw_name = str(body["display_name"] or "").strip()
@@ -338,19 +378,6 @@ class CharacterUseCase:
             if raw_name and not display_name:
                 raise ValueError(tr("crud.char.self_display_name_invalid"))
             body = {**body, "display_name": display_name}
-
-        target = self._catalog_target()
-        mgr = getattr(self._state, "character_manager", None)
-        existing = None
-        if target is not None:
-            existing = (target.get_by_id(target_id) if target_id else None) or (
-                target.get_by_name(explicit_original_name) if explicit_original_name else None
-            )
-        elif isinstance(mgr, CharacterManager):
-            mgr_target = mgr._target()
-            existing = (mgr_target.get_by_id(target_id) if target_id else None) or (
-                mgr_target.get_by_name(explicit_original_name) if explicit_original_name else None
-            )
 
         validation_body = (
             {
@@ -450,7 +477,7 @@ class CharacterUseCase:
                 relation_graph=character.relation_graph if "relation_graph" in body else None,
                 **(
                     {"display_name": character.display_name}
-                    if is_self_persona_name(saved_name) and "display_name" in body
+                    if is_self and "display_name" in body
                     else {}
                 ),
             )
@@ -515,15 +542,17 @@ class CharacterUseCase:
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         from application.chat.conversation_library import update_conversation_character
-        from config.schema import is_self_persona_name
+        from config.schema import is_self_persona, is_self_persona_id, is_self_persona_name
 
         name = str(payload.get("name") or "").strip()
-        if is_self_persona_name(name):
+        if is_self_persona_name(name) or is_self_persona_id(name):
             raise ValueError(tr("crud.char.self_delete_validation"))
 
         target = self._catalog_target()
         if target is not None:
             existing = target.get_by_name(name)
+            if existing is not None and is_self_persona(existing):
+                raise ValueError(tr("crud.char.self_delete_validation"))
             if existing is not None and getattr(existing, "undeletable", False):
                 raise ValueError(tr("crud.char.builtin_delete_validation", name=existing.name))
             existed = existing is not None
@@ -540,6 +569,8 @@ class CharacterUseCase:
             return {"message": message, "names": names}
 
         existing = self._state.config_manager.get_character_by_name(name)
+        if existing is not None and is_self_persona(existing):
+            raise ValueError(tr("crud.char.self_delete_validation"))
         if existing is not None and getattr(existing, "undeletable", False):
             raise ValueError(tr("crud.char.builtin_delete_validation", name=existing.name))
         existed = existing is not None

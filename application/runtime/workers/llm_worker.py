@@ -13,13 +13,13 @@ from application.chat.capabilities import (
 from core.chat_history.identity import DialogIdentities
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
-from core.messaging.formats.registry import resolve_dialog_format
+from ai.llm.formats import resolve_dialog_format
 from core.messaging.stream_events import (
     STREAM_DIALOG_REPAIR_KEY,
     STREAM_REASONING_DELTA_KEY,
 )
 from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
-from i18n import tr
+from i18n import tr, tr_in_bundle
 from sdk.exception.presenter import format_llm_exception_message
 from sdk.exception.types import classify_exception
 from sdk.graph import Port
@@ -315,12 +315,21 @@ class LLMWorker(ThreadDagNode):
                     continue
 
                 if message_count == 0:
-                    _msg = tr("desktop.llm_parse_empty")
+                    turn_locale = resolve_template_locale(cfg_mgr)
+                    _msg = tr_in_bundle("desktop.llm_parse_empty", turn_locale)
                     if parser.has_errors:
-                        _msg += "\n" + parser.last_error
+                        format_err = getattr(parser, "format_last_error", None)
+                        err_text = (
+                            format_err(locale=turn_locale)
+                            if callable(format_err)
+                            else parser.last_error
+                        )
+                        if err_text:
+                            _msg += "\n" + err_text
                     elif parser.unparsed_remainder:
-                        _msg += "\n" + tr(
+                        _msg += "\n" + tr_in_bundle(
                             "desktop.llm_parse_remainder",
+                            turn_locale,
                             text=parser.unparsed_remainder,
                         )
                     logger.error(

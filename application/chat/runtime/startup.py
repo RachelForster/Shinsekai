@@ -219,6 +219,7 @@ def create_chat_startup_context(
                 character_names=tuple(character_names),
                 primary_character_names=primary_character_names,
                 runtime_imports=runtime,
+                tts_manager=tts_manager,
             )
         )
 
@@ -267,9 +268,25 @@ def create_chat_startup_context(
 
 def _import_provider_runtime() -> SimpleNamespace:
     from ai.asr.asr_manager import ASRAdapterFactory
+    from ai.asr.registry import (
+        configure_builtin_asr_adapters,
+        configure_registered_asr_adapters,
+    )
     from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
+    from ai.llm.registry import (
+        configure_builtin_llm_adapters,
+        configure_registered_llm_adapters,
+    )
+    from ai.t2i.registry import (
+        configure_builtin_t2i_adapters,
+        configure_registered_t2i_adapters,
+    )
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
     from ai.tools.tool_manager import ToolManager
+    from ai.tts.registry import (
+        configure_builtin_tts_adapters,
+        configure_registered_tts_adapters,
+    )
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
     from ai.vision.fallback_registry import configure_registered_fallbacks
     from application.model_assets.download_model import (
@@ -280,10 +297,14 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats,
         configure_builtin_formats,
     )
-    from core.messaging.formats.registry import (
+    from ai.llm.formats import (
         configure_builtin_dialog_formats,
         configure_registered_dialog_formats,
     )
+    configure_builtin_llm_adapters()
+    configure_builtin_tts_adapters()
+    configure_builtin_asr_adapters()
+    configure_builtin_t2i_adapters()
     configure_builtin_formats()
     configure_builtin_dialog_formats()
     from plugin_system.host import (
@@ -305,10 +326,14 @@ def _import_provider_runtime() -> SimpleNamespace:
         TTSManager=TTSManager,
         ToolManager=ToolManager,
         bind_model_assets_runtime=bind_model_assets_runtime,
+        configure_registered_asr_adapters=configure_registered_asr_adapters,
         configure_registered_fallbacks=configure_registered_fallbacks,
         configure_registered_formats=configure_registered_formats,
         configure_registered_dialog_formats=configure_registered_dialog_formats,
+        configure_registered_llm_adapters=configure_registered_llm_adapters,
         configure_registered_model_assets=configure_registered_model_assets,
+        configure_registered_t2i_adapters=configure_registered_t2i_adapters,
+        configure_registered_tts_adapters=configure_registered_tts_adapters,
         create_plugin_model_assets_dispatcher=create_plugin_model_assets_dispatcher,
         ensure_plugins_loaded=ensure_plugins_loaded,
     )
@@ -374,6 +399,20 @@ def _load_plugin_manager(
         )
 
     extra_bindings: dict[str, Any] = {}
+    for runtime_attr, binding_key, legacy_factory_attr, legacy_key in (
+        ("configure_registered_llm_adapters", "configure_llm_adapters", "LLMAdapterFactory", "llm_adapters"),
+        ("configure_registered_tts_adapters", "configure_tts_adapters", "TTSAdapterFactory", "tts_adapters"),
+        ("configure_registered_asr_adapters", "configure_asr_adapters", "ASRAdapterFactory", "asr_adapters"),
+        ("configure_registered_t2i_adapters", "configure_t2i_adapters", "T2IAdapterFactory", "t2i_adapters"),
+    ):
+        configure_fn = getattr(runtime, runtime_attr, None)
+        if callable(configure_fn):
+            extra_bindings[binding_key] = configure_fn
+        else:
+            legacy_factory = getattr(runtime, legacy_factory_attr, None)
+            if legacy_factory is not None:
+                extra_bindings[legacy_key] = legacy_factory._adapters
+
     configure_assets_fn = getattr(runtime, "configure_registered_model_assets", None)
     if callable(configure_assets_fn):
         extra_bindings["configure_model_assets"] = configure_assets_fn
@@ -382,14 +421,13 @@ def _load_plugin_manager(
     )
     if callable(configure_dialog_formats_fn):
         extra_bindings["configure_dialog_formats"] = configure_dialog_formats_fn
+    builtin_plugins = getattr(runtime, "builtin_plugins", ())
+    if builtin_plugins:
+        extra_bindings["builtin_plugins"] = tuple(builtin_plugins)
 
     return runtime.ensure_plugins_loaded(
         config,
         runtime_bindings=runtime.PluginRuntimeBindings(
-            llm_adapters=runtime.LLMAdapterFactory._adapters,
-            tts_adapters=runtime.TTSAdapterFactory._adapters,
-            asr_adapters=runtime.ASRAdapterFactory._adapters,
-            t2i_adapters=runtime.T2IAdapterFactory._adapters,
             create_tool_manager=runtime.ToolManager,
             configure_vision_fallbacks=runtime.configure_registered_fallbacks,
             configure_avatar_formats=runtime.configure_registered_formats,

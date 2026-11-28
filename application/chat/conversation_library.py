@@ -29,6 +29,7 @@ from core.chat_history.storage import (
     read_active_chat_history,
 )
 from core.chat_history.text import chat_history_to_turns, parse_assistant_dialog_content
+from core.document import DocumentRepository
 from core.messaging.dialog_tokens import (
     NARR_ALIASES,
     SYSTEM_UI_SKIP,
@@ -304,6 +305,21 @@ def _details(record: dict) -> dict:
     story_file = directory / STORY_SESSION_FILENAME
     story_path = binding.get("storyPath") or launch.get("storyPath") or ""
     story = bool(story_path) or story_file.is_file()
+    doc_binding = DocumentRepository.read_session_binding(directory)
+    novel_doc_id = (
+        doc_binding.doc_id
+        if doc_binding is not None and doc_binding.behavior_id == "novel_theater"
+        else (
+            str(launch.get("novelDocId") or "")
+            if launch.get("behaviorId") == "novel_theater"
+            else ""
+        )
+    )
+    novel = (
+        bool(novel_doc_id)
+        or (doc_binding is not None and doc_binding.behavior_id == "novel_theater")
+        or launch.get("behaviorId") == "novel_theater"
+    )
     db_file = chat_history_db_path(path)
     modified = max(
         file.stat().st_mtime
@@ -321,7 +337,11 @@ def _details(record: dict) -> dict:
         memory_mode = (
             normalize_memory_mode(str(raw_launch_mode))
             if isinstance(raw_launch_mode, str) and raw_launch_mode.strip()
-            else (MEMORY_MODE_ISOLATED if story else str(prefs.get("memoryMode") or "shared"))
+            else (
+                MEMORY_MODE_ISOLATED
+                if (story or novel)
+                else str(prefs.get("memoryMode") or "shared")
+            )
         )
         launch_auto_outfit = launch.get("autoOutfitSwitch")
         auto_outfit_switch = launch_auto_outfit if isinstance(launch_auto_outfit, bool) else True
@@ -336,8 +356,20 @@ def _details(record: dict) -> dict:
         "characters": characters,
         "preview": turns[-1]["content"][:180] if turns else "",
         "updatedAt": modified * 1000,
-        "kind": "story" if story else "normal",
+        "kind": "story" if story else ("novel" if novel else "normal"),
         "storyPath": story_path,
+        "novelDocId": novel_doc_id,
+        "behaviorId": "novel_theater" if novel else "",
+        "castEntries": list(launch.get("castEntries") or []) if novel else [],
+        "novelNameMode": (
+            (
+                "actor"
+                if str(launch.get("nameMode") or "").strip().lower() == "actor"
+                else "story"
+            )
+            if novel
+            else ""
+        ),
         "historyPath": path.as_posix(),
         "hasSettings": bool(launch) and not record.get("requiresCharacterSelection", False),
         "requiresCharacterSelection": bool(record.get("requiresCharacterSelection")),
@@ -389,8 +421,14 @@ def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
             "mediaSelectionMode": "indexed",
             "outputFormat": "json_v1",
         }
+    launch_copy = dict(launch)
+    if launch_copy.get("systemStale"):
+        from application.chat.conversation_mutations import regenerate_launch_system
+
+        regenerate_launch_system(state, launch_copy)
+        launch_copy.pop("systemStale", None)
     return {
-        **launch,
+        **launch_copy,
         "memoryMode": details["memoryMode"],
         "autoOutfitSwitch": details["autoOutfitSwitch"],
         "historyPath": path.as_posix(),
@@ -424,8 +462,14 @@ def saved_conversation_launch(state: Any, history_path: Path) -> dict | None:
     if not isinstance(record, dict) or not isinstance(record.get("launch"), dict):
         return None
     details = _details(record)
+    launch_copy = dict(record["launch"])
+    if launch_copy.get("systemStale"):
+        from application.chat.conversation_mutations import regenerate_launch_system
+
+        regenerate_launch_system(state, launch_copy)
+        launch_copy.pop("systemStale", None)
     return {
-        **record["launch"],
+        **launch_copy,
         "memoryMode": details["memoryMode"],
         "autoOutfitSwitch": details["autoOutfitSwitch"],
         "historyPath": history_path.as_posix(),
@@ -443,6 +487,7 @@ from application.chat.conversation_mutations import (  # noqa: E402
     delete_conversation,
     rename_conversation,
     update_conversation_character,
+    update_conversation_launch_fields,
     update_conversation_settings,
 )
 

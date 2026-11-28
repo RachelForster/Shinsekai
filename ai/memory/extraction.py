@@ -278,17 +278,26 @@ def _normalize_string_tuple(raw: Any, *, max_items: int = 8, max_chars: int = 60
     return tuple(items)
 
 
+def _self_owner_names(self_persona_name: str = "") -> frozenset[str]:
+    cleaned = clean_text(self_persona_name, max_chars=120)
+    if cleaned:
+        return _SELF_NAMES | {cleaned.casefold()}
+    return _SELF_NAMES
+
+
 def _resolve_attributed_owner(
     raw_character_name: str,
     *,
     allowed_characters: Sequence[str],
     default_character: str,
+    self_persona_name: str = "",
 ) -> tuple[str, str]:
+    self_names = _self_owner_names(self_persona_name)
     cleaned = clean_text(raw_character_name, max_chars=120)
-    if cleaned.casefold() in _SELF_NAMES:
+    if cleaned.casefold() in self_names:
         return (SCOPE_SELF_PUBLIC, "__self__")
     if not cleaned:
-        if default_character.casefold() in _SELF_NAMES:
+        if default_character.casefold() in self_names:
             return (SCOPE_SELF_PUBLIC, "__self__")
         return (SCOPE_CHAR_CROSS_SAVE, default_character)
 
@@ -298,7 +307,7 @@ def _resolve_attributed_owner(
         if matched is not None:
             return (SCOPE_CHAR_CROSS_SAVE, matched)
         # Guard against hallucinated character names in multi-character or single-character scenes
-        if default_character and default_character.casefold() not in _SELF_NAMES:
+        if default_character and default_character.casefold() not in self_names:
             return (SCOPE_CHAR_CROSS_SAVE, default_character)
     return (SCOPE_CHAR_CROSS_SAVE, cleaned)
 
@@ -310,6 +319,7 @@ def parse_memory_drafts(
     now_iso: str = "",
     session_id: str = "",
     turn_seq: int | None = None,
+    self_persona_name: str = "",
 ) -> list[MemoryDraft]:
     """Parse structured or legacy LLM JSON output into deduplicated MemoryDraft objects."""
     parsed = parse_json_payload(extract_response_text(response))
@@ -318,10 +328,11 @@ def parse_memory_drafts(
     if not isinstance(parsed, list):
         return []
 
+    self_names = _self_owner_names(self_persona_name)
     allowed_chars = tuple(
         clean_text(c, max_chars=120)
         for c in character_names
-        if clean_text(c, max_chars=120) and clean_text(c, max_chars=120).casefold() not in _SELF_NAMES
+        if clean_text(c, max_chars=120) and clean_text(c, max_chars=120).casefold() not in self_names
     )
     default_char = allowed_chars[0] if allowed_chars else "user"
     drafts: list[MemoryDraft] = []
@@ -366,6 +377,7 @@ def parse_memory_drafts(
             raw_speaker,
             allowed_characters=allowed_chars,
             default_character=default_char,
+            self_persona_name=self_persona_name,
         )
 
         drafts.append(
@@ -469,9 +481,11 @@ class MemoryExtractor:
         llm_adapter: Any,
         *,
         locale: LocaleInput = None,
+        self_persona_name: str = "",
     ) -> None:
         self.llm_adapter = llm_adapter
         self.locale = locale
+        self.self_persona_name = clean_text(self_persona_name, max_chars=120)
 
     def _effective_locale(self, override: LocaleInput = None) -> str:
         return resolve_dynamic_locale(override if override is not None else self.locale)
@@ -557,6 +571,7 @@ class MemoryExtractor:
                     now_iso=window.now_iso,
                     session_id=window.session_id,
                     turn_seq=window.turn_seq,
+                    self_persona_name=self.self_persona_name,
                 )
             )
         return tuple(deduplicate_drafts(collected))

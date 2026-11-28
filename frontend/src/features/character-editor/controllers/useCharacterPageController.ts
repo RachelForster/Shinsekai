@@ -248,7 +248,7 @@ export function useCharacterPageController(): CharacterPageContext {
   const selectedCharacterKey = selected ? selected.id || `name:${selected.name}` : "";
   const isDraftSynced = Boolean(selected && syncedCharacterKey === selectedCharacterKey);
   const lockedSelectedPersona = isSelfPersonaCharacter(selected);
-  const nameDirty = Boolean(!inCreateMode && isDraftSynced && !lockedSelectedPersona && draft.name !== selected!.name);
+  const nameDirty = Boolean(!inCreateMode && isDraftSynced && draft.name !== selected!.name);
   const spritePrefixDirty = Boolean(
     !inCreateMode && isDraftSynced && !lockedSelectedPersona && draft.sprite_prefix !== selected!.sprite_prefix,
   );
@@ -269,9 +269,13 @@ export function useCharacterPageController(): CharacterPageContext {
     autoSave,
     buildCharacterCreateInput,
     cancelIdentityField,
+    cancelPendingRenameText,
     confirmIdentityField,
+    confirmRenameKeepText,
+    confirmRenameReplaceText,
     liveNameError,
     liveSpritePrefixError,
+    pendingRenameText,
   } = useCharacterIdentityAndAutoSave({
     activeCharacterKeyRef,
     aiActionPending,
@@ -409,9 +413,12 @@ export function useCharacterPageController(): CharacterPageContext {
     cancelCreatingCharacter,
     cancelDeleteCharacter,
     cancelIdentityField,
+    cancelPendingRenameText,
     closeSpriteGeneration: () => setSpriteGenerationOpen(false),
     confirmDeleteCharacter,
     confirmIdentityField,
+    confirmRenameKeepText,
+    confirmRenameReplaceText,
     currentCharacterName,
     data,
     draft,
@@ -434,6 +441,7 @@ export function useCharacterPageController(): CharacterPageContext {
     openSpriteGeneration,
     patchDraft: setDraft,
     pendingDelete,
+    pendingRenameText,
     preserveImportedDraft,
     pronunciationText,
     replaceCharacterInCache,

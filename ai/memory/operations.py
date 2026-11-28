@@ -74,6 +74,7 @@ class MemoryToolSessionContext:
     session_id: str = ""
     memory_mode: str = ""
     player_character: str = ""
+    self_persona_name: str = ""
 
 
 _active_tool_context: ContextVar[MemoryToolSessionContext] = ContextVar(
@@ -89,6 +90,7 @@ def bind_memory_tool_context(
     session_id: str = "",
     memory_mode: str = "",
     player_character: str = "",
+    self_persona_name: str = "",
 ) -> Token[MemoryToolSessionContext]:
     """Bind per-contextvar and process-default session metadata for LLM memory tools."""
     global _default_tool_context
@@ -96,6 +98,7 @@ def bind_memory_tool_context(
         session_id=str(session_id or "").strip(),
         memory_mode=str(memory_mode or "").strip(),
         player_character=str(player_character or "").strip(),
+        self_persona_name=str(self_persona_name or "").strip(),
     )
     with _default_tool_context_lock:
         _default_tool_context = ctx
@@ -128,9 +131,17 @@ def current_memory_tool_context() -> MemoryToolSessionContext:
     ctx = _active_tool_context.get()
     with _default_tool_context_lock:
         default = _default_tool_context
-    if ctx.session_id == default.session_id and ctx.player_character == default.player_character:
+    if (
+        ctx.session_id == default.session_id
+        and ctx.player_character == default.player_character
+        and ctx.self_persona_name == default.self_persona_name
+    ):
         return default
-    return ctx if ctx.session_id or ctx.memory_mode or ctx.player_character else default
+    return (
+        ctx
+        if ctx.session_id or ctx.memory_mode or ctx.player_character or ctx.self_persona_name
+        else default
+    )
 
 
 def _memory_request_context(session_id: str | None) -> MemoryToolSessionContext:
@@ -141,9 +152,22 @@ def _memory_request_context(session_id: str | None) -> MemoryToolSessionContext:
     return MemoryToolSessionContext(session_id=str(session_id).strip())
 
 
-def _resolve_agent_id(character_name: str | None) -> str:
+def _is_self_agent_name(name: str, *, self_persona_name: str = "") -> bool:
+    low = name.strip().casefold()
+    if low in {"", "user", "__self__", "自设"}:
+        return True
+    clean_self = str(self_persona_name or "").strip()
+    return bool(clean_self and low == clean_self.casefold())
+
+
+def _resolve_agent_id(character_name: str | None, *, self_persona_name: str = "") -> str:
     name = (character_name or "").strip()
-    return name if name else "user"
+    if not name:
+        return "user"
+    clean_self = str(self_persona_name or "").strip()
+    if clean_self and name.casefold() == clean_self.casefold():
+        return "__self__"
+    return name
 
 
 def _memory_row(row: Any) -> dict[str, str]:
@@ -320,7 +344,10 @@ def memory_list(
     limit: int = 200,
     session_id: str = "",
 ) -> dict[str, Any]:
-    agent_id = _resolve_agent_id(character_name)
+    bound_ctx = current_memory_tool_context()
+    agent_id = _resolve_agent_id(
+        character_name, self_persona_name=bound_ctx.self_persona_name
+    )
     sid = str(session_id or "").strip()
     req_payload: dict[str, Any] = {"name": agent_id, "limit": limit}
     if sid:
@@ -393,7 +420,7 @@ def memory_search(
     ctx = _memory_request_context(session_id)
     eff_session_id = ctx.session_id
     eff_mode = str(memory_mode or ctx.memory_mode).strip()
-    agent_id = _resolve_agent_id(character_name)
+    agent_id = _resolve_agent_id(character_name, self_persona_name=ctx.self_persona_name)
 
     payload: dict[str, Any] = {
         "query": q,
@@ -583,8 +610,12 @@ def memory_remember(
     clean_session = ctx.session_id
     clean_mode = str(memory_mode or ctx.memory_mode).strip()
     clean_persona = str(player_character or ctx.player_character).strip()
+    if clean_persona and _is_self_agent_name(
+        clean_persona, self_persona_name=ctx.self_persona_name
+    ):
+        clean_persona = "__self__"
     clean_seq = None if source_turn_seq is None else int(source_turn_seq)
-    agent_id = _resolve_agent_id(character_name)
+    agent_id = _resolve_agent_id(character_name, self_persona_name=ctx.self_persona_name)
 
     payload: dict[str, Any] = {
         "content": text,
@@ -642,7 +673,9 @@ def memory_remember(
                 ):
                     return {"error": "save-scoped memory store unavailable"}
 
-                is_self = agent_id.casefold() in {"", "user", "__self__", "自设"}
+                is_self = _is_self_agent_name(
+                    agent_id, self_persona_name=ctx.self_persona_name
+                )
                 effective_kind = (
                     "canon"
                     if (pinned and not is_self and clean_kind == "episodic")

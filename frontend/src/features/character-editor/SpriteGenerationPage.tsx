@@ -1,8 +1,6 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check, ImagePlus, Plus, Sparkles, X } from "lucide-react";
+import { useEffect, useId, useState, type CSSProperties } from "react";
+import { Check } from "lucide-react";
 
-import { fileUrl } from "../../entities/files/repository";
-import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_SPRITE_TAGGING } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
@@ -10,30 +8,20 @@ import type { Character, CharacterSpriteAnimationInput, H3SpriteResolution } fro
 import {
   AlertDialog,
   AsyncButton,
-  Button,
   ColorInput,
-  Dialog,
-  EmptyState,
-  FilePicker,
-  IconButton,
   MediaPreviewDialog,
-  NumberInput,
   Select,
   SegmentedTabs,
   Switch,
-  TaskProgress,
-  TextArea,
-  VisualMedia,
   type MediaPreview,
 } from "../../shared/ui";
 import { SpriteAnimationSettings } from "./SpriteAnimationSettings";
-import { SpriteMattingSettings } from "./SpriteMattingSettings";
-import { SpriteH3ResolutionSelect } from "./SpriteH3ResolutionSelect";
-import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
 import { spriteAnimationSources } from "./spriteAnimationSources";
 import { useSpriteGeneration, type SpriteCandidate } from "./useSpriteGeneration";
-import { SpriteCandidateCard } from "./SpriteCandidateCard";
-import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
+import { SpriteGenerationPageFrame } from "./SpriteGenerationFrame";
+import { SpriteGenerationWorkspace } from "./SpriteGenerationWorkspace";
+import { SpriteReplaceDialog } from "./SpriteReplaceDialog";
+import { SpriteStaticSettings } from "./SpriteStaticSettings";
 import { SpriteTransitionWorkspace } from "./SpriteTransitionWorkspace";
 import { useSpriteTransitions } from "./useSpriteTransitions";
 import { SpriteMouthWorkspace } from "./SpriteMouthWorkspace";
@@ -87,7 +75,6 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
     "data-sprite-preview-size": previewSize,
     style: { "--sprite-preview-color": previewColor } as CSSProperties,
   };
-  const workspaceBodyRef = useRef<HTMLDivElement>(null);
   const mattingOptions = {
     mattingModel: animationInput.mattingModel ?? "toonout",
     autoScreen: animationInput.autoScreen ?? false,
@@ -189,8 +176,17 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
   }, [remaining]);
   const close = () =>
     generator.items.length || transitions.hasDrafts || mouths.hasDrafts ? setConfirmClose(true) : onClose();
-  const replacementTarget = replacementIndex === "" ? undefined : character.sprites[Number(replacementIndex)];
   const replacementTags = tagContents(character.emotion_tags, character.sprites.length);
+  const introText = t(
+    mode === "mouth"
+      ? "spriteMouth.intro"
+      : mode === "transition"
+        ? "spriteTransition.intro"
+        : mode === "animation"
+          ? "spriteAnimation.intro"
+          : "spriteGeneration.intro",
+    { name },
+  );
 
   return (
     <>
@@ -199,6 +195,24 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
         characterName={name}
         onClose={close}
         title={t("spriteGeneration.action")}
+        modeTabs={
+          <SegmentedTabs
+            variant="pills"
+            className="sprite-generation__mode-tabs"
+            idPrefix={tabsId}
+            ariaLabel={t("spriteAnimation.mode")}
+            value={mode}
+            onChange={(value) => {
+              setMode(value);
+            }}
+            items={[
+              { id: "static", label: t("spriteAnimation.staticTab") },
+              { id: "animation", label: t("spriteAnimation.animationTab") },
+              { id: "transition", label: t("spriteTransition.tab") },
+              { id: "mouth", label: t("spriteMouth.tab") },
+            ]}
+          />
+        }
         headerActions={
           <>
             <Select
@@ -288,32 +302,6 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
         }
       >
         <div className="sprite-generation__journey">
-          <SegmentedTabs
-            idPrefix={tabsId}
-            ariaLabel={t("spriteAnimation.mode")}
-            value={mode}
-            onChange={(value) => {
-              setMode(value);
-            }}
-            items={[
-              { id: "static", label: t("spriteAnimation.staticTab") },
-              { id: "animation", label: t("spriteAnimation.animationTab") },
-              { id: "transition", label: t("spriteTransition.tab") },
-              { id: "mouth", label: t("spriteMouth.tab") },
-            ]}
-          />
-          <p className="sprite-generation__hint">
-            {t(
-              mode === "mouth"
-                ? "spriteMouth.intro"
-                : mode === "transition"
-                  ? "spriteTransition.intro"
-                  : mode === "animation"
-                    ? "spriteAnimation.intro"
-                    : "spriteGeneration.intro",
-              { name },
-            )}
-          </p>
           <ol className="sprite-generation__steps" aria-label={t("spriteGeneration.stepsLabel")}>
             {steps.map((step, index) => (
               <li
@@ -322,12 +310,15 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
                 data-complete={index < currentStep}
               >
                 <span className="sprite-generation__step-number" aria-hidden>
-                  {index < currentStep ? <Check size={14} /> : index + 1}
+                  {index < currentStep ? <Check size={11} /> : index + 1}
                 </span>
                 {t(step)}
               </li>
             ))}
           </ol>
+          <p className="sprite-generation__hint sprite-generation__intro" title={introText}>
+            {introText}
+          </p>
         </div>
         {mode === "mouth" ? (
           <div
@@ -380,336 +371,81 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
                   hasItems={hasItems}
                 />
               ) : (
-                <>
-                  <h3 className="sprite-generation__section-title">{t("spriteGeneration.options")}</h3>
-                  <div className="sprite-generation__settings-fields">
-                    <div className="sprite-generation__reference">
-                      <div className="sprite-generation__reference-image">
-                        {reference ? (
-                          <button
-                            type="button"
-                            className="sprite-generation__preview-trigger"
-                            aria-label={t("mediaPreview.open", { name: t("spriteGeneration.reference") })}
-                            onClick={() =>
-                              setMediaPreview({
-                                src: fileUrl(reference),
-                                title: t("spriteGeneration.reference"),
-                                autoPlay: false,
-                              })
-                            }
-                          >
-                            <VisualMedia
-                              alt={t("spriteGeneration.reference")}
-                              autoPlay={false}
-                              src={fileUrl(reference)}
-                            />
-                          </button>
-                        ) : (
-                          <div className="sprite-generation__reference-empty">
-                            <ImagePlus aria-hidden />
-                            <span>{t("spriteGeneration.optionalReference")}</span>
-                          </div>
-                        )}
-                      </div>
-                      <label className="field-row field-row--stack">
-                        <span className="field-row__label">{t("spriteGeneration.reference")}</span>
-                        <FilePicker
-                          acceptedExtensions={[
-                            ".png",
-                            ".jpg",
-                            ".jpeg",
-                            ".webp",
-                            ".bmp",
-                            ".mp4",
-                            ".webm",
-                            ".mov",
-                            ".mkv",
-                            ".avi",
-                            ".m4v",
-                          ]}
-                          disabled={Boolean(busy)}
-                          onPathChange={setReference}
-                          pickLabel={t("spriteGeneration.chooseReference")}
-                          value={reference}
-                        />
-                      </label>
-                      {existingReferences.length > 0 ? (
-                        <label className="field-row field-row--stack">
-                          <span className="field-row__label">{t("spriteGeneration.existingReference")}</span>
-                          <Select
-                            aria-label={t("spriteGeneration.existingReference")}
-                            disabled={Boolean(busy)}
-                            onChange={(event) => setReference(event.target.value)}
-                            value={existingReferences.some(({ sprite }) => sprite.path === reference) ? reference : ""}
-                          >
-                            <option value="">{t("spriteGeneration.chooseExisting")}</option>
-                            {existingReferences.map(({ sprite, index }) => (
-                              <option key={`${sprite.path}-${index}`} value={sprite.path}>
-                                {t("spriteGeneration.sprite", { n: index + 1 })}
-                                {" · "}
-                                {t(
-                                  isVideoMedia(sprite.path)
-                                    ? "spriteGeneration.videoReference"
-                                    : "spriteAnimation.sourceImage",
-                                )}
-                                {replacementTags[index] ? ` · ${replacementTags[index]}` : ""}
-                              </option>
-                            ))}
-                          </Select>
-                        </label>
-                      ) : null}
-                      {reference ? (
-                        <Button disabled={Boolean(busy)} onClick={() => setReference("")} variant="ghost">
-                          {t("spriteGeneration.clearReference")}
-                        </Button>
-                      ) : null}
-                      {reference && isVideoMedia(reference) ? (
-                        <p className="sprite-generation__hint">{t("spriteGeneration.videoReferenceHint")}</p>
-                      ) : null}
-                      <p className="sprite-generation__hint">
-                        {t(reference ? "spriteGeneration.referenceHint" : "spriteGeneration.noReferenceHint")}
-                      </p>
-                      {hasItems ? (
-                        <p className="sprite-generation__hint">{t("spriteGeneration.referenceChangeHint")}</p>
-                      ) : null}
-                    </div>
-                    <label className="field-row field-row--stack">
-                      <span className="field-row__label">{t("spriteGeneration.requirements")}</span>
-                      <TextArea
-                        maxLength={4000}
-                        disabled={Boolean(busy)}
-                        onChange={(event) => setRequirements(event.target.value)}
-                        placeholder={t("spriteGeneration.requirementsPlaceholder")}
-                        rows={3}
-                        value={requirements}
-                      />
-                    </label>
-                    <label className="sprite-generation__count">
-                      {t("spriteGeneration.count")}
-                      <NumberInput
-                        aria-label={t("spriteGeneration.count")}
-                        disabled={Boolean(busy) || remaining <= 0}
-                        min={1}
-                        max={remaining || 1}
-                        onChange={(event) => setCount(Number(event.target.value))}
-                        value={count}
-                      />
-                    </label>
-                    <SpriteH3ResolutionSelect
-                      value={h3Resolution}
-                      onChange={setH3Resolution}
-                      disabled={Boolean(busy)}
-                    />
-                    <div className="sprite-generation__auto-cutout">
-                      <Switch
-                        checked={removeBackground}
-                        disabled={Boolean(busy)}
-                        onChange={(event) => setRemoveBackground(event.target.checked)}
-                      >
-                        {t("spriteGeneration.autoRemoveBackground")}
-                      </Switch>
-                      <p className="sprite-generation__hint">{t("spriteGeneration.autoRemoveHint")}</p>
-                      {removeBackground ? (
-                        <SpriteMattingSettings
-                          compact
-                          value={mattingOptions}
-                          disabled={Boolean(busy)}
-                          onChange={(value) => setAnimationInput((current) => ({ ...current, ...value }))}
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="sprite-generation__plan-action">
-                    {!character.character_setting.trim() ? (
-                      <p className="sprite-generation__notice">{t("spriteGeneration.settingRequired")}</p>
-                    ) : null}
-                    {remaining <= 0 ? <p className="sprite-generation__notice">{t("spriteGeneration.limit")}</p> : null}
-                    <AsyncButton
-                      disabled={Boolean(busy) || !validCount || !character.character_setting.trim()}
-                      icon={<Sparkles aria-hidden className="button__icon" />}
-                      loading={busy === "plan"}
-                      onClick={() => void generator.plan(count, requirements, reference)}
-                      variant={hasItems ? "default" : "primary"}
-                    >
-                      {t(hasItems ? "spriteGeneration.morePlans" : "spriteGeneration.plan")}
-                    </AsyncButton>
-                    <p className="sprite-generation__hint">{t("spriteGeneration.planHint")}</p>
-                  </div>
-                </>
+                <SpriteStaticSettings
+                  busy={Boolean(busy)}
+                  characterSetting={character.character_setting}
+                  count={count}
+                  existingReferences={existingReferences}
+                  h3Resolution={h3Resolution}
+                  hasItems={hasItems}
+                  mattingOptions={mattingOptions}
+                  onCountChange={setCount}
+                  onH3ResolutionChange={setH3Resolution}
+                  onMattingChange={(value) => setAnimationInput((current) => ({ ...current, ...value }))}
+                  onPlan={() => void generator.plan(count, requirements, reference)}
+                  onPreview={setMediaPreview}
+                  onReferenceChange={setReference}
+                  onRemoveBackgroundChange={setRemoveBackground}
+                  onRequirementsChange={setRequirements}
+                  planning={busy === "plan"}
+                  reference={reference}
+                  remaining={remaining}
+                  removeBackground={removeBackground}
+                  replacementTags={replacementTags}
+                  requirements={requirements}
+                  validCount={validCount}
+                />
               )}
             </aside>
-            <section className="sprite-generation__workspace" aria-label={t("spriteGeneration.workspaceTitle")}>
-              <div className="sprite-generation__workspace-header">
-                <div>
-                  <h3 className="sprite-generation__section-title">{t("spriteGeneration.workspaceTitle")}</h3>
-                  <p className="sprite-generation__hint" role="status">
-                    {t("spriteGeneration.workspaceSummary", { ready: selectable.length, pending: pending.length })}
-                  </p>
-                </div>
-                <div className="sprite-generation__toolbar">
-                  <Button
-                    disabled={Boolean(busy) || remaining <= 0 || (mode === "animation" && animationInputs.length !== 1)}
-                    icon={<Plus aria-hidden className="button__icon" />}
-                    tooltip={
-                      mode === "animation" && animationInputs.length !== 1
-                        ? t("spriteGeneration.manualSourceHint")
-                        : t("spriteGeneration.manualPromptHint")
-                    }
-                    onClick={() => {
-                      generator.addManual(mode === "animation" ? animationInputs[0] : undefined);
-                      setGuideOpen(false);
-                      setAnimationSourcesOpen(false);
-                    }}
-                  >
-                    {t("spriteGeneration.manualSingle")}
-                  </Button>
-                  {mode === "animation" && animationSourceMode === "library" ? (
-                    <Button
-                      variant="ghost"
-                      aria-expanded={animationSourcesOpen}
-                      onClick={() => {
-                        setAnimationSourcesOpen(!animationSourcesOpen);
-                        if (workspaceBodyRef.current) workspaceBodyRef.current.scrollTop = 0;
-                      }}
-                    >
-                      {t("spriteAnimation.chooseSources")}
-                    </Button>
-                  ) : null}
-                  <Button
-                    aria-expanded={guideOpen}
-                    onClick={() => {
-                      setGuideOpen(!guideOpen);
-                      if (!guideOpen && workspaceBodyRef.current) workspaceBodyRef.current.scrollTop = 0;
-                    }}
-                    variant="ghost"
-                  >
-                    {t("spriteGeneration.resources")}
-                  </Button>
-                  {mode === "static" && renderable.length > 0 ? (
-                    <AsyncButton
-                      disabled={Boolean(busy) || !renderable.length}
-                      loading={busy === "render"}
-                      onClick={() => void generator.render(renderable, reference, removeBackground)}
-                      variant="primary"
-                    >
-                      {t("spriteGeneration.generatePending", { count: renderable.length })}
-                    </AsyncButton>
-                  ) : null}
-                  {mode === "animation" && animationPending.length ? (
-                    <AsyncButton
-                      disabled={Boolean(busy)}
-                      loading={busy === "animate"}
-                      onClick={() => void generator.animatePending(animationPending)}
-                      variant="primary"
-                    >
-                      {t("spriteAnimation.generatePending", { count: animationPending.length })}
-                    </AsyncButton>
-                  ) : null}
-                </div>
-              </div>
-              <div className="sprite-generation__feedback">
-                {generator.error ? (
-                  <p className="sprite-generation__error" role="alert">
-                    {generator.error}
-                  </p>
-                ) : null}
-                {busy ? (
-                  <div className="sprite-generation__progress" aria-live="polite">
-                    {generator.queue && generator.queue.total > 1 ? (
-                      <strong className="sprite-generation__queue-count">
-                        {t("spriteAnimation.queueProgress", generator.queue)}
-                      </strong>
-                    ) : null}
-                    {generator.task ? (
-                      <TaskProgress compact logLimit={0} task={generator.task} />
-                    ) : (
-                      <span className="sprite-generation__working">{t("spriteGeneration.working")}</span>
-                    )}
-                    {busy === "render" || (busy === "animate" && generator.queue && generator.queue.total > 1) ? (
-                      <Button disabled={generator.stopping} onClick={generator.stop}>
-                        {t(generator.stopping ? "spriteGeneration.stopping" : "spriteGeneration.stop")}
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-              <div className="sprite-generation__workspace-body" ref={workspaceBodyRef}>
-                {mode === "animation" && animationSourceMode === "library" && animationSourcesOpen ? (
-                  <SpriteAnimationSourcePicker
-                    sources={animationSources}
-                    selectedSources={animationSelection}
-                    onSourceSelectionChange={setAnimationSelection}
-                    busy={Boolean(busy)}
-                    remaining={remaining}
-                  />
-                ) : null}
-                {guideOpen && hasItems ? <SpriteGenerationSetupGuide /> : null}
-                {hasItems ? (
-                  <>
-                    <div className="sprite-generation__review-toolbar">
-                      <p className="sprite-generation__hint">{t("spriteGeneration.reviewHint")}</p>
-                      <Button
-                        disabled={Boolean(busy) || !selectable.length}
-                        onClick={() => generator.selectAll(selected.length !== selectable.length, items)}
-                        variant="ghost"
-                      >
-                        {t(
-                          selected.length && selected.length === selectable.length
-                            ? "spriteGeneration.deselectAll"
-                            : "spriteGeneration.selectAll",
-                        )}
-                      </Button>
-                    </div>
-                    <div className="sprite-generation__grid">
-                      {items.map((item, index) => (
-                        <SpriteCandidateCard
-                          key={item.id}
-                          item={item}
-                          index={index}
-                          generator={generator}
-                          reference={reference}
-                          removeBackground={removeBackground}
-                          onPreview={setMediaPreview}
-                          onReplace={
-                            character.sprites.length
-                              ? (item) => {
-                                  const original = item.original;
-                                  const source = item.animationInput?.referenceImage || reference;
-                                  const index =
-                                    original && character.sprites[original.index]?.path === original.path
-                                      ? original.index
-                                      : character.sprites.findIndex((sprite) => sprite.path === source);
-                                  setReplacementIndex(index >= 0 ? String(index) : "");
-                                  generator.clearError();
-                                  setReplacementCandidate(item);
-                                }
-                              : undefined
-                          }
-                          onAnimate={(item) => {
-                            if (!item.result) return;
-                            setAnimationInput((current) => ({
-                              ...current,
-                              referenceImage: item.result!.path,
-                              tagging: item.tagging,
-                            }));
-                            setAnimationSelection([`generated:${item.id}`]);
-                            setAnimationSourceMode("library");
-                            setAnimationSourcesOpen(true);
-                            setMode("animation");
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </>
-                ) : mode === "animation" && animationSourceMode === "library" && animationSourcesOpen ? null : (
-                  <EmptyState
-                    title={t(mode === "animation" ? "spriteAnimation.emptyTitle" : "spriteGeneration.emptyTitle")}
-                    body={t(mode === "animation" ? "spriteAnimation.empty" : "spriteGeneration.empty")}
-                  />
-                )}
-                {guideOpen && !hasItems ? <SpriteGenerationSetupGuide /> : null}
-              </div>
-            </section>
+            <SpriteGenerationWorkspace
+              animationInputs={animationInputs}
+              animationPending={animationPending}
+              animationSelection={animationSelection}
+              animationSourceMode={animationSourceMode}
+              animationSources={animationSources}
+              animationSourcesOpen={animationSourcesOpen}
+              busy={busy}
+              characterSprites={character.sprites}
+              generator={generator}
+              guideOpen={guideOpen}
+              hasItems={hasItems}
+              items={items}
+              mode={mode}
+              onAnimate={(item) => {
+                if (!item.result) return;
+                setAnimationInput((current) => ({
+                  ...current,
+                  referenceImage: item.result!.path,
+                  tagging: item.tagging,
+                }));
+                setAnimationSelection([`generated:${item.id}`]);
+                setAnimationSourceMode("library");
+                setAnimationSourcesOpen(true);
+                setMode("animation");
+              }}
+              onAnimationSelectionChange={setAnimationSelection}
+              onAnimationSourcesOpenChange={setAnimationSourcesOpen}
+              onGuideOpenChange={setGuideOpen}
+              onPreview={setMediaPreview}
+              onReplace={(item) => {
+                const original = item.original;
+                const source = item.animationInput?.referenceImage || reference;
+                const index =
+                  original && character.sprites[original.index]?.path === original.path
+                    ? original.index
+                    : character.sprites.findIndex((sprite) => sprite.path === source);
+                setReplacementIndex(index >= 0 ? String(index) : "");
+                generator.clearError();
+                setReplacementCandidate(item);
+              }}
+              pending={pending}
+              reference={reference}
+              remaining={remaining}
+              removeBackground={removeBackground}
+              renderable={renderable}
+              selectable={selectable}
+              selected={selectedSprites}
+            />
           </div>
         )}
       </SpriteGenerationPageFrame>
@@ -719,77 +455,23 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
         backgroundColor={coloredPreview ? previewColor : undefined}
         onClose={() => setMediaPreview(null)}
       />
-      <Dialog
-        open={Boolean(replacementCandidate)}
-        title={t("spriteGeneration.replace")}
-        closeLabel={t("common.close")}
-        dismissible={!busy}
+      <SpriteReplaceDialog
+        busy={Boolean(busy)}
+        candidate={replacementCandidate}
+        error={generator.error}
         onClose={() => setReplacementCandidate(null)}
-        footer={
-          <>
-            <Button disabled={Boolean(busy)} onClick={() => setReplacementCandidate(null)}>
-              {t("common.cancel")}
-            </Button>
-            <AsyncButton
-              variant="primary"
-              disabled={Boolean(busy) || !replacementTarget}
-              loading={busy === "replace"}
-              onClick={async () => {
-                if (!replacementCandidate || !replacementTarget) return;
-                if (await generator.replace(replacementCandidate, Number(replacementIndex), replacementTarget.path))
-                  setReplacementCandidate(null);
-              }}
-            >
-              {t("spriteGeneration.confirmReplace")}
-            </AsyncButton>
-          </>
-        }
-      >
-        <p>{t("spriteGeneration.replaceHint")}</p>
-        <label className="field-row field-row--stack">
-          <span className="field-row__label">{t("spriteGeneration.replaceTarget")}</span>
-          <Select
-            aria-label={t("spriteGeneration.replaceTarget")}
-            value={replacementIndex}
-            disabled={Boolean(busy)}
-            onChange={(event) => setReplacementIndex(event.target.value)}
-          >
-            <option value="">{t("spriteGeneration.chooseReplaceTarget")}</option>
-            {character.sprites.map((sprite, index) => (
-              <option value={index} key={`${index}:${sprite.path}`}>
-                {t("spriteGeneration.sprite", { n: index + 1 })}
-                {replacementTags[index] ? ` · ${replacementTags[index]}` : ""}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <div className="sprite-generation__replace-previews" {...previewProps}>
-          <div>
-            <p>{t("spriteGeneration.originalSprite")}</p>
-            <div className="sprite-generation__preview">
-              {replacementTarget ? (
-                <VisualMedia alt={t("spriteGeneration.originalSprite")} src={fileUrl(replacementTarget.path)} />
-              ) : null}
-            </div>
-          </div>
-          <div>
-            <p>{t("spriteGeneration.replacementSprite")}</p>
-            <div className="sprite-generation__preview">
-              {replacementCandidate?.result ? (
-                <VisualMedia
-                  alt={t("spriteGeneration.replacementSprite")}
-                  src={fileUrl(replacementCandidate.result.path)}
-                />
-              ) : null}
-            </div>
-          </div>
-        </div>
-        {generator.error ? (
-          <p className="sprite-generation__error" role="alert">
-            {generator.error}
-          </p>
-        ) : null}
-      </Dialog>
+        onConfirm={async (candidate, targetIndex, targetPath) => {
+          if (await generator.replace(candidate, targetIndex, targetPath)) {
+            setReplacementCandidate(null);
+          }
+        }}
+        onReplacementIndexChange={setReplacementIndex}
+        previewProps={previewProps}
+        replacementIndex={replacementIndex}
+        replacementTags={replacementTags}
+        replacing={busy === "replace"}
+        sprites={character.sprites}
+      />
       <AlertDialog
         body={t("spriteGeneration.discardBody")}
         cancelLabel={t("common.cancel")}
@@ -800,55 +482,5 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
         title={t("spriteGeneration.discardTitle")}
       />
     </>
-  );
-}
-
-function SpriteGenerationPageFrame({
-  busy,
-  characterName,
-  children,
-  footer,
-  headerActions,
-  onClose,
-  title,
-}: {
-  busy: boolean;
-  characterName: string;
-  children: ReactNode;
-  footer: ReactNode;
-  headerActions: ReactNode;
-  onClose: () => void;
-  title: string;
-}) {
-  const { t } = useI18n();
-  const titleId = useId();
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    titleRef.current?.focus();
-  }, []);
-
-  return (
-    <div className="sprite-generation-screen">
-      <section className="page sprite-generation" aria-labelledby={titleId}>
-        <header className="sprite-generation__header">
-          <div className="sprite-generation__heading">
-            <div>
-              <h1 id={titleId} ref={titleRef} tabIndex={-1}>
-                {title}
-              </h1>
-              <p>{characterName}</p>
-            </div>
-          </div>
-          <div className="sprite-generation__header-actions">
-            {headerActions}
-            <IconButton disabled={busy} label={t("common.close")} onClick={onClose}>
-              <X aria-hidden className="icon-button__icon" />
-            </IconButton>
-          </div>
-        </header>
-        <div className="sprite-generation__body">{children}</div>
-        <footer className="sprite-generation__footer">{footer}</footer>
-      </section>
-    </div>
   );
 }

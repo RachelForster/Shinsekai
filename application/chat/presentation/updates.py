@@ -297,7 +297,14 @@ class HeadlessUIUpdateManager:
         except UnicodeEncodeError:
             print(f"你: {value}".encode("ascii", errors="backslashreplace").decode("ascii"))
 
-    def update_sprite(self, character_name: str, sprite_id: int | None, *, slot: int | None = None) -> None:
+    def update_sprite(
+        self,
+        character_name: str,
+        sprite_id: int | None,
+        *,
+        slot: int | None = None,
+        display_name: str = "",
+    ) -> None:
         pass
 
     def post_sprite_reaction(
@@ -921,7 +928,14 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         )
         self.sync_history_entries()
 
-    def update_sprite(self, character_name: str, sprite_id: int | None, *, slot: int | None = None) -> None:
+    def update_sprite(
+        self,
+        character_name: str,
+        sprite_id: int | None,
+        *,
+        slot: int | None = None,
+        display_name: str = "",
+    ) -> None:
         try:
             character_config = get_character_by_name(character_name)
             if character_config is None:
@@ -936,12 +950,15 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
-        character_name = str(getattr(character_config, "name", "") or character_name)
-        display_slot = self._get_or_create_sprite_slot(character_name) if slot is None else slot
+        stage_name = (
+            str(display_name or "").strip()
+            or str(getattr(character_config, "name", "") or character_name)
+        )
+        display_slot = self._get_or_create_sprite_slot(stage_name) if slot is None else slot
         self._emit(
             {
                 "type": "sprite.show",
-                "characterName": character_name,
+                "characterName": stage_name,
                 **visual.event_fields(),
                 "slot": display_slot,
             }

@@ -38,6 +38,10 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.api.ttsSpeed": "話速",
   "onboarding.api.unsavedWarning":
     "API 設定がまだ保存されていません。LLM プロバイダーがないと AI は応答できません。それでもスキップしますか？",
+  "onboarding.api.voiceBundledDescription":
+    "内蔵 Qwen3-TTS 音声がすぐ使えます。よりキャラクターらしい声質にしたい場合は展開して Genie / GPT-SoVITS を一括ダウンロードしてください。",
+  "onboarding.api.voiceBundledHint":
+    "現在は内蔵 Qwen3-TTS が有効になっており、API Key を保存すればすぐ音声再生できます。より原音に近い声質にしたい場合は Genie / GPT-SoVITS 音声パックを一括ダウンロードしてください（展開には時間がかかることがあります）。",
   "onboarding.api.voiceDescription": "音声プロバイダーと実用的な話速を設定します。",
   "onboarding.api.voiceTitle": "音声",
   "onboarding.backgrounds.description":
@@ -75,17 +79,24 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
     "必要な準備は整いました。テンプレートページでキャラクターとテンプレートを選びましょう。",
   "onboarding.complete.openTemplates": "テンプレートへ進む",
   "onboarding.complete.title": "準備完了",
-  "onboarding.plugins.aiDependencyHint":
-    "視覚プラグインは AI 依存関係をインストールします。ダウンロードや展開に時間がかかる場合があります。",
   "onboarding.plugins.browserBody": "チャット中に Web ページを閲覧・操作できるようにします。",
   "onboarding.plugins.browserGuide":
     "インストール後、動作を見たい場合はプラグイン設定で headless をオフにしてください。",
   "onboarding.plugins.browserTitle": "ブラウザプラグイン",
+  "onboarding.plugins.chatPhoneBody":
+    "別シーンのキャラクターとメッセージ・通話・音楽を楽しめる仮想スマホを追加し、相手からの連絡にも対応します。",
+  "onboarding.plugins.chatPhoneGuide":
+    "インストール後、プラグイン設定でキャラクターアイコンやスマホのテーマ色を設定できます。",
+  "onboarding.plugins.chatPhoneTitle": "Doki Chat スマホ",
   "onboarding.plugins.configReady": "インストールと再読み込みが完了しました。設定できます。",
   "onboarding.plugins.configure": "設定へ",
-  "onboarding.plugins.dependencyStep": "先に AI 依存関係を入れてから、プラグインをダウンロードします。",
+  "onboarding.plugins.dependencyStep": "選択したプラグインと必要な実行依存関係をダウンロードしてインストールします。",
   "onboarding.plugins.description": "よく使う拡張をガイドから直接インストールします。",
   "onboarding.plugins.empty": "現在利用できるプラグインがありません。",
+  "onboarding.plugins.heartbeatBody":
+    "操作がない時間にキャラクターが自然に話しかけ、学習見守りやポモドーロにも対応します。",
+  "onboarding.plugins.heartbeatGuide": "インストール後、プラグイン設定で待機間隔や学習見守りオプションを調整できます。",
+  "onboarding.plugins.heartbeatTitle": "ハートビート伴走",
   "onboarding.plugins.installDone":
     "依存関係と選択したプラグインのインストールが完了しました。プラグインも再読み込み済みです。",
   "onboarding.plugins.installPending":
@@ -93,8 +104,9 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.installSelected": "一括ダウンロード",
   "onboarding.plugins.installedNoConfig": "インストールと再読み込みが完了しました。追加設定は不要です。",
   "onboarding.plugins.keywords.browser": "playwright,playwright browser,playwright_browser,browser,浏览器,ブラウザ",
+  "onboarding.plugins.keywords.chatPhone": "shinsekai_chat_phone,chat_phone,doki chat,小手机,スマホ",
+  "onboarding.plugins.keywords.heartbeat": "shinsekai_heartbeat,heartbeat,heartbeat companion,心跳陪伴,ハートビート",
   "onboarding.plugins.keywords.voiceExclude": "asr,whisper,speech,voice,microphone,语音,麦克风,音声,マイク",
-  "onboarding.plugins.keywords.visual": "vision,visual,screen,screenshot,image,视觉,屏幕,視覚,画面",
   "onboarding.plugins.loading": "プラグイン一覧を読み込み中",
   "onboarding.plugins.marketplaceHint": "その他のプラグインは「プラグイン」>「発見」にあります。",
   "onboarding.plugins.noMatch": "対応するマーケットプラグインがまだ見つかりません。",
@@ -107,10 +119,7 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.selectedCount": "{count} 件選択中",
   "onboarding.plugins.title": "よく使うプラグイン",
   "onboarding.plugins.uninstalledWarning":
-    "プラグインがまだインストールされていません。視覚・ブラウザ機能は利用できません。それでもスキップしますか？",
-  "onboarding.plugins.visualBody": "画面や画像を理解するための視覚拡張です。",
-  "onboarding.plugins.visualGuide": "インストール後、視覚プラグイン設定で画面の自動認識を有効にしてください。",
-  "onboarding.plugins.visualTitle": "視覚プラグイン",
+    "プラグインがまだインストールされていません。ハートビート伴走・スマホ・ブラウザ拡張は利用できません。それでもスキップしますか？",
   "onboarding.finishLabel": "テンプレートへ進む",
   "onboarding.optionalLabel": "スキップ可",
   "onboarding.requiredLabel": "必須",

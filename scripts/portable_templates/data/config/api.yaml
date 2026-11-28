@@ -18,6 +18,7 @@ vision_config_version: 1
 hugging_face_access_token: ""
 perception_enabled: false
 perception_use_gguf: true
+perception_ocr_enabled: true
 perception_model: Qwen/Qwen3-VL-2B-Instruct
 perception_base_url: http://127.0.0.1:8091/v1
 perception_api_key: ""

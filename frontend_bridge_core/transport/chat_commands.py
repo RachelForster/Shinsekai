@@ -34,5 +34,7 @@ def send_chat_command_ack(
             "commandType": request.type,
             "ok": result.ok,
             **({"error": result.error} if result.error else {}),
+            **({"errorCode": result.error_code} if result.error_code else {}),
+            **({"httpStatus": result.http_status} if result.http_status else {}),
         }
     )

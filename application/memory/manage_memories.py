@@ -11,6 +11,28 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+def resolve_memory_owner_name(name: str | None, *, config_manager: Any = None) -> str:
+    """Map renamed or legacy self-persona references to canonical ``__self__`` owner ID."""
+    from config.schema import (
+        SELF_PERSONA_ID,
+        is_self_persona,
+        is_self_persona_id,
+        is_self_persona_name,
+    )
+
+    cleaned = str(name or "").strip()
+    if not cleaned:
+        return ""
+    if is_self_persona_id(cleaned) or is_self_persona_name(cleaned):
+        return SELF_PERSONA_ID
+    if config_manager is not None:
+        getter = getattr(config_manager, "get_character_by_name", None)
+        char = getter(cleaned) if callable(getter) else None
+        if char is not None and is_self_persona(char):
+            return SELF_PERSONA_ID
+    return cleaned
+
+
 def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     from ai.memory.runtime import check_mem0_status as _check_mem0_status
 
@@ -30,12 +52,18 @@ def wait_for_memory_ready() -> None:
     get_mem0()
 
 
-def list_memories(character_name: str, *, session_id: str = "") -> dict[str, Any]:
+def list_memories(
+    character_name: str,
+    *,
+    session_id: str = "",
+    config_manager: Any = None,
+) -> dict[str, Any]:
     from ai.memory.operations import memory_list
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     if session_id:
-        return memory_list(character_name, session_id=session_id)
-    return memory_list(character_name)
+        return memory_list(owner, session_id=session_id)
+    return memory_list(owner)
 
 
 def search_memories(
@@ -45,19 +73,25 @@ def search_memories(
     limit: int = 10,
     session_id: str = "",
     memory_mode: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     from ai.memory.operations import memory_search
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     return memory_search(
         query,
-        character_name=character_name,
+        character_name=owner,
         limit=limit,
         session_id=session_id,
         memory_mode=memory_mode,
     )
 
 
-def recall_turn_memories(payload: dict[str, Any]) -> dict[str, Any]:
+def recall_turn_memories(
+    payload: dict[str, Any],
+    *,
+    config_manager: Any = None,
+) -> dict[str, Any]:
     from ai.memory.operations import memory_recall_turn
     from sdk.adapters.memory import TurnRecallInput
 
@@ -72,7 +106,15 @@ def recall_turn_memories(payload: dict[str, Any]) -> dict[str, Any]:
     raw_chars = (
         payload.get("activeCharacterNames", payload.get("active_character_names")) or ()
     )
-    char_names = tuple(str(x).strip() for x in raw_chars if str(x).strip())
+    char_names = tuple(
+        owner
+        for owner in (
+            resolve_memory_owner_name(str(x), config_manager=config_manager)
+            for x in raw_chars
+            if str(x).strip()
+        )
+        if owner
+    )
 
     turn_input = TurnRecallInput(
         user_text=str(payload.get("userText", payload.get("user_text", "")) or ""),
@@ -131,13 +173,20 @@ def remember_memory(
     player_character: str = "",
     source_session_id: str = "",
     source_turn_seq: int | None = None,
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     from ai.memory.extraction import dialogue_memory_kind
     from ai.memory.operations import memory_remember
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
+    resolved_player = (
+        resolve_memory_owner_name(player_character, config_manager=config_manager)
+        if player_character
+        else ""
+    )
     return memory_remember(
         content,
-        character_name=character_name,
+        character_name=owner,
         gist_text=gist_text,
         slot_key=slot_key,
         kind=dialogue_memory_kind(kind),
@@ -146,7 +195,7 @@ def remember_memory(
         importance=importance,
         event_at=event_at,
         memory_mode=memory_mode,
-        player_character=player_character,
+        player_character=resolved_player,
         source_session_id=source_session_id,
         source_turn_seq=source_turn_seq,
     )
@@ -175,9 +224,11 @@ def remember_and_list(
     slot_key: str = "",
     kind: str = "",
     session_id: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     from ai.memory.operations import memory_remember_and_list
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     extra: dict[str, Any] = {}
     if pinned:
         extra["pinned"] = True
@@ -189,7 +240,7 @@ def remember_and_list(
         extra["kind"] = kind
     if session_id:
         extra["session_id"] = session_id
-    return memory_remember_and_list(content, character_name=character_name, **extra)
+    return memory_remember_and_list(content, character_name=owner, **extra)
 
 
 def forget_and_list(
@@ -197,12 +248,14 @@ def forget_and_list(
     *,
     character_name: str,
     session_id: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     from ai.memory.operations import memory_forget_and_list
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     if session_id:
-        return memory_forget_and_list(memory_id, character_name=character_name, session_id=session_id)
-    return memory_forget_and_list(memory_id, character_name=character_name)
+        return memory_forget_and_list(memory_id, character_name=owner, session_id=session_id)
+    return memory_forget_and_list(memory_id, character_name=owner)
 
 
 def pin_memory(memory_id: str, *, pinned: bool, session_id: str = "") -> dict[str, Any]:
@@ -217,13 +270,15 @@ def pin_and_list(
     pinned: bool,
     character_name: str,
     session_id: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     from ai.memory.operations import memory_set_pinned_and_list
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     return memory_set_pinned_and_list(
         memory_id,
         pinned,
-        character_name=character_name,
+        character_name=owner,
         session_id=session_id,
     )
 
@@ -239,12 +294,14 @@ def awaken_and_list(
     *,
     character_name: str,
     session_id: str = "",
+    config_manager: Any = None,
 ) -> dict[str, Any]:
     from ai.memory.operations import memory_awaken_and_list
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     return memory_awaken_and_list(
         memory_id,
-        character_name=character_name,
+        character_name=owner,
         session_id=session_id,
     )
 
@@ -260,9 +317,10 @@ def preview_import(
     from ai.memory.extraction import configured_memory_chunk_tokens
     from ai.memory.imports import preview_memory_import
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     return preview_memory_import(
         paths,
-        character_name=character_name,
+        character_name=owner,
         source_root=source_root,
         max_chunk_tokens=configured_memory_chunk_tokens(config_manager),
         locale=resolve_template_locale(config_manager),
@@ -285,9 +343,10 @@ def execute_import(
     )
     from ai.memory.imports import execute_memory_import
 
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
     return execute_memory_import(
         paths,
-        character_name=character_name,
+        character_name=owner,
         source_root=source_root,
         llm_adapter=create_configured_memory_adapter(config_manager),
         max_chunk_tokens=configured_memory_chunk_tokens(config_manager),

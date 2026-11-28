@@ -253,6 +253,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
         "onnxruntime",
         "pandas",
         "qdrant_client",
+        "rapidocr_onnxruntime",
         "rembg",
         "sentence_transformers",
         "sherpa_onnx",
@@ -287,6 +288,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
             "py7zz": "1.1.4",
             "qrcode": "8.2",
             "qtpy": "2.4.1",
+            "rapidocr-onnxruntime": "1.4.4",
         }}
         importlib.metadata.version = lambda name: compatible_versions.get(name.lower(), "1.0.0")
 
@@ -441,6 +443,25 @@ def test_windows_arm64_requirements_skip_rembg_and_keep_onnxruntime(monkeypatch)
         full_other = set(frontend_bridge._iter_requirement_names(full_req))
         assert "rembg" in core_other
         assert "rembg" in full_other
+
+
+def test_runtime_core_and_full_requirements_include_rapidocr_except_windows_arm64(monkeypatch):
+    import frontend_bridge
+
+    repo_root = _repo_root()
+    core_req = repo_root / "requirements-runtime-core.txt"
+    full_req = repo_root / "requirements.txt"
+
+    monkeypatch.setattr(frontend_bridge.sys, "platform", "win32")
+    monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "ARM64")
+    assert "rapidocr-onnxruntime" not in set(frontend_bridge._iter_requirement_names(core_req))
+    assert "rapidocr-onnxruntime" not in set(frontend_bridge._iter_requirement_names(full_req))
+
+    for plat, mach in (("win32", "AMD64"), ("linux", "x86_64"), ("darwin", "arm64")):
+        monkeypatch.setattr(frontend_bridge.sys, "platform", plat)
+        monkeypatch.setattr(frontend_bridge.platform, "machine", lambda m=mach: m)
+        assert "rapidocr-onnxruntime" in set(frontend_bridge._iter_requirement_names(core_req))
+        assert "rapidocr-onnxruntime" in set(frontend_bridge._iter_requirement_names(full_req))
 
 
 def test_runtime_core_does_not_require_opencv_distribution():
@@ -599,20 +620,26 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
     from application.runtime import dependencies as runtime_dependencies
 
     calls = []
+    seen_constraints: list[tuple[Path, str]] = []
 
     monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://mirror.example/simple")
     monkeypatch.setenv("SHINSEKAI_PIP_INSTALL_ARGS", "--timeout 60 --trusted-host mirror.example")
-    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    def fake_run(cmd, *, cwd, detail_max=4000, timeout_sec=900, on_output_line=None):
+        calls.append(list(cmd))
+        if "-c" in cmd:
+            c_path = Path(cmd[cmd.index("-c") + 1])
+            seen_constraints.append((c_path, c_path.read_text(encoding="utf-8")))
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_run)
 
     result = runtime_dependencies.install_runtime_dependency("openai")
 
     assert result["packageName"] == "openai"
-    assert calls[0] == [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "openai",
+    assert calls[0][:5] == [sys.executable, "-m", "pip", "install", "openai"]
+    assert calls[0][5] == "-c"
+    assert calls[0][7:] == [
         "-i",
         "https://mirror.example/simple",
         "--timeout",
@@ -620,6 +647,9 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
         "--trusted-host",
         "mirror.example",
     ]
+    assert len(seen_constraints) == 1
+    assert "huggingface-hub==0.36.2" in seen_constraints[0][1]
+    assert not seen_constraints[0][0].exists()
 
 
 def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):
@@ -1298,5 +1328,35 @@ def test_pytorch_specs_only_requirement_is_enforced_in_checks_and_post_install(
     )
     assert ok_result["pipCode"] == 0
     assert Path(ok_result["pythonPath"]) == target_py.resolve()
+
+
+def test_prepare_project_root_retries_transient_probe_unlink_permission_error(
+    tmp_path, monkeypatch
+):
+    import frontend_bridge
+
+    project_root = tmp_path / "portable-data"
+    real_unlink = Path.unlink
+    attempts = 0
+
+    def flaky_unlink(self: Path, missing_ok: bool = False) -> None:
+        nonlocal attempts
+        if self.name.startswith(".shinsekai-write-test-"):
+            attempts += 1
+            if attempts == 1:
+                raise PermissionError(13, "Sharing violation")
+        real_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+    monkeypatch.setattr(frontend_bridge.time, "sleep", lambda _seconds: None)
+
+    resolved = frontend_bridge._prepare_project_root(
+        str(project_root),
+        "SHINSEKAI_PROJECT_ROOT",
+    )
+
+    assert resolved == project_root.resolve()
+    assert attempts == 2
+
 
 
