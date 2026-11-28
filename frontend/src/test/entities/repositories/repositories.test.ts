@@ -555,6 +555,7 @@ describe("entity repositories", () => {
         getUi: vi.fn().mockResolvedValue({ pages: [], pluginId: "core-tools" }),
         install: vi.fn().mockResolvedValue({ id: "core-tools" }),
         list: vi.fn().mockResolvedValue([]),
+        listSessionBehaviors: vi.fn().mockResolvedValue([]),
         listSlotContributions: vi.fn().mockResolvedValue([]),
         status: vi.fn().mockResolvedValue({ status: "ready" }),
         repoTags: vi.fn().mockResolvedValue(["v0.1.0"]),
@@ -718,6 +719,7 @@ describe("entity repositories", () => {
     await plugin.runAppUpdate({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);
     await plugin.installPlugin({ source: "repo", tagName: "v0.1.0" }, taskOptions);
     await plugin.listPluginSlotContributions();
+    await plugin.listPluginSessionBehaviors();
     await plugin.runPluginSlotContribution("core-tools", "demo");
     await plugin.setPluginEnabled("core-tools", false);
     await plugin.uninstallPlugin("core-tools");
@@ -751,6 +753,7 @@ describe("entity repositories", () => {
     expect(platform.logs.import).toHaveBeenCalledWith(["/tmp/shinsekai.log"]);
     expect(platform.logs.import).toHaveBeenCalledTimes(2);
     expect(platform.plugins.status).toHaveBeenCalledTimes(1);
+    expect(platform.plugins.listSessionBehaviors).toHaveBeenCalledTimes(1);
     expect(platform.plugins.appUpdateRun).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);
     expect(platform.plugins.install).toHaveBeenCalledWith({ source: "repo", tagName: "v0.1.0" }, taskOptions);
     expect(platform.mcp.previewTools).toHaveBeenCalledWith(sampleMcpConfig, taskOptions);

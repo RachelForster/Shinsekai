@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 
 import { getChatSnapshot, subscribeChatEvents } from "../../../entities/chat/repository";
 import { onPlatformModeChange } from "../../../shared/platform/platform";
-import type { ChatSnapshot } from "../../../shared/platform/types";
+import type { ChatSnapshot, PluginBehaviorEvent } from "../../../shared/platform/types";
 import { emptyChatState, type ChatStageAction } from "../chatState";
 
 export function useChatStageEvents({
@@ -10,6 +10,7 @@ export function useChatStageEvents({
   eventSeq,
   sessionId,
   loadFallbackMessage,
+  onPluginBehaviorEvent,
   queueAnimatedDialog,
   showDialogImmediately,
 }: {
@@ -17,11 +18,18 @@ export function useChatStageEvents({
   eventSeq: number;
   sessionId?: string;
   loadFallbackMessage: string;
+  onPluginBehaviorEvent?: (event: PluginBehaviorEvent) => void;
   queueAnimatedDialog: (input: { characterName?: string; html?: string; text?: string }) => void;
   showDialogImmediately?: () => void;
 }) {
   const eventSeqRef = useRef(0);
   eventSeqRef.current = eventSeq;
+  const highestSeqRef = useRef(0);
+  if (eventSeq > highestSeqRef.current) {
+    highestSeqRef.current = eventSeq;
+  }
+  const onPluginBehaviorEventRef = useRef(onPluginBehaviorEvent);
+  onPluginBehaviorEventRef.current = onPluginBehaviorEvent;
   const cancelRef = useRef<(() => void) | null>(null);
   const [subscriptionRevision, setSubscriptionRevision] = useState(0);
   const replaceSession = useCallback(
@@ -29,6 +37,7 @@ export function useChatStageEvents({
       // Stop old events and pending hydration before accepting the new session.
       cancelRef.current?.();
       eventSeqRef.current = snapshot.eventSeq ?? 0;
+      highestSeqRef.current = snapshot.eventSeq ?? 0;
       dispatch({ type: "replaceSession", snapshot, receivedAt: performance.now() });
       setSubscriptionRevision((revision) => revision + 1);
     },
@@ -40,6 +49,7 @@ export function useChatStageEvents({
       // Unsubscribe from the previous platform and reset sequence state before rebinding.
       cancelRef.current?.();
       eventSeqRef.current = 0;
+      highestSeqRef.current = 0;
       dispatch({
         type: "replaceSession",
         snapshot: { ...emptyChatState, effectImage: null, eventSeq: 0 },
@@ -76,6 +86,17 @@ export function useChatStageEvents({
             html: event.fullHtml,
           });
         }
+      }
+      if (event.type === "plugin.behavior.event" && (event.seq === 0 || event.seq > highestSeqRef.current)) {
+        onPluginBehaviorEventRef.current?.({
+          eventType: event.eventType,
+          payload: event.payload ?? {},
+          pluginId: event.pluginId,
+          seq: event.seq,
+        });
+      }
+      if (event.seq > highestSeqRef.current) {
+        highestSeqRef.current = event.seq;
       }
       dispatch({ event, type: "event", receivedAt: performance.now() });
     });

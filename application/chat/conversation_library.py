@@ -359,7 +359,7 @@ def _details(record: dict) -> dict:
         "kind": "story" if story else ("novel" if novel else "normal"),
         "storyPath": story_path,
         "novelDocId": novel_doc_id,
-        "behaviorId": "novel_theater" if novel else "",
+        "behaviorId": "novel_theater" if novel else str(launch.get("behaviorId") or "").strip(),
         "castEntries": list(launch.get("castEntries") or []) if novel else [],
         "novelNameMode": (
             (

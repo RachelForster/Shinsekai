@@ -389,3 +389,37 @@ def test_registered_legacy_file_keeps_its_identity_after_branch_migration(state)
     assert entries[0]["id"] == original_id
     assert entries[0]["hasSettings"] is True
     assert saved_conversation_launch(state, directory)["system"] == "original"
+
+
+def test_conversation_details_includes_launch_behavior_id(state):
+    werewolf_path = history(state)
+    remember_conversation(
+        state,
+        werewolf_path,
+        {
+            "characters": ["Alice"],
+            "behaviorId": "werewolf",
+            "behaviorConfig": {"playerCount": 6},
+        },
+    )
+    novel_path = Path(state.history_dir) / "novel_story"
+    novel_path.mkdir(parents=True, exist_ok=True)
+    write(novel_path / "active.json", [])
+    remember_conversation(
+        state,
+        novel_path,
+        {
+            "characters": ["Alice"],
+            "behaviorId": "novel_theater",
+            "novelDocId": "doc-1",
+        },
+    )
+    plain_path = Path(state.history_dir) / "plain_chat"
+    plain_path.mkdir(parents=True, exist_ok=True)
+    write(plain_path / "active.json", [])
+    remember_conversation(state, plain_path, {"characters": ["Alice"]})
+
+    entries = {entry["historyPath"]: entry for entry in list_conversations(state)}
+    assert entries[werewolf_path.as_posix()]["behaviorId"] == "werewolf"
+    assert entries[novel_path.as_posix()]["behaviorId"] == "novel_theater"
+    assert entries[plain_path.as_posix()]["behaviorId"] == ""

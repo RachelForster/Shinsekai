@@ -118,6 +118,12 @@ def _fold_plugin_page_dismiss(
     ]
 
 
+def _fold_plugin_behavior_event(
+    _next_snapshot: SnapshotDict, _event: EventDict
+) -> None:
+    """Live plugin behavior events stream without mutating snapshot state."""
+
+
 HANDLERS: dict[str, EventFoldSpec] = {
     "story.state.replace": EventFoldSpec(_fold_story_state_replace),
     **{
@@ -129,4 +135,5 @@ HANDLERS: dict[str, EventFoldSpec] = {
     "memory.mode": EventFoldSpec(_fold_memory_mode),
     "plugin.page.present": EventFoldSpec(_fold_plugin_page_present),
     "plugin.page.dismiss": EventFoldSpec(_fold_plugin_page_dismiss),
+    "plugin.behavior.event": EventFoldSpec(_fold_plugin_behavior_event),
 }

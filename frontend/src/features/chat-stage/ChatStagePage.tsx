@@ -8,12 +8,17 @@ import { useChatStagePageController } from "./controllers/useChatStagePageContro
 
 export function ChatStagePage() {
   const controller = useChatStagePageController();
-  const { composer, desktop, historyReplay, pluginOverlay, stage } = controller;
+  const { composer, desktop, historyReplay, pluginOverlay, stage, state } = controller;
 
   return (
     <>
       {pluginOverlay.overlayTarget ? (
-        <PluginPageOverlay onClose={pluginOverlay.closePluginPageOverlay} target={pluginOverlay.overlayTarget} />
+        <PluginPageOverlay
+          behavior={state.behavior}
+          onClose={pluginOverlay.closePluginPageOverlay}
+          subscribeBehaviorEvents={pluginOverlay.subscribeBehaviorEvents}
+          target={pluginOverlay.overlayTarget}
+        />
       ) : null}
       <main
         ref={composer.stageRef}

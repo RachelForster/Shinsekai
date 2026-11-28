@@ -137,6 +137,7 @@ export function useChatStagePageController() {
     longPressTalk: runtime.runtimeConfig.longPressTalk,
     miniAvatarActive,
     modalOpen,
+    onPluginBehaviorEvent: pluginOverlay.emitBehaviorEvent,
     sendCommand: commands.sendCommand,
     state,
     t,

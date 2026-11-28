@@ -15,7 +15,8 @@ type CapabilityPluginEventType =
   | "outfit.state"
   | "memory.mode"
   | "plugin.page.present"
-  | "plugin.page.dismiss";
+  | "plugin.page.dismiss"
+  | "plugin.behavior.event";
 
 function foldStoryProgress(
   state: ChatStageState,
@@ -98,4 +99,8 @@ export const capabilityPluginHandlers: Pick<StageEventHandlerMap, CapabilityPlug
         (item) => item.pluginId !== event.pluginId || item.presentationId !== event.presentationId,
       ),
     }),
+  "plugin.behavior.event": (state, _event, ctx) => ({
+    ...state,
+    eventSeq: ctx.eventSeq,
+  }),
 };

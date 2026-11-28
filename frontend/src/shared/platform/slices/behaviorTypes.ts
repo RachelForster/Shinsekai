@@ -22,11 +22,19 @@ export interface ChatBehaviorChoiceOption extends ChatBehaviorOption {
 
 export interface ChatBehaviorState {
   behaviorId: string;
+  pluginId?: string;
   stateVersion: number;
   stagePolicy: ChatStagePolicy;
   hud?: Record<string, unknown>;
   options?: ChatBehaviorOption[];
   casting?: Record<string, unknown>;
+}
+
+export interface PluginBehaviorEvent {
+  eventType: string;
+  payload: Record<string, unknown>;
+  pluginId: string;
+  seq: number;
 }
 
 export interface ChatBehaviorCommandPayload {

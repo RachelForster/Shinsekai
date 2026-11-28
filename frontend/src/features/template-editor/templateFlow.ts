@@ -210,6 +210,8 @@ type TemplateSessionOptions = PlayerCharacterOptions & {
   autoOutfitSwitch?: boolean;
   backgroundName: string;
   baseScenario?: string;
+  behaviorConfig?: Record<string, unknown>;
+  behaviorId?: string;
   draft: TemplateSummary;
   effectNames?: string[];
   initialOutfits?: Record<string, InitialOutfitValue>;
@@ -230,6 +232,11 @@ type TemplateSessionOptions = PlayerCharacterOptions & {
 export function buildTemplateLaunchSession(input: TemplateSessionOptions): TemplateLaunchSession {
   const initialOutfits =
     input.initialOutfits && Object.keys(input.initialOutfits).length > 0 ? { ...input.initialOutfits } : undefined;
+  const behaviorId = String(input.behaviorId ?? "").trim();
+  const behaviorConfig =
+    behaviorId && input.behaviorConfig && Object.keys(input.behaviorConfig).length > 0
+      ? { ...input.behaviorConfig }
+      : undefined;
   const selectedPresetIds = input.selectedPresetIds ?? input.draft.selectedPresetIds ?? [];
   const appliedPresets = input.appliedPresets ?? input.draft.appliedPresets ?? [];
   const baseScenario = input.baseScenario ?? input.draft.baseScenario ?? String(input.draft.scenario ?? "");
@@ -237,6 +244,8 @@ export function buildTemplateLaunchSession(input: TemplateSessionOptions): Templ
   return {
     ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     background: input.backgroundName,
+    ...(behaviorId ? { behaviorId } : {}),
+    ...(behaviorConfig ? { behaviorConfig } : {}),
     ...(selectedPresetIds.length || baseScenario !== String(input.draft.scenario ?? "")
       ? {
           baseScenario,
@@ -279,6 +288,8 @@ export function buildTemplateLaunchSession(input: TemplateSessionOptions): Templ
 export function buildChatLaunchPayload(input: {
   autoOutfitSwitch?: boolean;
   backgroundName: string;
+  behaviorConfig?: Record<string, unknown>;
+  behaviorId?: string;
   effectNames?: string[];
   initialOutfits?: Record<string, InitialOutfitValue>;
   memoryMode?: MemoryMode;
@@ -293,10 +304,17 @@ export function buildChatLaunchPayload(input: {
 }): ChatLaunchPayload {
   const initialOutfits =
     input.initialOutfits && Object.keys(input.initialOutfits).length > 0 ? { ...input.initialOutfits } : undefined;
+  const behaviorId = String(input.behaviorId ?? "").trim();
+  const behaviorConfig =
+    behaviorId && input.behaviorConfig && Object.keys(input.behaviorConfig).length > 0
+      ? { ...input.behaviorConfig }
+      : undefined;
   const outputFormat = input.outputFormat ?? input.template.outputFormat;
   return {
     ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     backgroundName: input.backgroundName,
+    ...(behaviorId ? { behaviorId } : {}),
+    ...(behaviorConfig ? { behaviorConfig } : {}),
     characters: input.selectedCharacters,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
@@ -322,6 +340,11 @@ export function synchronizeChatLaunchPayloadWithSession(
   session: TemplateLaunchSession,
 ): ChatLaunchPayload {
   const effectNames = Array.isArray(session.effectNames) ? session.effectNames : [];
+  const behaviorId = String(session.behaviorId ?? "").trim();
+  const behaviorConfig =
+    behaviorId && session.behaviorConfig && Object.keys(session.behaviorConfig).length > 0
+      ? { ...session.behaviorConfig }
+      : undefined;
   const initialOutfits =
     session.initialOutfits && Object.keys(session.initialOutfits).length > 0
       ? { ...session.initialOutfits }
@@ -330,6 +353,8 @@ export function synchronizeChatLaunchPayloadWithSession(
     ...payload,
     ...(session.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: session.autoOutfitSwitch } : {}),
     backgroundName: session.background,
+    ...(behaviorId ? { behaviorId } : {}),
+    ...(behaviorConfig ? { behaviorConfig } : {}),
     characterPromptMode: session.characterPromptMode,
     characters: session.selectedCharacters,
     primaryCharacters: session.primaryCharacters,

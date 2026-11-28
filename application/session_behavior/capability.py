@@ -123,11 +123,21 @@ class SessionBehaviorCapability(BaseSessionCapability):
             return "main"
         return str(self._branch_id_provider() or "main").strip() or "main"
 
+    def _serialize_envelope(self, envelope: BehaviorStateEnvelope | None) -> dict[str, Any] | None:
+        if envelope is None:
+            return None
+        payload = envelope.to_camel_dict()
+        port = self._runtime_port
+        plugin_id = str(getattr(port, "plugin_id", "") or getattr(port, "_plugin_id", "") or "").strip()
+        if plugin_id:
+            payload["pluginId"] = plugin_id
+        return payload
+
     def _emit_replace(self, envelope: BehaviorStateEnvelope | None) -> None:
         with self._lock:
             self._last_envelope = envelope
+            payload = self._serialize_envelope(envelope)
         if callable(self._emit_event):
-            payload = envelope.to_camel_dict() if envelope is not None else None
             self._emit_event({"type": "behavior.state.replace", "behavior": payload})
 
     def _active_casting_map(self) -> CastingMap | None:
@@ -185,23 +195,16 @@ class SessionBehaviorCapability(BaseSessionCapability):
             target_branch = branch_id or self._current_branch()
             try:
                 snap = state_store.initialize_state(
-                    branch_id=target_branch,
-                    behavior_id=behavior.behavior_id,
-                    state=initial_state,
+                    branch_id=target_branch, behavior_id=behavior.behavior_id, state=initial_state
                 )
             except BehaviorIdentityMismatchError as exc:
-                raise AppError(
-                    "behavior.identity_mismatch",
-                    params={
-                        "expectedBehaviorId": exc.expected_behavior_id,
-                        "actualBehaviorId": exc.actual_behavior_id,
-                        "branchId": exc.branch_id,
-                    },
-                    fallback_message=str(exc),
-                    http_status=409,
-                ) from exc
-            self._behavior = behavior
-            self._state_store = state_store
+                params = {
+                    "expectedBehaviorId": exc.expected_behavior_id,
+                    "actualBehaviorId": exc.actual_behavior_id,
+                    "branchId": exc.branch_id,
+                }
+                raise AppError("behavior.identity_mismatch", params=params, fallback_message=str(exc), http_status=409) from exc
+            self._behavior, self._state_store = behavior, state_store
             self._initial_state = copy.deepcopy(dict(initial_state))
             self._idempotency.clear_branch()
             self._ensure_compact_hook()
@@ -465,13 +468,13 @@ class SessionBehaviorCapability(BaseSessionCapability):
         with self._lock:
             behavior, store = self._behavior, self._state_store
             if behavior is None or store is None:
-                return self._last_envelope.to_camel_dict() if self._last_envelope is not None else None
+                return self._serialize_envelope(self._last_envelope)
             latest = store.get_latest_state(self._current_branch())
             if latest is None:
                 return None
             envelope = behavior.describe_state(latest.state, latest.state_version)
             self._last_envelope = envelope
-            return envelope.to_camel_dict()
+            return self._serialize_envelope(envelope)
 
     def on_shutdown(self) -> None:
         behavior = self._behavior

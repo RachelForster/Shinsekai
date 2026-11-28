@@ -64,6 +64,7 @@ const EXPECTED_FOLDED_EVENT_TYPES: readonly FoldedStageEventType[] = [
   "memory.mode",
   "plugin.page.present",
   "plugin.page.dismiss",
+  "plugin.behavior.event",
 ];
 
 describe("stageEventHandlers", () => {

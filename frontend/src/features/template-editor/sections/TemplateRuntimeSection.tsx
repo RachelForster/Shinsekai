@@ -5,9 +5,32 @@ import { characterOutfitGroups, type TemplateEditorContext } from "../templateCo
 
 export function TemplateRuntimeSection({ ctx }: PageSectionProps<TemplateEditorContext>) {
   const { t } = useI18n();
+  const selectedBehavior = ctx.sessionBehaviors.find((item) => item.behaviorId === ctx.behaviorId);
 
   return (
     <div className="template-runtime-fields">
+      {ctx.sessionBehaviors.length > 0 || ctx.behaviorId ? (
+        <label className="template-side-field">
+          <span className="template-side-field__label">{t("launch.sessionBehavior")}</span>
+          <Select
+            aria-label={t("launch.sessionBehavior")}
+            disabled={Boolean(ctx.conversationId)}
+            onChange={(event) => ctx.selectBehaviorId(event.target.value)}
+            value={ctx.behaviorId}
+          >
+            <option value="">{t("launch.sessionBehaviorDefault")}</option>
+            {ctx.sessionBehaviors.map((item) => (
+              <option key={item.behaviorId} value={item.behaviorId}>
+                {item.name}
+              </option>
+            ))}
+            {ctx.behaviorId && !selectedBehavior ? <option value={ctx.behaviorId}>{ctx.behaviorId}</option> : null}
+          </Select>
+          <span className="template-options-panel__hint">
+            {selectedBehavior?.description || t("launch.sessionBehaviorHint")}
+          </span>
+        </label>
+      ) : null}
       <label className="template-side-field" data-standalone-gpu="true">
         <span className="template-side-field__label">{t("chat.memoryMode.label")}</span>
         <Select

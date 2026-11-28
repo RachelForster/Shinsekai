@@ -19,6 +19,7 @@ export type {
   PluginInstallInput,
   PluginLocalScanResult,
   PluginManifest,
+  PluginSessionBehaviorContribution,
   PluginSubmissionClipboardResult,
   PluginSubmissionInput,
   PluginSubmissionIssueResult,

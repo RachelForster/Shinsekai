@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PluginPageOverlay } from "../../../features/chat-stage/components/PluginPageOverlay";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
+import type { ChatBehaviorState, PluginBehaviorEvent } from "../../../shared/platform/types";
 import type { PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 
 const repository = vi.hoisted(() => ({
@@ -137,5 +138,122 @@ describe("PluginPageOverlay", () => {
       },
       "http://127.0.0.1:8787",
     );
+  });
+
+  it("forwards matching behavior state and buffers pre-load behavior events per plugin", async () => {
+    vi.stubEnv("VITE_SHINSEKAI_API_BASE", "http://127.0.0.1:8787");
+    const listeners = new Set<(event: PluginBehaviorEvent) => void>();
+    const emit = (event: PluginBehaviorEvent) => {
+      for (const listener of listeners) listener(event);
+    };
+    const subscribe = (listener: (event: PluginBehaviorEvent) => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    };
+    const matchingBehavior: ChatBehaviorState = {
+      behaviorId: "werewolf",
+      hud: { phase: "night", round: 1 },
+      pluginId: "demo.plugin",
+      stagePolicy: {
+        allowFreeTextInterject: true,
+        allowUnboundSpeakers: true,
+        hideInputLayer: false,
+        playbackEndAction: "idle",
+      },
+      stateVersion: 1,
+    };
+    const foreignBehavior: ChatBehaviorState = {
+      behaviorId: "other",
+      hud: { secret: true },
+      pluginId: "other.plugin",
+      stagePolicy: {
+        allowFreeTextInterject: true,
+        allowUnboundSpeakers: true,
+        hideInputLayer: false,
+        playbackEndAction: "idle",
+      },
+      stateVersion: 1,
+    };
+    const target: PluginPageTarget = {
+      mode: "overlay",
+      pageId: "dashboard",
+      pluginId: "demo.plugin",
+    };
+
+    const { rerender } = render(
+      <I18nProvider language="en">
+        <PluginPageOverlay
+          behavior={matchingBehavior}
+          onClose={vi.fn()}
+          subscribeBehaviorEvents={subscribe}
+          target={target}
+        />
+      </I18nProvider>,
+    );
+
+    // Emit before iframe finishes loading: only matching plugin events should buffer.
+    emit({ eventType: "phase.changed", payload: { phase: "night" }, pluginId: "demo.plugin", seq: 4 });
+    emit({ eventType: "foreign.secret", payload: {}, pluginId: "other.plugin", seq: 5 });
+
+    const frame = (await screen.findByTitle("Dashboard")) as HTMLIFrameElement;
+    const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
+
+    fireEvent.load(frame);
+
+    expect(postMessage).toHaveBeenNthCalledWith(
+      1,
+      {
+        __shinsekai: "plugin-page",
+        behavior: matchingBehavior,
+        type: "behavior.state",
+      },
+      "http://127.0.0.1:8787",
+    );
+    expect(postMessage).toHaveBeenNthCalledWith(
+      2,
+      {
+        __shinsekai: "plugin-page",
+        eventType: "phase.changed",
+        payload: { phase: "night" },
+        pluginId: "demo.plugin",
+        seq: 4,
+        type: "behavior.event",
+      },
+      "http://127.0.0.1:8787",
+    );
+    expect(postMessage).toHaveBeenCalledTimes(2);
+
+    // Live events and behavior detachment
+    act(() => {
+      emit({ eventType: "vote.cast", payload: { target: "Nanami" }, pluginId: "demo.plugin", seq: 6 });
+      emit({ eventType: "other.vote", payload: {}, pluginId: "other.plugin", seq: 7 });
+    });
+    expect(postMessage).toHaveBeenLastCalledWith(
+      {
+        __shinsekai: "plugin-page",
+        eventType: "vote.cast",
+        payload: { target: "Nanami" },
+        pluginId: "demo.plugin",
+        seq: 6,
+        type: "behavior.event",
+      },
+      "http://127.0.0.1:8787",
+    );
+    expect(postMessage).toHaveBeenCalledTimes(3);
+
+    // Re-rendering with another plugin's behavior must not post foreign state.
+    rerender(
+      <I18nProvider language="en">
+        <PluginPageOverlay
+          behavior={foreignBehavior}
+          onClose={vi.fn()}
+          subscribeBehaviorEvents={subscribe}
+          target={target}
+        />
+      </I18nProvider>,
+    );
+    expect(postMessage).toHaveBeenCalledTimes(3);
   });
 });

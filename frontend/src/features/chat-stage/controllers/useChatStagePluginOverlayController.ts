@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Location, NavigateFunction } from "react-router-dom";
 
-import type { ChatAttachmentInput, ChatCommand } from "../../../shared/platform/types";
+import type { ChatAttachmentInput, ChatCommand, PluginBehaviorEvent } from "../../../shared/platform/types";
 import type { PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatStageState } from "../chatState";
 import { withChatRouteInputState } from "./chatStageRouteState";
@@ -25,6 +25,20 @@ export function useChatStagePluginOverlayController({
 }: UseChatStagePluginOverlayControllerOptions) {
   const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
   const locallyDismissedPresentationRef = useRef<string | null>(null);
+  const behaviorEventListenersRef = useRef(new Set<(event: PluginBehaviorEvent) => void>());
+
+  const emitBehaviorEvent = useCallback((event: PluginBehaviorEvent) => {
+    for (const listener of behaviorEventListenersRef.current) {
+      listener(event);
+    }
+  }, []);
+
+  const subscribeBehaviorEvents = useCallback((listener: (event: PluginBehaviorEvent) => void) => {
+    behaviorEventListenersRef.current.add(listener);
+    return () => {
+      behaviorEventListenersRef.current.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
     const presentation = pluginPagePresentations?.at(-1);
@@ -102,7 +116,9 @@ export function useChatStagePluginOverlayController({
 
   return {
     closePluginPageOverlay,
+    emitBehaviorEvent,
     openPluginPage,
     overlayTarget,
+    subscribeBehaviorEvents,
   };
 }

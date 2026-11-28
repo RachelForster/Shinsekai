@@ -20,6 +20,8 @@ import { buildSystemSyncKey } from "../templateContext";
 export interface RestoredSessionSnapshot {
   allowPlayerDialogue: boolean;
   autoOutfitSwitch: boolean;
+  behaviorConfig: Record<string, unknown>;
+  behaviorId: string;
   characterPromptMode: CharacterPromptMode | undefined;
   draft: TemplateSummary;
   historyPath: string;
@@ -78,6 +80,9 @@ export function buildRestoredSessionSnapshot({
   const sessionBackground = launchSession.background || TRANSPARENT_BACKGROUND_NAME;
   const restoredBackground = createOnly ? TRANSPARENT_BACKGROUND_NAME : sessionBackground;
   const restoredSessionBackground = sessionBackground !== restoredBackground ? sessionBackground : null;
+  const restoredBehaviorId = createOnly ? "" : String(launchSession.behaviorId ?? "").trim();
+  const restoredBehaviorConfig =
+    !createOnly && restoredBehaviorId && launchSession.behaviorConfig ? { ...launchSession.behaviorConfig } : {};
 
   const restoredEffects = Array.isArray(launchSession.effectNames) ? launchSession.effectNames : [];
   const restoredVoiceLanguage = launchSession.voiceLanguage || "ja";
@@ -160,6 +165,8 @@ export function buildRestoredSessionSnapshot({
   return {
     allowPlayerDialogue: restoredPlayer.allowPlayerDialogue,
     autoOutfitSwitch: launchSession.autoOutfitSwitch ?? true,
+    behaviorConfig: restoredBehaviorConfig,
+    behaviorId: restoredBehaviorId,
     characterPromptMode: restoredMode,
     draft,
     historyPath: launchSession.historyPath || "",

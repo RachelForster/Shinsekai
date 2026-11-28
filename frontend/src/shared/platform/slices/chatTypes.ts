@@ -56,6 +56,7 @@ export interface ConversationSummary {
 export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   behaviorId?: string;
+  behaviorConfig?: Record<string, unknown>;
   novelDocId?: string;
   nameMode?: NovelNameMode;
   casting?: Record<string, unknown>;
@@ -554,6 +555,12 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
   | (ChatEventBase & PluginPagePresentation & { type: "plugin.page.present" })
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
+  | (ChatEventBase & {
+      type: "plugin.behavior.event";
+      pluginId: string;
+      eventType: string;
+      payload: Record<string, unknown>;
+    })
   | (ChatEventBase & {
       type: "sprite.show";
       mouthSync?: string;
