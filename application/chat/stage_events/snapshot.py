@@ -72,6 +72,7 @@ def make_empty_chat_snapshot() -> SnapshotDict:
         "loopingEffects": [],
         "options": [],
         "perception": None,
+        "pluginBehaviorEvents": [],
         "pluginPagePresentations": [],
         "spriteMotions": {},
         "spriteReaction": None,
@@ -105,6 +106,7 @@ def normalize_snapshot_defaults(snapshot: Mapping[str, Any] | None) -> SnapshotD
     next_snapshot.setdefault("activePlayback", None)
     next_snapshot.setdefault("loopingEffects", [])
     next_snapshot.setdefault("options", [])
+    next_snapshot.setdefault("pluginBehaviorEvents", [])
     next_snapshot.setdefault("pluginPagePresentations", [])
     next_snapshot.setdefault("spriteMotions", {})
     next_snapshot.setdefault("sprites", [])

@@ -66,7 +66,7 @@ export function PluginPageOverlay({
 }: {
   behavior?: ChatBehaviorState | null;
   onClose: () => void;
-  subscribeBehaviorEvents?: (listener: (event: PluginBehaviorEvent) => void) => () => void;
+  subscribeBehaviorEvents?: (listener: (event: PluginBehaviorEvent) => void, pluginId?: string) => () => void;
   target: PluginPageTarget;
 }) {
   const { t } = useI18n();
@@ -227,8 +227,8 @@ export function PluginPageOverlay({
     }
     return subscribeBehaviorEvents((event) => {
       postBehaviorEvent(event);
-    });
-  }, [postBehaviorEvent, subscribeBehaviorEvents]);
+    }, target.pluginId);
+  }, [postBehaviorEvent, subscribeBehaviorEvents, target.pluginId]);
 
   useEffect(() => {
     const handleResize = () => {

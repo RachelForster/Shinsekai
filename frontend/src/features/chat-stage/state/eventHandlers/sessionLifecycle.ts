@@ -83,6 +83,7 @@ export const sessionLifecycleHandlers: Pick<StageEventHandlerMap, SessionLifecyc
       loopingEffects: [],
       options: [],
       perception: null,
+      pluginBehaviorEvents: [],
       pluginPagePresentations: [],
       sessionClosedReason: event.reason,
       backgroundTransition: null,

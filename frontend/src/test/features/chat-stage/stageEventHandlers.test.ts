@@ -171,5 +171,32 @@ describe("stageEventHandlers", () => {
       name: "Aoi",
     });
     expect(state.userDisplayName).toBe("Aoi");
+
+    state = applyStageEvent(state, {
+      v: 1,
+      seq: 5,
+      ts: 50,
+      type: "plugin.behavior.event",
+      pluginId: "demo.plugin",
+      eventType: "phase.changed",
+      payload: { phase: "night" },
+    });
+    expect(state.pluginBehaviorEvents).toEqual([
+      {
+        eventType: "phase.changed",
+        payload: { phase: "night" },
+        pluginId: "demo.plugin",
+        seq: 5,
+      },
+    ]);
+
+    const closed = applyStageEvent(state, {
+      v: 1,
+      seq: 6,
+      ts: 60,
+      type: "session.closed",
+      reason: "ended",
+    });
+    expect(closed.pluginBehaviorEvents).toEqual([]);
   });
 });

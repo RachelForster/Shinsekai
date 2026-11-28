@@ -138,6 +138,7 @@ export function useChatStagePageController() {
     miniAvatarActive,
     modalOpen,
     onPluginBehaviorEvent: pluginOverlay.emitBehaviorEvent,
+    onPluginBehaviorSessionReset: pluginOverlay.resetPendingBehaviorEvents,
     sendCommand: commands.sendCommand,
     state,
     t,

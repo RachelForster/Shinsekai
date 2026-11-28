@@ -23,6 +23,7 @@ export interface UseChatStageDialogPlaybackControllerOptions {
   miniAvatarActive: boolean;
   modalOpen: boolean;
   onPluginBehaviorEvent?: (event: PluginBehaviorEvent) => void;
+  onPluginBehaviorSessionReset?: () => void;
   sendCommand: (command: ChatCommand) => Promise<void>;
   state: ChatStageState;
   t: (key: MessageKey, values?: Record<string, string | number>) => string;
@@ -42,6 +43,7 @@ export function useChatStageDialogPlaybackController({
   miniAvatarActive,
   modalOpen,
   onPluginBehaviorEvent,
+  onPluginBehaviorSessionReset,
   sendCommand,
   state,
   t,
@@ -99,6 +101,7 @@ export function useChatStageDialogPlaybackController({
     sessionId: state.sessionId,
     loadFallbackMessage: t("chat.error.loadFallback"),
     onPluginBehaviorEvent,
+    onPluginBehaviorSessionReset,
     queueAnimatedDialog,
     showDialogImmediately,
   });

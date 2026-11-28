@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from .snapshot import EventDict, EventFoldSpec, EventHandler, SnapshotDict
+from .snapshot import EventDict, EventFoldSpec, EventHandler, SnapshotDict, parse_int
+
+_MAX_PLUGIN_BEHAVIOR_EVENTS = 32
 
 _STORY_LAST_EVENT_TYPES = (
     "story.node.entered",
@@ -119,9 +121,29 @@ def _fold_plugin_page_dismiss(
 
 
 def _fold_plugin_behavior_event(
-    _next_snapshot: SnapshotDict, _event: EventDict
+    next_snapshot: SnapshotDict, event: EventDict
 ) -> None:
-    """Live plugin behavior events stream without mutating snapshot state."""
+    """Retain a bounded outbox of live plugin behavior events for snapshot/gap recovery."""
+    plugin_id = str(event.get("pluginId") or "").strip()[:128]
+    event_type = str(event.get("eventType") or "").strip()[:128]
+    if not plugin_id or not event_type:
+        return
+    payload = dict(event.get("payload")) if isinstance(event.get("payload"), dict) else {}
+    seq = parse_int(event.get("seq"), parse_int(next_snapshot.get("eventSeq"), 0))
+    current = [
+        dict(item)
+        for item in (next_snapshot.get("pluginBehaviorEvents") or [])
+        if isinstance(item, dict) and (seq <= 0 or parse_int(item.get("seq"), 0) != seq)
+    ]
+    current.append(
+        {
+            "eventType": event_type,
+            "payload": payload,
+            "pluginId": plugin_id,
+            "seq": seq,
+        }
+    )
+    next_snapshot["pluginBehaviorEvents"] = current[-_MAX_PLUGIN_BEHAVIOR_EVENTS:]
 
 
 HANDLERS: dict[str, EventFoldSpec] = {

@@ -17,6 +17,7 @@ export const emptyChatState: ChatStageState = {
   layers: defaultLayers(),
   options: [],
   perception: null,
+  pluginBehaviorEvents: [],
   pluginPagePresentations: [],
   spriteMotions: {},
   spriteReaction: null,
