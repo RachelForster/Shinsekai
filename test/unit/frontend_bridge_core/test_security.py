@@ -221,6 +221,9 @@ def _handler_with_auth_token(token: str) -> FrontendBridgeHandler:
 
 
 def test_inject_bridge_token_appends_token_to_frontend_urls():
+    from urllib.parse import parse_qs, urlparse
+    from frontend_bridge_core.plugin_auth import PLUGIN_TOKEN_PREFIX, verify_plugin_token
+
     handler = _handler_with_auth_token("secret-token")
     detail = {
         "pages": [
@@ -233,12 +236,14 @@ def test_inject_bridge_token_appends_token_to_frontend_urls():
 
     result = handler._inject_bridge_token(detail)
 
-    assert result["pages"][0]["frontendUrl"].endswith(
-        "&shinsekai_bridge_token=secret-token"
-    )
-    assert result["pages"][1]["frontendUrl"].endswith(
-        "?shinsekai_bridge_token=secret-token"
-    )
+    for url in (
+        result["pages"][0]["frontendUrl"],
+        result["pages"][1]["frontendUrl"],
+    ):
+        token = parse_qs(urlparse(url).query)["shinsekai_bridge_token"][0]
+        assert token != "secret-token"
+        assert token.startswith(PLUGIN_TOKEN_PREFIX)
+        assert verify_plugin_token("secret-token", token) == "demo"
 
 
 def test_inject_bridge_token_leaves_non_api_frontend_urls_unchanged():

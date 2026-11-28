@@ -17,6 +17,7 @@ from application.chat.capabilities.contracts import (
 from application.session_behavior.casting import CastingMap
 from core.chat_history.behavior_state_store import BehaviorStateStore
 from core.chat_history.storage import chat_history_session_dir, open_session_store
+from sdk.exception.types import AppError
 
 logger = logging.getLogger(__name__)
 
@@ -148,13 +149,33 @@ def sync_casting_media_policy(
 
 
 def auto_attach_bound_behavior(capability: Any, context: Any) -> bool:
-    """Attach any persisted SessionBehavior bound to the session history directory."""
+    """Attach plugin or persisted host SessionBehavior bound to the session."""
     if getattr(capability, "behavior", None) is not None:
         return True
+    try:
+        from application.session_behavior.plugin_attachment import (
+            try_attach_plugin_behavior,
+        )
+
+        if try_attach_plugin_behavior(
+            capability,
+            args=getattr(context, "args", None),
+            config=getattr(context, "config", None),
+            startup=getattr(context, "startup", None),
+            runtime_components=getattr(context, "runtime", None),
+            app_runtime=getattr(context, "app_runtime", None),
+        ):
+            return True
+    except AppError:
+        raise
+    except Exception:
+        logger.warning("Failed to auto-attach plugin session behavior", exc_info=True)
     try:
         from application.novel_theater.bootstrap import attach_novel_theater_if_bound
 
         return bool(attach_novel_theater_if_bound(capability, context))
+    except AppError:
+        raise
     except Exception:
         logger.warning("Failed to auto-attach bound session behavior", exc_info=True)
         return False
@@ -170,6 +191,19 @@ def notify_behavior_session_ready(capability: Any) -> None:
         kickoff_novel_theater_if_fresh(capability)
     except Exception:
         logger.warning("Failed to run SessionBehavior on_session_ready hook", exc_info=True)
+    try:
+        from application.session_behavior.plugin_attachment import (
+            dispatch_behavior_session_ready,
+        )
+
+        dispatch_behavior_session_ready(capability)
+    except AppError:
+        raise
+    except Exception:
+        logger.warning(
+            "Failed to dispatch plugin SessionBehavior on_session_ready",
+            exc_info=True,
+        )
 
 
 def after_behavior_transition_committed(

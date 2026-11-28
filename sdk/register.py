@@ -59,6 +59,7 @@ from sdk.hooks import (
 
 from sdk.tool_protocol import ToolManager
 from sdk.plugin import PluginBase
+from sdk.session_behavior import SessionBehaviorContribution
 from sdk.types import (
     ChatUIContribution,
     FrontendChatUIContribution,
@@ -186,6 +187,7 @@ class PluginCapabilityRegistry:
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
+        self._session_behaviors: dict[str, SessionBehaviorContribution] = {}
         # [MemorySystem] 精简前钩子存储列表
         self._hook_dispatcher = hook_dispatcher or PluginHookDispatcher()
 
@@ -581,6 +583,35 @@ class PluginCapabilityRegistry:
             raise ValueError("OutputContractPatch.target_contract cannot be empty")
         self._output_contract_patches.append(patch)
 
+    def register_session_behavior(
+        self,
+        contribution: SessionBehaviorContribution,
+    ) -> None:
+        """Register a SessionBehavior controller contributed by a plugin."""
+        behavior_id = str(contribution.behavior_id or "").strip()
+        if not behavior_id:
+            raise ValueError("SessionBehaviorContribution.behavior_id cannot be empty")
+        if not callable(contribution.factory):
+            raise TypeError("SessionBehaviorContribution.factory must be callable")
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                behavior_id=behavior_id,
+                plugin_id=str(contribution.plugin_id or pid).strip(),
+                plugin_version=str(contribution.plugin_version or ver).strip(),
+            )
+        else:
+            contribution = replace(
+                contribution,
+                behavior_id=behavior_id,
+                plugin_id=str(contribution.plugin_id or "").strip(),
+            )
+        if behavior_id in self._session_behaviors:
+            raise ValueError(f"duplicate session behavior: {behavior_id}")
+        self._session_behaviors[behavior_id] = contribution
+
     # [MemorySystem] 注册精简前回调钩子
     @property
     def hook_dispatcher(self) -> PluginHookDispatcher:
@@ -748,6 +779,13 @@ class PluginCapabilityRegistry:
     @property
     def output_contract_patches(self) -> list[OutputContractPatch]:
         return sorted(self._output_contract_patches, key=lambda p: p.priority)
+
+    @property
+    def session_behaviors(self) -> list[SessionBehaviorContribution]:
+        return sorted(
+            self._session_behaviors.values(),
+            key=lambda contribution: (contribution.order, contribution.behavior_id),
+        )
 
     # [MemorySystem] 暴露已注册的精简前钩子列表
     @property

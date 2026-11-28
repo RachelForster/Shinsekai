@@ -16,10 +16,13 @@ from application.chat.templates import (
     _history_id_from_scenario,
     _scenario_from_template_like,
 )
+from core.chat_history.behavior_state_store import read_latest_behavior_id_readonly
 from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
     chat_history_db_path,
+    chat_history_session_dir,
+    legacy_active_history_branch,
 )
 
 
@@ -108,6 +111,13 @@ def persist_confirmed_history_path(state: Any, history_path: str | Path) -> bool
     except OSError:
         return False
     return True
+
+
+def read_history_behavior_id(history_path: str | Path) -> str:
+    """Return the bound session behavior_id on ``history_path``'s active branch, if any."""
+    session_dir = chat_history_session_dir(history_path)
+    active_branch = legacy_active_history_branch(history_path)
+    return read_latest_behavior_id_readonly(session_dir, branch_id=active_branch)
 
 
 def resume_template_outfit_preferences(
