@@ -235,4 +235,77 @@ describe("CharacterMemorySection", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /Add as canon \(never fades\)/ }));
     expect(onAddAsCanonChange).toHaveBeenCalledWith(true);
   });
+
+  it("supports multi-select, batch delete and txt export", () => {
+    const onToggleSelected = vi.fn();
+    const onSetManySelected = vi.fn();
+    const onSelectAll = vi.fn();
+    const onClearSelection = vi.fn();
+    const onDeleteSelected = vi.fn();
+    const onExportMemories = vi.fn();
+    const data = {
+      agentId: "Mio",
+      count: 2,
+      memories: [
+        { id: "mem-1", memory: "Likes the rooftop." },
+        { id: "mem-2", memory: "Hates thunder." },
+      ],
+    };
+    const baseProps = {
+      data,
+      isFetched: true,
+      memoryName: "Mio",
+      onClearSelection,
+      onDeleteSelected,
+      onExportMemories,
+      onSelectAll,
+      onSetManySelected,
+      onToggleSelected,
+      totalCount: 250,
+      loadedCount: 200,
+    };
+    const { rerender, props } = renderSection(baseProps);
+
+    expect(screen.getByText("250 memories")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Delete selected \(0\)/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Export TXT" }));
+    expect(onExportMemories).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select memory: Likes the rooftop." }));
+    expect(onToggleSelected).toHaveBeenCalledWith("mem-1", true);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select page" }));
+    expect(onSetManySelected).toHaveBeenCalledWith(["mem-1", "mem-2"], true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select loaded (200)" }));
+    expect(onSelectAll).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <I18nProvider language="en">
+        <CharacterMemorySection {...props} selectedIds={new Set(["mem-2"])} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select memory: Hates thunder." })).toBeChecked();
+    expect((screen.getByRole("checkbox", { name: "Select page" }) as HTMLInputElement).indeterminate).toBe(true);
+    expect(screen.getByRole("button", { name: "Export selected (1)" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Delete selected \(1\)/ }));
+    expect(onDeleteSelected).toHaveBeenCalledWith(["mem-2"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+    expect(onClearSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides selection controls when multi-select is not wired", () => {
+    renderSection({
+      data: { agentId: "Mio", count: 1, memories: [{ id: "mem-1", memory: "Likes the rooftop." }] },
+      isFetched: true,
+      memoryName: "Mio",
+    });
+
+    expect(screen.queryByRole("checkbox", { name: /Select memory/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete selected/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export TXT" })).not.toBeInTheDocument();
+  });
 });

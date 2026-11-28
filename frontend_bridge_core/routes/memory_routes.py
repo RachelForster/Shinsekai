@@ -4,6 +4,8 @@ from frontend_bridge_core.memory import (
     _add_character_memory,
     _awaken_character_memory,
     _delete_character_memory,
+    _delete_character_memories,
+    _export_character_memories,
     _get_mem0_status,
     _list_character_memories,
     _memory_asset_index,
@@ -28,14 +30,63 @@ def _character_memory_status(_request: ApiRequest) -> JsonResponse:
     return JsonResponse(_get_mem0_status())
 
 
+_MAX_LIST_LIMIT = 1000
+
+
+def _list_window_kwargs(body: dict) -> dict:
+    """Parse optional ``limit``/``offset`` pagination fields for memory list routes."""
+    extra: dict = {}
+    raw_limit = body.get("limit")
+    if raw_limit not in (None, ""):
+        limit = int(raw_limit)
+        if limit < 1:
+            raise ValueError("limit must be a positive integer")
+        extra["limit"] = min(limit, _MAX_LIST_LIMIT)
+    raw_offset = body.get("offset")
+    if raw_offset not in (None, ""):
+        offset = int(raw_offset)
+        if offset < 0:
+            raise ValueError("offset must not be negative")
+        if offset:
+            extra["offset"] = offset
+    return extra
+
+
 def _character_memory_list(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
     name = str(request.body.get("name") or "")
+    extra = _list_window_kwargs(request.body)
+    if sid:
+        extra["session_id"] = sid
+    cfg = _cfg(request)
+    if cfg is not None:
+        extra["config_manager"] = cfg
+    return JsonResponse(_list_character_memories(name, **extra))
+
+
+def _character_memory_export(request: ApiRequest) -> JsonResponse:
+    sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
+    raw_ids = request.body.get("memoryIds", request.body.get("memory_ids"))
+    if raw_ids is not None and not isinstance(raw_ids, list):
+        raise ValueError("memoryIds must be a list of memory ids")
+    memory_ids = [str(item).strip() for item in raw_ids or [] if str(item or "").strip()]
+    raw_labels = request.body.get("labels")
+    labels = (
+        {str(key): str(value) for key, value in raw_labels.items() if value is not None}
+        if isinstance(raw_labels, dict)
+        else None
+    )
     cfg = _cfg(request)
     extra = {"config_manager": cfg} if cfg is not None else {}
-    if sid:
-        return JsonResponse(_list_character_memories(name, session_id=sid, **extra))
-    return JsonResponse(_list_character_memories(name, **extra))
+    return JsonResponse(
+        _export_character_memories(
+            str(request.body.get("name") or ""),
+            session_id=sid,
+            memory_ids=memory_ids or None,
+            labels=labels,
+            **extra,
+        )
+    )
 
 
 def _character_memory_add(request: ApiRequest) -> JsonResponse:
@@ -81,6 +132,27 @@ def _character_memory_delete(request: ApiRequest) -> JsonResponse:
     )
 
 
+def _character_memory_delete_batch(request: ApiRequest) -> JsonResponse:
+    sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
+    raw_ids = request.body.get("memoryIds", request.body.get("memory_ids"))
+    if not isinstance(raw_ids, list):
+        raise ValueError("memoryIds must be a list of memory ids")
+    memory_ids = [str(item).strip() for item in raw_ids if str(item or "").strip()]
+    if not memory_ids:
+        raise ValueError("memoryIds must not be empty")
+    extra: dict = {"session_id": sid} if sid else {}
+    cfg = _cfg(request)
+    if cfg is not None:
+        extra["config_manager"] = cfg
+    return JsonResponse(
+        _delete_character_memories(
+            str(request.body.get("name") or ""),
+            memory_ids,
+            **extra,
+        )
+    )
+
+
 def _character_memory_pin(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
     cfg = _cfg(request)
@@ -119,10 +191,12 @@ def _memory_status(request: ApiRequest) -> JsonResponse:
 def _memory_list(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
     name = str(request.body.get("name") or request.body.get("characterName") or "")
-    cfg = _cfg(request)
-    extra = {"config_manager": cfg} if cfg is not None else {}
+    extra = _list_window_kwargs(request.body)
     if sid:
-        return JsonResponse(_list_character_memories(name, session_id=sid, **extra))
+        extra["session_id"] = sid
+    cfg = _cfg(request)
+    if cfg is not None:
+        extra["config_manager"] = cfg
     return JsonResponse(_list_character_memories(name, **extra))
 
 
@@ -311,6 +385,18 @@ MEMORY_ROUTES = (
         pattern="/api/characters/memories/delete",
         handler=_character_memory_delete,
         name="characters.memories.delete",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/memories/delete-batch",
+        handler=_character_memory_delete_batch,
+        name="characters.memories.delete-batch",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/memories/export",
+        handler=_character_memory_export,
+        name="characters.memories.export",
     ),
     Route(
         methods=frozenset({"POST"}),

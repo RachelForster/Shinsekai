@@ -19,16 +19,19 @@ export function CharacterMemoryPanel({ ctx, id }: PageSectionProps<CharacterPage
         addPending={memoryController.addPending}
         awakenPending={memoryController.awakenPending}
         data={memoryController.data}
+        deleteManyPending={memoryController.deleteManyPending}
         deletePending={memoryController.deletePending}
         depError={memoryController.depError}
         depInstalling={memoryController.depInstalling}
         error={memoryController.error}
+        exportPending={memoryController.exportPending}
         id={id}
         isChecking={memoryController.isChecking}
         isError={memoryController.isError}
         isFetched={memoryController.isFetched}
         isFetching={memoryController.isFetching}
         isLoading={memoryController.isLoading}
+        loadedCount={memoryController.loadedCount}
         memoryImportPending={memoryImportController.previewPending || memoryImportController.importPending}
         memoryInput={memoryController.memoryInput}
         memoryName={memoryName}
@@ -38,7 +41,10 @@ export function CharacterMemoryPanel({ ctx, id }: PageSectionProps<CharacterPage
         onAddMemory={() => void memoryController.add()}
         onAwakenMemory={(item) => void memoryController.awakenMemory({ memoryId: item.id, name: memoryName })}
         onClearSearch={memoryController.clearSearch}
+        onClearSelection={memoryController.clearSelection}
         onDeleteMemory={memory.requestMemoryDelete}
+        onDeleteSelected={memory.requestMemoryBatchDelete}
+        onExportMemories={() => void memoryController.exportMemories()}
         onImportMemories={() => void memoryImportController.openPicker()}
         onInstallDep={() => void memoryController.installDependency()}
         onMemoryInputChange={memoryController.setMemoryInput}
@@ -47,9 +53,14 @@ export function CharacterMemoryPanel({ ctx, id }: PageSectionProps<CharacterPage
         onRefresh={() => void memoryController.refresh()}
         onSearch={() => void memoryController.search()}
         onSearchInputChange={memoryController.setSearchInput}
+        onSelectAll={memoryController.selectAllVisible}
+        onSetManySelected={memoryController.setManySelected}
+        onToggleSelected={memoryController.toggleSelected}
         pinPending={memoryController.pinPending}
         searchInput={memoryController.searchInput}
         searchPending={memoryController.searchPending}
+        selectedIds={memoryController.selectedIds}
+        totalCount={memoryController.totalVisibleCount}
       />
 
       <AlertDialog
@@ -60,7 +71,7 @@ export function CharacterMemoryPanel({ ctx, id }: PageSectionProps<CharacterPage
         onCancel={memory.cancelMemoryDelete}
         onConfirm={() => void memory.confirmMemoryDelete()}
         open={memory.pendingDeleteOpen}
-        title={t("character.memory.delete")}
+        title={memory.pendingDeleteTitle}
       />
 
       <CharacterMemoryDialogs

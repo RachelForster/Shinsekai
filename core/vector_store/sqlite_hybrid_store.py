@@ -782,6 +782,16 @@ class SqliteHybridStore:
             ).fetchall()
         return tuple(self._row_to_memory_record(row) for row in rows)
 
+    def count_memories(self, scope_filter: MemoryScopeFilter) -> int:
+        """Count memories matching the scope filter (same predicate as ``list_by_scope``)."""
+        where_sql, params = self._build_scope_where(scope_filter, table_alias="m")
+        with self._borrow_conn() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM memories m WHERE {where_sql}",
+                list(params),
+            ).fetchone()
+        return int(row[0] if row else 0)
+
     def record_recall(self, memory_ids: Sequence[str], *, recalled_at: float) -> int:
         ids = tuple(dict.fromkeys(str(mid).strip() for mid in memory_ids if str(mid).strip()))
         if not ids:

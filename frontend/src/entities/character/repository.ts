@@ -1,7 +1,9 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type { Character } from "../config/types";
 import type {
+  CharacterMemoryExportInput,
   CharacterMemoryImportResult,
+  CharacterMemoryListOptions,
   CharacterMemoryRememberOptions,
   CharacterMemorySearchInput,
   ImageAutoLabelResult,
@@ -69,8 +71,12 @@ export function getMem0Status() {
   return getPlatform().characters.getMem0Status();
 }
 
-export function listCharacterMemories(name: string, options?: { sessionId?: string }) {
+export function listCharacterMemories(name: string, options?: CharacterMemoryListOptions) {
   return options ? getPlatform().characters.listMemories(name, options) : getPlatform().characters.listMemories(name);
+}
+
+export function exportCharacterMemories(input: CharacterMemoryExportInput) {
+  return getPlatform().characters.exportMemories(input);
 }
 
 export function searchCharacterMemories(input: CharacterMemorySearchInput) {
@@ -87,6 +93,12 @@ export function deleteCharacterMemory(name: string, memoryId: string, options?: 
   return options
     ? getPlatform().characters.deleteMemory(name, memoryId, options)
     : getPlatform().characters.deleteMemory(name, memoryId);
+}
+
+export function deleteCharacterMemories(name: string, memoryIds: string[], options?: { sessionId?: string }) {
+  return options
+    ? getPlatform().characters.deleteMemories(name, memoryIds, options)
+    : getPlatform().characters.deleteMemories(name, memoryIds);
 }
 
 export function pinCharacterMemory(input: { name: string; memoryId: string; pinned: boolean; sessionId?: string }) {

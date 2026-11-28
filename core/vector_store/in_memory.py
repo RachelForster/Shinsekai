@@ -279,6 +279,10 @@ class InMemoryMemoryRepository:
             )
         return tuple(rows[:bounded])
 
+    def count_memories(self, scope_filter: MemoryScopeFilter) -> int:
+        with self._lock:
+            return sum(1 for rec in self._records.values() if self._matches_filter(rec, scope_filter))
+
     def record_recall(self, memory_ids: Sequence[str], *, recalled_at: float) -> int:
         ts = float(recalled_at)
         updated = 0
