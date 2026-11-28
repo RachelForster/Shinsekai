@@ -420,6 +420,6 @@ def test_missing_weights_raises_ipv6_listen_and_schema_i18n_keys(tmp_path) -> No
     assert cmd[listen_idx + 1] == "[::1]:8085"
 
     schema = FishAudioS2ProAdapter.get_config_schema()
-    assert len(schema) == 17
+    assert len(schema) == 24
     for field_name, meta in schema.items():
         assert str(meta.get("labelKey") or "").startswith("ops.api.tts.fishAudio.extra."), field_name

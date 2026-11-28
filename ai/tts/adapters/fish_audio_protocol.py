@@ -14,6 +14,7 @@ import sys
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
+from ai.tts.adapters.fish_audio_llama import build_fish_audio_llama_config_schema
 from core.storage.layout import StorageLayout
 
 DEFAULT_FISH_AUDIO_URL = "https://api.fish.audio"
@@ -370,7 +371,9 @@ def _schema_option(
 def build_fish_audio_config_schema() -> dict[str, dict[str, Any]]:
     """Return configurable Fish Audio S2 Pro adapter fields for API settings."""
     p = "ops.api.tts.fishAudio.extra"
-    return {
+    llama_schema = build_fish_audio_llama_config_schema()
+    schema: dict[str, dict[str, Any]] = {
+        "backend": llama_schema["backend"],
         "base_url": _schema_option(
             "str", "Fish Audio API / Local Server URL", f"{p}.baseUrl", DEFAULT_FISH_AUDIO_URL
         ),
@@ -439,6 +442,10 @@ def build_fish_audio_config_schema() -> dict[str, dict[str, Any]]:
             "str", "Extra Local api_server.py Arguments", f"{p}.extraArgs", ""
         ),
     }
+    for key, meta in llama_schema.items():
+        if key != "backend":
+            schema[key] = meta
+    return schema
 
 
 def normalize_prosody_speed(raw_speed: Any) -> float | None:
