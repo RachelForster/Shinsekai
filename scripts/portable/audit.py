@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import platform
 import re
+import sys
 
 import yaml
 
@@ -14,6 +16,7 @@ from application.runtime.dependencies import (
     site_packages_dirs_for_python,
 )
 from config.models import ApiConfig, SystemConfig
+from core.agent.pi_runtime import PI_ARCHIVES, PiRuntimeManager
 from core.model_assets.service import ModelAssetSpec
 from core.storage.layout import StorageLayout
 from scripts.portable.models import (
@@ -61,6 +64,15 @@ def _verify_desktop_launcher(bundle_dir: Path, target: PlatformTarget | None) ->
         raise ValueError("Portable bundle is missing desktop launcher executable")
 
 
+def _has_qwen3_tts_weights(directory: Path) -> bool:
+    if not directory.is_dir():
+        return False
+    ggufs = [p for p in directory.glob("*.gguf") if p.is_file() and p.stat().st_size > 0]
+    has_backbone = any("mmproj" not in p.name.lower() for p in ggufs)
+    has_mmproj = any("mmproj" in p.name.lower() for p in ggufs)
+    return has_backbone and has_mmproj
+
+
 def audit_portable_bundle(
     bundle_dir: Path,
     *,
@@ -87,6 +99,9 @@ def audit_portable_bundle(
         layout.cache_dir / "huggingface" / "xet",
         layout.data_dir / "tts_bundles",
         layout.models_dir / "gpt-sovits",
+        layout.data_dir / "agent" / "agent.sqlite",
+        layout.data_dir / "agent" / "pi-sessions",
+        layout.data_dir / "agent" / "runtimes" / "pi" / "downloads",
     )
     for forbidden in forbidden_paths:
         if forbidden.exists():
@@ -118,18 +133,41 @@ def audit_portable_bundle(
     if mouth_dir.is_dir() and any(mouth_dir.glob("*.safetensors")) and not sprite_mouth_runtime_ready(bundle_dir):
         raise ValueError("Portable bundle includes sprite-mouth weights without a runnable Python >=3.12 environment")
 
+    expected_llama_names = (
+        (target.llama_executable,)
+        if target is not None
+        else ("llama-server.exe", "llama-server")
+    )
     gguf_dir = layout.model_dir("perception-gguf")
     if gguf_dir.is_dir() and any(gguf_dir.iterdir()):
-        expected_llama = (
-            (gguf_dir / "llama.cpp" / target.llama_executable,)
-            if target is not None
-            else (
-                gguf_dir / "llama.cpp" / "llama-server.exe",
-                gguf_dir / "llama.cpp" / "llama-server",
-            )
-        )
-        if not any(candidate.is_file() for candidate in expected_llama):
+        if not any((gguf_dir / "llama.cpp" / name).is_file() for name in expected_llama_names):
             raise ValueError("Portable bundle includes perception-gguf without llama-server executable")
+
+    qwen3_tts_dir = layout.model_dir("qwen3-tts-gguf")
+    if qwen3_tts_dir.is_dir() and any(qwen3_tts_dir.iterdir()):
+        if not _has_qwen3_tts_weights(qwen3_tts_dir):
+            raise ValueError(
+                "Portable bundle includes qwen3-tts-gguf without matching backbone and mmproj GGUF weights"
+            )
+        has_llama = any(
+            (base / "llama.cpp" / name).is_file()
+            for base in (qwen3_tts_dir, gguf_dir)
+            for name in expected_llama_names
+        )
+        if not has_llama:
+            raise ValueError("Portable bundle includes qwen3-tts-gguf without llama-server executable")
+
+    if api_cfg.tts_provider == "qwen3-tts-gguf" and not _has_qwen3_tts_weights(qwen3_tts_dir):
+        raise ValueError("Portable bundle defaults tts_provider to qwen3-tts-gguf without bundled GGUF weights")
+
+    pi_dir = layout.data_dir / "agent" / "runtimes" / "pi"
+    if pi_dir.is_dir() and any(pi_dir.iterdir()):
+        if target is not None:
+            pi_ok = PiRuntimeManager(pi_dir, platform_key=target.pi_platform_key).inspect() is not None
+        else:
+            pi_ok = any(PiRuntimeManager(pi_dir, platform_key=key).inspect() is not None for key in PI_ARCHIVES)
+        if not pi_ok:
+            raise ValueError("Portable bundle includes pi-agent runtime that failed verification")
 
     resolved_embedding = embedding_asset or EMBEDDING_MODEL_ASSET
     bundle_py = find_bundle_python(bundle_dir)
@@ -146,3 +184,14 @@ def audit_portable_bundle(
             )
         if gguf_dir.is_dir() and "pillow" not in versions:
             raise ValueError("Portable bundle includes perception-gguf but runtime is missing Pillow")
+        expects_rapidocr = (
+            target.name != "windows-arm64"
+            if target is not None
+            else not (sys.platform == "win32" and platform.machine().strip().upper() == "ARM64")
+        )
+        if gguf_dir.is_dir() and expects_rapidocr and "rapidocr-onnxruntime" not in versions:
+            raise ValueError(
+                "Portable bundle includes perception-gguf but runtime is missing rapidocr-onnxruntime"
+            )
+        if pi_dir.is_dir() and any(pi_dir.iterdir()) and "filelock" not in versions:
+            raise ValueError("Portable bundle includes pi-agent runtime but runtime is missing filelock")

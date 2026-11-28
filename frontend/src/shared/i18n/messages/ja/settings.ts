@@ -223,6 +223,7 @@ export const settingsJaMessages: Record<SettingsMessageKey, string> = {
   "system.asr.followUi": "表示言語に合わせる",
   "system.asr.hint":
     "認識言語は全エンジン共通です。Whisper モデル、デバイス、精度は Whisper 系エンジン選択時のみ表示し、Vosk ではモデルパスだけを扱います。",
+  "system.asr.langAuto": "自動",
   "system.asr.langEn": "English",
   "system.asr.langJa": "日本語",
   "system.asr.langYue": "粵語",

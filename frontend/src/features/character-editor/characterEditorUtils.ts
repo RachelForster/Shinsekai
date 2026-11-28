@@ -1,12 +1,15 @@
 import type { Character } from "../../entities/config/types";
 import { suggestUniqueSpritePrefix } from "../../shared/assets/spritePrefix";
 import { DEFAULT_CHARACTER_COLOR, DEFAULT_SPRITE_GROUP } from "../../shared/constants";
-import { SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
+import {
+  SELF_PERSONA_ID,
+  SELF_PERSONA_SPRITE_PREFIX,
+  isSelfPersonaCharacter,
+} from "../../shared/playerCharacterOptions";
 
 export const CHARACTER_RESOURCES_URL = "https://shinsekai.end0rph1n.icu/resources";
 
-export const SELF_PERSONA_SPRITE_PREFIX = "__self__";
-export { DEFAULT_SPRITE_GROUP };
+export { DEFAULT_SPRITE_GROUP, SELF_PERSONA_ID, SELF_PERSONA_SPRITE_PREFIX, isSelfPersonaCharacter };
 
 export const SPRITE_SCALE_MIN = 0;
 export const SPRITE_SCALE_MAX = 3;
@@ -66,14 +69,6 @@ export function pronunciationTextToMap(value: string) {
 
 export function clampSpriteScale(value: number) {
   return Math.min(SPRITE_SCALE_MAX, Math.max(SPRITE_SCALE_MIN, Number(value.toFixed(2))));
-}
-
-export function isSelfPersonaCharacter(
-  character?: Pick<Character, "name" | "is_builtin" | "undeletable"> | null,
-): boolean {
-  return Boolean(
-    character && (character.is_builtin || character.undeletable || character.name.trim() === SELF_PERSONA_NAME),
-  );
 }
 
 export function normalizeSpriteGroupName(group?: string | null): string {

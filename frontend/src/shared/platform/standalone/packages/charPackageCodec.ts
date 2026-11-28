@@ -1,6 +1,6 @@
 import type { SpriteMouthManifest } from "../../../assets/spriteMouth";
 import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
-import { SELF_PERSONA_NAME } from "../../../playerCharacterOptions";
+import { SELF_PERSONA_NAME, SELF_PERSONA_SPRITE_PREFIX } from "../../../playerCharacterOptions";
 import type { Character, Sprite, SpriteTransition } from "../../slices/characterTypes";
 import {
   getVfsBlobAsync,
@@ -331,7 +331,11 @@ export async function importCharPackage(
   }
 
   const existingNames = new Set<string>([SELF_PERSONA_NAME, ...existingCharacters.map((c) => c.name)]);
-  const existingPrefixes = new Set<string>(["user_self", ...existingCharacters.map((c) => c.sprite_prefix)]);
+  const existingPrefixes = new Set<string>([
+    SELF_PERSONA_SPRITE_PREFIX,
+    "user_self",
+    ...existingCharacters.map((c) => c.sprite_prefix),
+  ]);
 
   const imported: Character[] = [];
 

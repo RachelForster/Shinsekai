@@ -23,8 +23,14 @@ def _list_template_rows(request: ApiRequest) -> JsonResponse:
 
 
 def _list_dialog_format_rows(request: ApiRequest) -> JsonResponse:
-    del request
-    return JsonResponse(list_dialog_formats())
+    query = getattr(request, "query", None)
+    query_locale = str(query.get("locale") or "").strip() if isinstance(query, dict) else ""
+    cfg_manager = getattr(request.state, "config_manager", None)
+    cfg = getattr(cfg_manager, "config", None)
+    sys_cfg = getattr(cfg, "system_config", None)
+    state_locale = str(getattr(sys_cfg, "ui_language", "") or "").strip()
+    locale = query_locale or state_locale or None
+    return JsonResponse(list_dialog_formats(locale=locale))
 
 
 def _load_template_session(request: ApiRequest) -> JsonResponse:

@@ -38,6 +38,7 @@ from frontend_bridge_core.routes.perception_routes import PERCEPTION_ROUTES
 from frontend_bridge_core.routes.plugin_routes import PLUGIN_ROUTES
 from frontend_bridge_core.routes.router import Router
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
+from frontend_bridge_core.routes.novel_routes import NOVEL_ROUTES
 from frontend_bridge_core.routes.story_routes import STORY_ROUTES
 from frontend_bridge_core.routes.template_routes import TEMPLATE_ROUTES
 from frontend_bridge_core.routes.transfer_routes import TRANSFER_ROUTES
@@ -54,6 +55,7 @@ _API_ROUTER = Router(
     [
         *SYSTEM_ROUTES,
         *AGENT_ROUTES,
+        *NOVEL_ROUTES,
         *STORY_ROUTES,
         *CHARACTER_ROUTES,
         *AVATAR_RUNTIME_ROUTES,

@@ -25,6 +25,7 @@ from application.chat.capabilities.contracts import (
     StartupCapabilityContext,
     TurnContextProvider,
 )
+from application.chat.dialog_formats import resolve_outfit_format_hint
 from application.chat.presentation.initial_sprite import find_character_sprite_by_path
 from config.character_assets import get_character_assets
 from config.sprite_groups import (
@@ -570,6 +571,16 @@ class OutfitRuntimeController:
             return ""
 
         active_locale = resolve_template_locale(config)
+        custom_rule, custom_example = resolve_outfit_format_hint(
+            output_format=output_format,
+            locale=active_locale,
+            media_selection_mode=media_mode,
+            auto_switch_enabled=bool(
+                auto_switch and switch_example_character and switch_example_target_group
+            ),
+            example_character=switch_example_character,
+            example_target_group=switch_example_target_group,
+        )
         return OUTFIT_CONTEXT_SPEC.render_system(
             OutfitContextPromptContext(
                 entries=tuple(entries),
@@ -577,6 +588,8 @@ class OutfitRuntimeController:
                 switch_example_character=switch_example_character,
                 switch_example_target_group=switch_example_target_group,
                 output_format_id=output_format,
+                custom_outfit_rule=custom_rule,
+                custom_outfit_example=custom_example,
                 locale=active_locale,
             )
         )

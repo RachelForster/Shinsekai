@@ -128,6 +128,9 @@ class _DummyCharTarget:
     def delete_character(self, character: Character) -> None:
         pass
 
+    def ensure_self_persona(self) -> Character:
+        return self._items[0]
+
 
 class TestBackgroundCrudI18n:
     @pytest.mark.parametrize(
@@ -256,13 +259,24 @@ class TestCharacterCrudI18n:
                 )
 
     @pytest.mark.parametrize(
-        ("lang", "expected_rename", "expected_delete"),
+        ("lang", "expected_into_self", "expected_prefix_lock", "expected_delete"),
         [
-            ("zh_CN", "内置「自设」人物不可重命名！", "内置「自设」人物不可删除！"),
-            ("en", "The built-in Self character cannot be renamed!", "The built-in Self character cannot be deleted!"),
+            (
+                "zh_CN",
+                "不能将其他角色重命名为「自设」！",
+                "内置自设人物的立绘目录名固定为「__self__」，不可修改！",
+                "内置「自设」人物不可删除！",
+            ),
+            (
+                "en",
+                'Cannot rename another character to "自设" (Self)!',
+                'The built-in persona\'s sprite directory is locked to "__self__" and cannot be changed!',
+                "The built-in Self character cannot be deleted!",
+            ),
             (
                 "ja",
-                "組み込みの「Self（ユーザー設定）」キャラクターは名前を変更できません！",
+                "他のキャラクターを「自设」にリネームすることはできません！",
+                "組み込み自設キャラクターの立ち絵ディレクトリは「__self__」に固定されており、変更できません！",
                 "組み込みの「Self（ユーザー設定）」キャラクターは削除できません！",
             ),
         ],
@@ -271,28 +285,51 @@ class TestCharacterCrudI18n:
         self,
         tmp_path: Path,
         lang: str,
-        expected_rename: str,
+        expected_into_self: str,
+        expected_prefix_lock: str,
         expected_delete: str,
     ) -> None:
         assert SELF_PERSONA_NAME == "自设"
         self_char = Character(
+            id="__self__",
             name=SELF_PERSONA_NAME,
             color="#ffffff",
             sprite_prefix=SELF_PERSONA_SPRITE_PREFIX,
+            is_builtin=True,
+            pinned=True,
+            undeletable=True,
         )
-        target = _DummyCharTarget([self_char])
+        mika = Character(name="Mika", color="#ffffff", sprite_prefix="mika")
+        target = _DummyCharTarget([self_char, mika])
         with bind_language(lang):
-            with pytest.raises(CharacterProfileError) as exc_rename:
+            with pytest.raises(CharacterProfileError) as exc_into_self:
                 save_character_patch(
                     target,
-                    {"name": "Other"},
+                    {"name": SELF_PERSONA_NAME},
+                    original_name="Mika",
+                )
+            assert str(exc_into_self.value) == expected_into_self
+
+            with pytest.raises(CharacterProfileError) as exc_prefix:
+                save_character_patch(
+                    target,
+                    {"name": SELF_PERSONA_NAME, "sprite_prefix": "custom_dir"},
                     original_name=SELF_PERSONA_NAME,
                 )
-            assert str(exc_rename.value) == expected_rename
+            assert str(exc_prefix.value) == expected_prefix_lock
+
+            renamed, _, _ = save_character_patch(
+                target,
+                {"name": "Other"},
+                original_name=SELF_PERSONA_NAME,
+            )
+            assert renamed.name == "Other"
+            assert renamed.id == "__self__"
+            target._items[0] = renamed
 
             del_msg, _names = delete_character_and_assets(
                 target,
-                SELF_PERSONA_NAME,
+                "Other",
                 upload_dir=tmp_path,
                 voice_dir=tmp_path,
                 model_dir=tmp_path,

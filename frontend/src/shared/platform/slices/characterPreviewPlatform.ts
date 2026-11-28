@@ -1,7 +1,15 @@
 import { numberedTags, tagContents } from "../../assets/assetText";
 import { DEFAULT_CHARACTER_COLOR, DEFAULT_SPRITE_GROUP, TAG_PREFIX_SPRITE } from "../../constants";
 import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
-import { SELF_PERSONA_NAME } from "../../playerCharacterOptions";
+import {
+  findSelfPersona,
+  isSelfPersonaCharacter,
+  isSelfPersonaId,
+  isSelfPersonaName,
+  SELF_PERSONA_ID,
+  SELF_PERSONA_NAME,
+  SELF_PERSONA_SPRITE_PREFIX,
+} from "../../playerCharacterOptions";
 import { PlatformRequestError } from "../errors";
 import type {
   AvatarRuntimesPlatform,
@@ -135,6 +143,15 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     "plat.preview.char.planTag2",
     "plat.preview.char.planTag3",
   ] as const;
+
+  const resolveMemoryAgentId = (rawName?: string): string => {
+    const clean = String(rawName ?? "").trim();
+    if (!clean) return "user";
+    if (isSelfPersonaId(clean) || isSelfPersonaName(clean)) return SELF_PERSONA_ID;
+    const matched = config.characters.find((item) => item.name === clean);
+    if (matched && isSelfPersonaCharacter(matched)) return SELF_PERSONA_ID;
+    return clean;
+  };
 
   return {
     importModelStates: async () => {
@@ -285,7 +302,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     },
     async delete(name) {
       const target = config.characters.find((character) => character.name === name);
-      if (target?.undeletable || target?.is_builtin || name.trim() === SELF_PERSONA_NAME) {
+      if (isSelfPersonaCharacter(target) || isSelfPersonaId(name) || isSelfPersonaName(name)) {
         throw new Error(tr("plat.preview.char.builtinUndeletable", { name }));
       }
       config.characters = config.characters.filter((character) => character.name !== name);
@@ -302,7 +319,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       }
     },
     async deleteMemory(name, memoryId) {
-      const agentId = name || "user";
+      const agentId = resolveMemoryAgentId(name);
       const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
       const memories = current.memories.filter((memory) => memory.id !== memoryId);
       const next = { agentId, count: memories.length, memories };
@@ -310,7 +327,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       return delay(next);
     },
     async pinMemory({ memoryId, name, pinned }) {
-      const agentId = name || "user";
+      const agentId = resolveMemoryAgentId(name);
       const current = await this.listMemories(agentId);
       const memories = current.memories.map((memory) =>
         memory.id === memoryId
@@ -327,7 +344,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       return delay(next);
     },
     async awakenMemory({ memoryId, name }) {
-      const agentId = name || "user";
+      const agentId = resolveMemoryAgentId(name);
       const current = await this.listMemories(agentId);
       const memories = current.memories.map((memory) =>
         memory.id === memoryId
@@ -461,7 +478,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       const memories = items.map((item, index) => {
         return `Imported memory ${index + 1} from ${item.name}`;
       });
-      const agentId = name || "user";
+      const agentId = resolveMemoryAgentId(name);
       const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
       const nextMemories = [
         ...current.memories,
@@ -495,7 +512,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     list: () => delay(config.characters),
     revision: () => delay(JSON.stringify(config.characters)),
     async listMemories(name) {
-      const agentId = name || "user";
+      const agentId = resolveMemoryAgentId(name);
       const existing = characterMemories.get(agentId) ?? {
         agentId,
         count: 1,
@@ -506,7 +523,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     },
     previewMemoryImport: (_name, items) => previewMemoryImport(items),
     async searchMemories({ limit = 200, name, query }) {
-      const agentId = name || "user";
+      const agentId = resolveMemoryAgentId(name);
       const existing = await this.listMemories(agentId);
       const normalizedQuery = query.trim().toLowerCase();
       const memories = normalizedQuery
@@ -516,7 +533,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       return delay({ agentId, count: limitedMemories.length, memories: limitedMemories });
     },
     async remember(name, content, options) {
-      const agentId = name || "user";
+      const agentId = resolveMemoryAgentId(name);
       const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
       const memoryItem = options?.pinned
         ? {
@@ -536,13 +553,27 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     },
     async save(character, originalName) {
       const idIndex = character.id ? config.characters.findIndex((item) => item.id === character.id) : -1;
-      const index =
+      let index =
         idIndex >= 0
           ? idIndex
           : originalName
             ? config.characters.findIndex((item) => item.name === originalName)
             : config.characters.findIndex((item) => item.name === character.name);
-      const effectiveOriginalName = index >= 0 ? config.characters[index].name : originalName;
+      if (index < 0 && !originalName && isSelfPersonaName(character.name)) {
+        const existingSelf = findSelfPersona(config.characters);
+        if (existingSelf) {
+          if (!isSelfPersonaName(existingSelf.name)) {
+            throw new Error(tr("plat.preview.char.duplicateName", { name: character.name }));
+          }
+          index = config.characters.indexOf(existingSelf);
+        }
+      }
+      const existing = index >= 0 ? clone(config.characters[index]) : undefined;
+      const existingIsSelf = (existing ? isSelfPersonaCharacter(existing) : false) || isSelfPersonaId(character.id);
+      if (existing && !existingIsSelf && isSelfPersonaName(character.name)) {
+        throw new Error(tr("plat.preview.char.duplicateName", { name: character.name }));
+      }
+      const effectiveOriginalName = existing ? existing.name : originalName;
       const duplicateIndex = config.characters.findIndex(
         (item, itemIndex) => item.name === character.name && itemIndex !== index,
       );
@@ -557,8 +588,8 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       );
       const migratedGraphs = new Map<number, NonNullable<Character["relation_graph"]>>();
       if (index >= 0 && effectiveOriginalName && effectiveOriginalName !== character.name) {
-        for (const [characterIndex, existing] of config.characters.entries()) {
-          const graph = clone(existing.relation_graph ?? { nodes: [], edges: [] });
+        for (const [characterIndex, currentChar] of config.characters.entries()) {
+          const graph = clone(currentChar.relation_graph ?? { nodes: [], edges: [] });
           graph.nodes = graph.nodes.map((node) => ({
             ...node,
             key: identity(node.key) === identity(effectiveOriginalName) ? character.name : node.key,
@@ -574,11 +605,20 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
           migratedGraphs.set(characterIndex, graph);
         }
       }
-      const existing = index >= 0 ? clone(config.characters[index]) : undefined;
       const savedCharacter = {
         ...existing,
         ...clone(character),
-        ...(existing?.id ? { id: existing.id } : {}),
+        ...(existingIsSelf
+          ? {
+              id: SELF_PERSONA_ID,
+              is_builtin: true,
+              pinned: true,
+              undeletable: true,
+              sprite_prefix: SELF_PERSONA_SPRITE_PREFIX,
+            }
+          : existing?.id
+            ? { id: existing.id }
+            : {}),
         color: character.color.trim() || DEFAULT_CHARACTER_COLOR,
         emotion_tags: character.emotion_tags ?? (index >= 0 ? config.characters[index].emotion_tags : ""),
         gpt_model_path: character.gpt_model_path?.trim() || "",
@@ -586,7 +626,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
         prompt_text: character.prompt_text?.trim() || "",
         refer_audio_path: character.refer_audio_path?.trim() || "",
         sovits_model_path: character.sovits_model_path?.trim() || "",
-        sprite_prefix: character.sprite_prefix.trim() || "temp",
+        sprite_prefix: existingIsSelf ? SELF_PERSONA_SPRITE_PREFIX : character.sprite_prefix.trim() || "temp",
         sprite_scale: character.sprite_scale ?? (index >= 0 ? config.characters[index].sprite_scale : 1),
         sprites:
           index >= 0
@@ -630,6 +670,13 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       if (templateSession && effectiveOriginalName && effectiveOriginalName !== savedCharacter.name) {
         setTemplateSession({
           ...templateSession,
+          playerCharacter:
+            templateSession.playerCharacter === effectiveOriginalName
+              ? savedCharacter.name
+              : templateSession.playerCharacter,
+          primaryCharacters: templateSession.primaryCharacters?.map((name) =>
+            name === effectiveOriginalName ? savedCharacter.name : name,
+          ),
           selectedCharacters: templateSession.selectedCharacters.map((name) =>
             name === effectiveOriginalName ? savedCharacter.name : name,
           ),

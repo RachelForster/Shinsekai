@@ -11,6 +11,7 @@ import { relationZhCNMessages } from "./zh_CN/relation";
 import { settingsZhCNMessages } from "./zh_CN/settings";
 import { shellZhCNMessages } from "./zh_CN/shell";
 import { spritesZhCNMessages } from "./zh_CN/sprites";
+import { novelZhCNMessages } from "./zh_CN/novel";
 import { storyZhCNMessages } from "./zh_CN/story";
 import { workspaceZhCNMessages } from "./zh_CN/workspace";
 
@@ -22,6 +23,7 @@ export const zhCNMessageSlices = {
   character: characterZhCNMessages,
   relation: relationZhCNMessages,
   sprites: spritesZhCNMessages,
+  novel: novelZhCNMessages,
   story: storyZhCNMessages,
   knowledge: knowledgeZhCNMessages,
   agent: agentZhCNMessages,
@@ -52,6 +54,7 @@ export const zhCNMessages = {
   ...characterZhCNMessages,
   ...relationZhCNMessages,
   ...spritesZhCNMessages,
+  ...novelZhCNMessages,
   ...storyZhCNMessages,
   ...knowledgeZhCNMessages,
   ...agentZhCNMessages,

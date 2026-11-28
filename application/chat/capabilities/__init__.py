@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from ai.llm.template.session import TTS_STYLE_CONTEXT_MARKER
 from application.chat.capabilities.background import BackgroundTurnContextProvider
-from application.chat.capabilities.behavior import SessionBehaviorCapability
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
@@ -50,6 +50,10 @@ from application.chat.capabilities.relation import (
     RelationSessionCapability,
     RelationTurnContextProvider,
 )
+from application.chat.capabilities.tts_style import (
+    TtsStyleSessionCapability,
+    TtsStyleTurnContextProvider,
+)
 
 
 def build_default_turn_context_pipeline() -> TurnContextPipeline:
@@ -59,6 +63,8 @@ def build_default_turn_context_pipeline() -> TurnContextPipeline:
 
 def build_default_session_capabilities() -> SessionCapabilitySet:
     """Compose the built-in session capabilities for a chat runtime."""
+    from application.chat.capabilities.behavior import SessionBehaviorCapability
+
     return SessionCapabilitySet(
         (
             KnowledgeSessionCapability(),
@@ -67,6 +73,7 @@ def build_default_session_capabilities() -> SessionCapabilitySet:
             OutfitSessionCapability(),
             PerceptionSessionCapability(),
             SessionBehaviorCapability(),
+            TtsStyleSessionCapability(),
         ),
         default_turn_providers=(BackgroundTurnContextProvider(),),
     )
@@ -112,6 +119,9 @@ __all__ = [
     "SessionRuntimeCapabilityContext",
     "StartupCapabilityContext",
     "StreamingWiringCapabilityContext",
+    "TTS_STYLE_CONTEXT_MARKER",
+    "TtsStyleSessionCapability",
+    "TtsStyleTurnContextProvider",
     "TurnAdmissionDecision",
     "TurnAdmissionRequest",
     "TurnContextPipeline",
@@ -123,3 +133,16 @@ __all__ = [
     "get_turn_context_pipeline",
     "is_memory_auto_enabled",
 ]
+
+
+if TYPE_CHECKING:
+    from application.chat.capabilities.behavior import SessionBehaviorCapability
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily resolve `SessionBehaviorCapability` to avoid circular imports."""
+    if name == "SessionBehaviorCapability":
+        from application.chat.capabilities.behavior import SessionBehaviorCapability
+
+        return SessionBehaviorCapability
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

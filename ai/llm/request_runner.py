@@ -11,7 +11,7 @@ from ai.llm.conversation_history import ConversationHistory
 from ai.llm.dialog_repair import normalize_messages_for_output_format
 from ai.llm.message_sanitizer import filter_unpaired_tool_messages_for_request
 from ai.llm.tool_session import ToolSession
-from core.messaging.formats.registry import resolve_dialog_format
+from ai.llm.formats import resolve_dialog_format
 from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.adapters.llm import LLMAdapter
 from sdk.exception.types import HTTP_REASON_UNPAIRED_TOOL_MESSAGES, classify_exception

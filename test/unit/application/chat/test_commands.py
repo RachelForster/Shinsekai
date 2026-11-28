@@ -367,6 +367,20 @@ def test_changes_voice_language_and_persists_config(command_runtime) -> None:
     ]
 
 
+def test_changes_voice_language_to_auto_and_persists(command_runtime) -> None:
+    runtime = command_runtime
+
+    result = _execute(runtime, "change-voice-language", "auto")
+
+    assert result.ok
+    runtime.tts_manager.set_language.assert_called_once_with("auto")
+    assert runtime.config.config.system_config.voice_language == "auto"
+    runtime.config.save_system_config.assert_called_once_with()
+    assert runtime.notifications == [
+        "desktop.menu.notify_voice_language:template.voice_lang_auto:"
+    ]
+
+
 def test_reverts_history_inside_application(monkeypatch, command_runtime) -> None:
     runtime = command_runtime
     revert = Mock()

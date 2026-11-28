@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Search, Star, Trash2, Users } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
-import { getCharacterDisplayName, SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
+import { getCharacterDisplayName, isSelfPersonaCharacter } from "../../shared/playerCharacterOptions";
 import type { Character, CharacterPromptMode } from "../../shared/platform/types";
 import { AsyncButton, Button, Dialog, TextInput } from "../../shared/ui";
 import { CharacterRoleStatus } from "./CharacterRoleStatus";
@@ -123,7 +123,7 @@ export function CharacterConfigDialog({
     [characters, selectedSet],
   );
   const playerCandidates = useMemo(() => {
-    const selfPersonas = characters.filter((character) => character.name === SELF_PERSONA_NAME || character.is_builtin);
+    const selfPersonas = characters.filter((character) => isSelfPersonaCharacter(character));
     const seen = new Set<string>();
     const result: Character[] = [];
     for (const item of [...selfPersonas, ...selectedRecords]) {

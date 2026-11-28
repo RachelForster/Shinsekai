@@ -249,12 +249,67 @@ describe("DesktopChrome", () => {
       status: "error",
     });
 
+    desktopApi.repairDesktopRuntime.mockResolvedValueOnce({
+      bridgeUrl: "http://127.0.0.1:18787",
+      candidates: [],
+      status: "ready",
+    });
+
     renderChrome(<main>App content</main>);
 
-    expect(await screen.findByText("Runtime update required")).toBeInTheDocument();
+    expect(await screen.findByText("Failed to start local service")).toBeInTheDocument();
+    expect(screen.queryByText("Runtime update required")).not.toBeInTheDocument();
     expect(screen.queryByText("Install dependencies manually")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Copy command" })).not.toBeInTheDocument();
     expect(screen.queryByText("App content")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry startup" }));
+
+    await waitFor(() => {
+      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-ready", "start");
+    });
+    expect(await screen.findByText("App content")).toBeInTheDocument();
+  });
+
+  it("hides stale candidate selection progress when bridge startup fails", async () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+    desktopApi.onDesktopRuntimeProgress.mockImplementation(async (listener) => {
+      listener({
+        message: "Selecting runtime candidate",
+        phase: "probing",
+      });
+      return vi.fn();
+    });
+    desktopApi.getDesktopRuntimeState.mockResolvedValue({
+      bridgeUrl: "",
+      candidates: [
+        {
+          id: "install-dir-runtime",
+          displayPath: "E:\\Shinsekai\\runtime\\python.exe",
+          kind: "managed",
+          label: "Shinsekai bundled runtime",
+          managed: true,
+          missingImports: [],
+          missingPackages: [],
+          path: "E:\\Shinsekai\\runtime\\python.exe",
+          repairActions: ["start"],
+          score: 100,
+          selected: true,
+          status: "ready",
+          version: "3.11.9",
+          warnings: [],
+        },
+      ],
+      message: "Python bridge exited before startup completed: exit code: 1",
+      status: "error",
+    });
+
+    renderChrome(<main>App content</main>);
+
+    expect(await screen.findByText("Failed to start local service")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry startup" })).toBeInTheDocument();
+    expect(screen.queryByText("Selecting runtime candidate")).not.toBeInTheDocument();
+    expect(screen.queryByRole("progressbar", { name: "Runtime progress" })).not.toBeInTheDocument();
   });
 
   it("shows the manual dependency command only after automatic installation fails", async () => {

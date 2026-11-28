@@ -6,6 +6,7 @@ import {
   createCharactersPreviewPlatform,
 } from "./slices/characterPreviewPlatform";
 import { createChatPreviewPlatform } from "./slices/chatPreviewPlatform";
+import { createNovelPreviewPlatform } from "./slices/novelPreviewPlatform";
 import {
   createConfigPreviewPlatform,
   createModelAssetsPreviewPlatform,
@@ -36,6 +37,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     backgrounds: createBackgroundsPreviewPlatform(ctx),
     effects: createEffectsPreviewPlatform(ctx),
     chat: createChatPreviewPlatform(ctx),
+    novel: createNovelPreviewPlatform(ctx),
     knowledge: createKnowledgePreviewPlatform(ctx),
     characters: createCharactersPreviewPlatform(ctx),
     characterRelation: createCharacterRelationPreviewPlatform(ctx),

@@ -263,4 +263,9 @@ export const characterEnMessages: Record<CharacterMessageKey, string> = {
   "character.memory.awaken": "Awaken",
   "character.memory.expandDetail": "Show detail",
   "character.memory.collapseDetail": "Hide detail",
+  "character.renameText.title": "Update name in setting & brief?",
+  "character.renameText.body":
+    'Found {count} occurrence(s) of the old name "{oldName}" in this character\'s setting or brief. Replace them with "{newName}" too?',
+  "character.renameText.keepOnly": "Rename only",
+  "character.renameText.replaceAndSave": "Replace & rename",
 };

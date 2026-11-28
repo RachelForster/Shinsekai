@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import platform
 import sys
 
-DEFAULT_MODELS = ("embedding", "sherpa-asr", "perception-gguf")
+DEFAULT_MODELS = ("embedding", "sherpa-asr", "perception-gguf", "qwen3-tts-gguf", "pi-agent")
 SUPPORTED_MODELS = frozenset((*DEFAULT_MODELS, "asr-small", "toonout", "sprite-mouth"))
 
 DEFAULT_LLAMA_CPP_TAG = "b12669"
@@ -14,6 +14,11 @@ PERCEPTION_GGUF_REPO_ID = "Qwen/Qwen3-VL-2B-Instruct-GGUF"
 PERCEPTION_GGUF_FILES = (
     "Qwen3VL-2B-Instruct-Q4_K_M.gguf",
     "mmproj-Qwen3VL-2B-Instruct-F16.gguf",
+)
+QWEN3_TTS_GGUF_REPO_ID = "mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF"
+QWEN3_TTS_GGUF_FILES = (
+    "Qwen3-TTS-12Hz-0.6B-Base.Q8_0.gguf",
+    "Qwen3-TTS-12Hz-0.6B-Base.mmproj-f16.gguf",
 )
 
 
@@ -24,6 +29,7 @@ class PlatformTarget:
     name: str
     os_family: str
     arch: str
+    pi_platform_key: str
     executable_name: str
     llama_executable: str
     llama_asset_candidates: tuple[str, ...]
@@ -37,6 +43,7 @@ PLATFORM_TARGETS: dict[str, PlatformTarget] = {
         name="windows-x64",
         os_family="windows",
         arch="x64",
+        pi_platform_key="windows-x64",
         executable_name="shinsekai.exe",
         llama_executable="llama-server.exe",
         llama_asset_candidates=(
@@ -51,6 +58,7 @@ PLATFORM_TARGETS: dict[str, PlatformTarget] = {
         name="windows-arm64",
         os_family="windows",
         arch="arm64",
+        pi_platform_key="windows-arm64",
         executable_name="shinsekai.exe",
         llama_executable="llama-server.exe",
         llama_asset_candidates=(
@@ -59,13 +67,14 @@ PLATFORM_TARGETS: dict[str, PlatformTarget] = {
         ),
         default_archive_format="zip",
         # requirements-runtime-core.txt skips sherpa-onnx on Windows ARM64.
-        default_models=("embedding", "perception-gguf"),
+        default_models=("embedding", "perception-gguf", "qwen3-tts-gguf", "pi-agent"),
         uses_app_bundle=False,
     ),
     "macos-arm64": PlatformTarget(
         name="macos-arm64",
         os_family="macos",
         arch="arm64",
+        pi_platform_key="darwin-arm64",
         executable_name="shinsekai",
         llama_executable="llama-server",
         llama_asset_candidates=("llama-{tag}-bin-macos-arm64.tar.gz",),
@@ -77,6 +86,7 @@ PLATFORM_TARGETS: dict[str, PlatformTarget] = {
         name="linux-x64",
         os_family="linux",
         arch="x64",
+        pi_platform_key="linux-x64",
         executable_name="shinsekai",
         llama_executable="llama-server",
         llama_asset_candidates=("llama-{tag}-bin-ubuntu-x64.tar.gz",),
@@ -88,6 +98,7 @@ PLATFORM_TARGETS: dict[str, PlatformTarget] = {
         name="linux-arm64",
         os_family="linux",
         arch="arm64",
+        pi_platform_key="linux-arm64",
         executable_name="shinsekai",
         llama_executable="llama-server",
         llama_asset_candidates=("llama-{tag}-bin-ubuntu-arm64.tar.gz",),

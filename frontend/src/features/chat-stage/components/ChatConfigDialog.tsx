@@ -65,6 +65,7 @@ import {
 } from "../runtimeConfig";
 
 const chatVoiceLanguages = [
+  { labelKey: "system.asr.langAuto", value: "auto" },
   { labelKey: "system.asr.langJa", value: "ja" },
   { labelKey: "system.asr.langEn", value: "en" },
   { labelKey: "system.asr.langZh", value: "zh" },

@@ -34,9 +34,10 @@ def _index_dialog(by_id, by_text, identity, key, value):
 
 
 def replay_dialog_inputs(messages):
-    """Index original speech and recover explicit sprite instructions from saved turns."""
+    """Index original speech, voice instructions, and explicit sprite cues from saved turns."""
     by_id, by_text, sprites = {}, {}, {}
     speech_by_id, speech_by_text = {}, {}
+    instruct_by_id, instruct_by_text = {}, {}
     for message in messages:
         if message.get("role") != "assistant":
             continue
@@ -55,6 +56,9 @@ def replay_dialog_inputs(messages):
             speech = (dialog.translate or "").strip() or text
             if speech:
                 _index_dialog(speech_by_id, speech_by_text, identity, key, speech)
+            voice_instruct = str(getattr(dialog, "voice_instruct", "") or "").strip()
+            if voice_instruct:
+                _index_dialog(instruct_by_id, instruct_by_text, identity, key, voice_instruct)
             asset_id = str(dialog.asset_id or "")
             if re.fullmatch(r"[1-9][0-9]{0,8}", asset_id):
                 sprites[speaker] = asset_id
@@ -62,7 +66,7 @@ def replay_dialog_inputs(messages):
                 continue
             payload = {"asset_id": sprites[speaker], "effect": dialog.effect or ""}
             _index_dialog(by_id, by_text, identity, key, payload)
-    return by_id, by_text, speech_by_id, speech_by_text
+    return by_id, by_text, speech_by_id, speech_by_text, instruct_by_id, instruct_by_text
 
 
 def portable_urls(value):

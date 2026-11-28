@@ -13,7 +13,13 @@ from ai.llm.template.integrations.localization import (
     resolve_template_locale,
     translate_template,
 )
-from config.schema import SELF_PERSONA_NAME, is_self_persona_name
+from config.schema import (
+    SELF_PERSONA_NAME,
+    find_self_persona,
+    is_self_persona,
+    is_self_persona_id,
+    is_self_persona_name,
+)
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
@@ -74,10 +80,35 @@ class ChatLaunchPreparation:
         locale = resolve_template_locale(
             getattr(state, "stores", None) or state.config_manager
         )
-        has_self_in_cast = any(
-            is_self_persona_name(ch) for ch in (character_names or ())
+        getter_self = getattr(state.config_manager, "get_self_persona", None)
+        self_char = (
+            getter_self()
+            if callable(getter_self)
+            else (
+                find_self_persona(getattr(getattr(state.config_manager, "config", None), "characters", ()) or ())
+                or (
+                    state.config_manager.get_character_by_name(SELF_PERSONA_NAME)
+                    if callable(getattr(state.config_manager, "get_character_by_name", None))
+                    else None
+                )
+            )
         )
-        self_as_player = is_self_persona_name(player_name)
+        self_char_name = str(getattr(self_char, "name", "") or "").strip()
+
+        def _is_self_ref(ref_name: str) -> bool:
+            cleaned = str(ref_name or "").strip()
+            if not cleaned:
+                return False
+            if is_self_persona_name(cleaned) or is_self_persona_id(cleaned):
+                return True
+            if self_char_name and cleaned.casefold() == self_char_name.casefold():
+                return True
+            getter = getattr(state.config_manager, "get_character_by_name", None)
+            candidate = getter(cleaned) if callable(getter) else None
+            return candidate is not None and is_self_persona(candidate)
+
+        has_self_in_cast = any(_is_self_ref(ch) for ch in (character_names or ()))
+        self_as_player = _is_self_ref(player_name)
         self_as_npc_cast = has_self_in_cast and not self_as_player
         resolved_output_format = normalize_output_format(output_format)
         player_rules = player_runtime_prompt(
@@ -94,22 +125,26 @@ class ChatLaunchPreparation:
             stripped_system = strip_self_persona_block(effective_system)
             if stripped_system != effective_system:
                 effective_system = stripped_system
-                if self_as_npc_cast:
-                    getter = getattr(state.config_manager, "get_character_by_name", None)
-                    self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
-                    setting = (
-                        str(getattr(self_char, "character_setting", "") or "").strip()
-                        if self_char is not None
-                        else ""
-                    )
-                    if setting and setting not in effective_system:
+                if self_as_npc_cast and self_char is not None:
+                    self_label = self_char_name or SELF_PERSONA_NAME
+                    setting = str(getattr(self_char, "character_setting", "") or "").strip()
+                    identity_note = translate_template(
+                        "self_persona_identity_note",
+                        locale=locale,
+                    ).strip()
+                    if (setting and setting not in effective_system) or (
+                        not setting and identity_note and identity_note not in effective_system
+                    ):
+                        body_lines = [identity_note] if identity_note else []
+                        if setting:
+                            body_lines.append(setting)
                         profile_header = (
                             translate_template(
                                 "profile_for",
                                 locale=locale,
-                                name=SELF_PERSONA_NAME,
+                                name=self_label,
                             )
-                            + setting
+                            + "\n".join(body_lines)
                         )
                         effective_system = (
                             f"{effective_system}\n\n{profile_header}"

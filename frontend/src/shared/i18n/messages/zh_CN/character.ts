@@ -252,6 +252,11 @@ export const characterZhCNMessages = {
   "character.memory.awaken": "唤醒",
   "character.memory.expandDetail": "查看细节",
   "character.memory.collapseDetail": "收起细节",
+  "character.renameText.title": "同步更新设定与简介中的角色名？",
+  "character.renameText.body":
+    "检测到该角色的设定或简介中包含 {count} 处旧名称「{oldName}」。是否同步替换为「{newName}」？",
+  "character.renameText.keepOnly": "仅修改名称",
+  "character.renameText.replaceAndSave": "同步替换并保存",
 } satisfies Record<string, string>;
 
 export type CharacterMessageKey = keyof typeof characterZhCNMessages;

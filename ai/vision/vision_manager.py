@@ -1,8 +1,14 @@
+"""Vision provider resolution facade backed by :mod:`ai.vision.registry`."""
+
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
+from ai.vision.registry import (
+    VisionAdapterFactory,
+    get_vision_adapter_registry,
+    register_vision_adapter,
+)
 from config.adapter_extra_kwargs import filter_kwargs_for_ctor
 from config.vision_defaults import (
     resolve_vision_api_key,
@@ -10,36 +16,17 @@ from config.vision_defaults import (
     resolve_vision_model,
 )
 
-from ai.vision.deepseek_vision_adapter import DeepseekVisionAdapter
-from ai.vision.moondream_adapter import MoondreamVisionAdapter
-from ai.vision.provider_vision_adapters import (
-    ChatGPTVisionAdapter,
-    ClaudeVisionAdapter,
-    DoubaoVisionAdapter,
-    GeminiVisionAdapter,
-    OllamaVisionAdapter,
-    QwenVisionAdapter,
-)
-from ai.vision.vision_adapter import VisionAdapter
-
-
-VisionAdapterFactory = Callable[[], VisionAdapter]
+_DEFAULT_VISION_REGISTRY = get_vision_adapter_registry()
+_DEFAULT_VISION_ADAPTERS_VIEW = _DEFAULT_VISION_REGISTRY.as_mutable_mapping()
 
 
 class VisionManager:
     """Resolve and invoke vision providers without leaking provider details to callers."""
 
-    _builtin_adapters: dict[str, VisionAdapterFactory] = {
-        "chatgpt": ChatGPTVisionAdapter,
-        "claude": ClaudeVisionAdapter,
-        "deepseek": DeepseekVisionAdapter,
-        "doubao": DoubaoVisionAdapter,
-        "gemini": GeminiVisionAdapter,
-        "moondream": MoondreamVisionAdapter,
-        "ollama": OllamaVisionAdapter,
-        "qwen": QwenVisionAdapter,
-    }
-    _adapters = dict(_builtin_adapters)
+    _builtin_adapters: dict[str, VisionAdapterFactory] = dict(
+        _DEFAULT_VISION_REGISTRY.builtin_snapshot()
+    )
+    _adapters = _DEFAULT_VISION_ADAPTERS_VIEW
 
     def __init__(
         self, provider: str = "moondream", *, api_config: Any | None = None
@@ -81,7 +68,10 @@ class VisionManager:
         key = provider.strip().lower()
         if not key:
             raise ValueError("视觉模型名称不能为空")
-        cls._adapters[key] = factory
+        if cls._adapters is _DEFAULT_VISION_ADAPTERS_VIEW:
+            register_vision_adapter(key, factory)
+        else:
+            cls._adapters[key] = factory
 
     def describe(self, image_bytes: bytes, prompt: str) -> str:
         return self.adapter.describe(image_bytes, prompt)

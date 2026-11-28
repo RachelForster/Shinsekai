@@ -8,10 +8,13 @@ from pathlib import Path
 import shutil
 from typing import Mapping, Sequence
 
+import yaml
+
 from ai.asr.sherpa_onnx_adapter import SHERPA_SENSEVOICE_ASSET, SHERPA_ZIPFORMER_ASSET
 from ai.memory.config import EMBEDDING_MODEL_ASSET
 from application.model_assets.download_model import ModelAssetRequest, resolve_model_asset
 from application.model_assets.registry import ASR_FASTER_WHISPER_ASSET_ID
+from config.tts_provider_config import QWEN3_TTS_GGUF_DEFAULT_URL
 from core.model_assets.service import ModelAssetSpec
 from core.storage.layout import StorageLayout
 from scripts.portable.archive import (
@@ -23,12 +26,17 @@ from scripts.portable.archive import (
     write_sha256_file,
 )
 from scripts.portable.audit import audit_portable_bundle
-from scripts.portable.gguf_runtime import bundle_perception_gguf, copy_tree
+from scripts.portable.gguf_runtime import (
+    bundle_perception_gguf,
+    bundle_qwen3_tts_gguf,
+    copy_tree,
+)
 from scripts.portable.models import (
     bundle_huggingface_asset,
     bundle_sprite_mouth,
     bundle_toonout,
 )
+from scripts.portable.pi_bundle import bundle_pi_agent
 from scripts.portable.targets import (
     DEFAULT_LLAMA_CPP_TAG,
     SUPPORTED_MODELS,
@@ -265,6 +273,18 @@ def _asr_small_spec() -> ModelAssetSpec:
     return resolve_model_asset(ModelAssetRequest(asset_id=ASR_FASTER_WHISPER_ASSET_ID, variant="small"))
 
 
+def _configure_bundled_qwen3_tts_defaults(output_dir: Path) -> None:
+    api_path = StorageLayout(output_dir).config_file("api.yaml")
+    raw = yaml.safe_load(api_path.read_text(encoding="utf-8")) or {}
+    raw["tts_provider"] = "qwen3-tts-gguf"
+    raw["gpt_sovits_url"] = QWEN3_TTS_GGUF_DEFAULT_URL
+    raw["gpt_sovits_api_path"] = ""
+    api_path.write_text(
+        yaml.safe_dump(raw, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+
 def build_portable_bundle(
     *,
     source_root: Path,
@@ -362,6 +382,24 @@ def build_portable_bundle(
         warnings=warnings,
     ):
         included.append("perception-gguf")
+    if "qwen3-tts-gguf" in selected and bundle_qwen3_tts_gguf(
+        target=resolved_target,
+        data_source_root=data_source_root,
+        output_dir=output_dir,
+        download_missing=download_missing,
+        llama_cpp_tag=llama_cpp_tag,
+        allow_host_llama_fallback=compat_mode,
+        warnings=warnings,
+    ):
+        included.append("qwen3-tts-gguf")
+    if "pi-agent" in selected and bundle_pi_agent(
+        target=resolved_target,
+        data_source_root=data_source_root,
+        output_dir=output_dir,
+        download_missing=download_missing,
+        warnings=warnings,
+    ):
+        included.append("pi-agent")
     if "toonout" in selected and bundle_toonout(
         data_source_root=data_source_root,
         output_dir=output_dir,
@@ -382,6 +420,9 @@ def build_portable_bundle(
         if missing:
             detail = f" (warnings: {' | '.join(warnings)})" if warnings else ""
             raise RuntimeError(f"Failed to include required portable model(s): {', '.join(missing)}{detail}")
+
+    if "qwen3-tts-gguf" in included:
+        _configure_bundled_qwen3_tts_defaults(output_dir)
 
     audit_portable_bundle(
         output_dir,

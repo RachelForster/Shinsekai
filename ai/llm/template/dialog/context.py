@@ -34,6 +34,7 @@ class DialogTemplateContext(TemplateContext):
     player_name: str = ""
     player_character: Any = None
     self_persona_setting: str = ""
+    self_persona_name: str = ""
     read_player_speech: bool = False
     allow_player_dialogue: bool = True
     effect_catalog: EffectCatalogContext | None = field(default=None, kw_only=True)
@@ -52,6 +53,7 @@ class DialogTemplateContext(TemplateContext):
     max_speech_chars: int = 0
     max_dialog_items: int = 0
     media_selection_mode: str = "indexed"
+    include_character_profiles: bool = True
     output_format_id: str = DEFAULT_DIALOG_FORMAT_ID
 
     @property

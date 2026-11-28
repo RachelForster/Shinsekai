@@ -1,6 +1,6 @@
-import type { AdapterExtraFieldSchema, ApiConfig, SystemConfig } from "./types";
+import type { ApiConfig, SystemConfig } from "./types";
 import { LLM_PROVIDER_DOUBAO, LLM_PROVIDER_QWEN, LLM_PROVIDER_SILICONFLOW } from "../../shared/constants";
-import type { FieldKind, FormFieldSchema, FormGroupSchema, FormOption } from "../../shared/form-schema";
+import type { FormFieldSchema, FormGroupSchema, FormOption } from "../../shared/form-schema";
 import { translateMessage, type TranslateFn } from "../../shared/i18n/I18nProvider";
 
 export const llmProviderOptions: readonly FormOption[] = [
@@ -134,6 +134,7 @@ export const apiConfigFormSchema: Array<FormGroupSchema<ApiConfig>> = [
           { labelKey: "api.schema.tts.providerNone", value: "none" },
           { label: "Genie TTS", value: "genie-tts" },
           { label: "GPT SoVITS", value: "gpt-sovits" },
+          { label: "Qwen3-TTS (llama.cpp GGUF)", value: "qwen3-tts-gguf" },
           { label: "IndexTTS", value: "index-tts" },
           { label: "CosyVoice", value: "cosyvoice" },
         ],
@@ -400,80 +401,12 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
   },
 ];
 
-export type AdapterExtraFormValues = Record<string, unknown>;
-
-export interface AdapterExtraFormGroupOptions {
-  disabledKeys?: string[];
-  disabledReason?: string;
-  id: string;
-  schema: Record<string, AdapterExtraFieldSchema>;
-  title: string;
-}
-
-function adapterFieldType(field: AdapterExtraFieldSchema) {
-  return String(field.type || "str").toLowerCase();
-}
-
-export function defaultAdapterExtraValue(field: AdapterExtraFieldSchema): unknown {
-  const type = adapterFieldType(field);
-  if (field.default !== undefined) {
-    return field.default;
-  }
-  if (type === "bool") {
-    return false;
-  }
-  if (type === "int" || type === "float") {
-    return 0;
-  }
-  return "";
-}
-
-function adapterFieldKind(field: AdapterExtraFieldSchema): FieldKind {
-  const type = adapterFieldType(field);
-  if (Array.isArray(field.choices) && field.choices.length) {
-    return "select";
-  }
-  if (type === "bool") {
-    return "checkbox";
-  }
-  if (type === "int") {
-    return "integer";
-  }
-  if (type === "float") {
-    return "number";
-  }
-  return field.secret ? "password" : "text";
-}
-
-export function adapterExtraSchemaToFormGroup({
-  disabledKeys = [],
-  disabledReason,
-  id,
-  schema,
-  title,
-}: AdapterExtraFormGroupOptions): FormGroupSchema<AdapterExtraFormValues> {
-  const disabledKeySet = new Set(disabledKeys);
-  return {
-    columns: 2,
-    fields: Object.entries(schema).map(([key, field]) => {
-      const type = adapterFieldType(field);
-      return {
-        defaultValue: defaultAdapterExtraValue(field),
-        disabledReason: disabledKeySet.has(key) ? disabledReason : undefined,
-        disabledWhen: disabledKeySet.has(key) ? () => true : undefined,
-        label: field.label || key,
-        max: field.max,
-        min: field.min,
-        name: key,
-        options: field.choices?.map((choice) => ({ label: choice, value: choice })),
-        step: field.step ?? (type === "int" ? 1 : type === "float" ? 0.01 : undefined),
-        type: adapterFieldKind(field),
-      };
-    }),
-    id,
-    title,
-  };
-}
+export {
+  adapterExtraSchemaToFormGroup,
+  defaultAdapterExtraValue,
+  type AdapterExtraFormGroupOptions,
+  type AdapterExtraFormValues,
+} from "./adapterExtraSchema";
 
 export function buildPayloadFromSchema<T extends object>(schema: Array<FormGroupSchema<T>>, draft: T): Partial<T> {
   const payload: Partial<T> = {};

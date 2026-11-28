@@ -360,14 +360,39 @@ class _GgufRuntime:
             port = listener.getsockname()[1]
         self.base_url = f"http://127.0.0.1:{port}"
         executable, model, mmproj = files
+        try:
+            from sdk.process_guard import (
+                get_process_registry as _get_process_registry,
+                subprocess_isolation_kwargs as _isolation_kwargs,
+            )
+        except ImportError:
+            _get_process_registry = None
+            _isolation_kwargs = None
+        pop_kw = (
+            _isolation_kwargs(hide_window=True)
+            if _isolation_kwargs is not None
+            else (
+                {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+                if os.name == "nt"
+                else {"start_new_session": True}
+            )
+        )
         self.process = subprocess.Popen(
             [executable, "-m", model, "--mmproj", mmproj, "--alias", model_id,
              "--host", "127.0.0.1", "--port", str(port), "-ngl", "99",
              "--split-mode", "none", "--main-gpu", "0",
              "--ctx-size", "4096", "--parallel", "1", "--no-webui"],
             stdin=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            **pop_kw,
         )
+        if _get_process_registry is not None:
+            _get_process_registry().register(
+                self.process,
+                name="perception-llama-server",
+                kind="perception",
+                scope="process",
+                name_hint="llama-server",
+            )
         try:
             deadline = time.monotonic() + 90.0
             while time.monotonic() < deadline:
@@ -407,6 +432,13 @@ class _GgufRuntime:
             response.read()
 
     def close(self) -> None:
+        try:
+            from sdk.process_guard import get_process_registry as _get_process_registry
+        except ImportError:
+            _get_process_registry = None
+        if _get_process_registry is not None:
+            _get_process_registry().stop_process(self.process, timeout=3.0)
+            return
         if self.process.poll() is None:
             self.process.terminate()
             try:
@@ -680,17 +712,24 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, stop)
     holder = None
+    server_ref: list[ThreadingHTTPServer] = []
     try:
         if args.stop_on_stdin_eof:
             def watch_launcher() -> None:
                 # Only the bridge owns the write end. It closes even if the bridge is terminated.
                 while os.read(sys.stdin.fileno(), 1):
                     pass
+                for srv in list(server_ref):
+                    try:
+                        srv.shutdown()
+                    except Exception:
+                        pass
                 _thread.interrupt_main()
 
             threading.Thread(target=watch_launcher, name="perception-launcher-watch", daemon=True).start()
         holder = _GgufRuntime(args.model, args.gguf) if args.gguf else _RuntimeHolder(args.model, args.device)
         with ThreadingHTTPServer((args.host, args.port), _make_handler(holder)) as server:
+            server_ref.append(server)
             print(f"[perception-server] Listening on http://{args.host}:{args.port}/v1")
             server.serve_forever()
     except KeyboardInterrupt:

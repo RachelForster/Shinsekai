@@ -19,81 +19,7 @@ from sdk.agent import (
     AgentBackendConfig,
     AgentBackendDescriptor,
 )
-
-
-class _WindowsJob:
-    def __init__(self, process: subprocess.Popen) -> None:
-        import ctypes
-        from ctypes import wintypes
-
-        class Basic(ctypes.Structure):
-            _fields_ = [
-                ("PerProcessUserTimeLimit", ctypes.c_int64),
-                ("PerJobUserTimeLimit", ctypes.c_int64),
-                ("LimitFlags", wintypes.DWORD),
-                ("MinimumWorkingSetSize", ctypes.c_size_t),
-                ("MaximumWorkingSetSize", ctypes.c_size_t),
-                ("ActiveProcessLimit", wintypes.DWORD),
-                ("Affinity", ctypes.c_size_t),
-                ("PriorityClass", wintypes.DWORD),
-                ("SchedulingClass", wintypes.DWORD),
-            ]
-
-        class Counters(ctypes.Structure):
-            _fields_ = [
-                (name, ctypes.c_uint64)
-                for name in (
-                    "ReadOperationCount",
-                    "WriteOperationCount",
-                    "OtherOperationCount",
-                    "ReadTransferCount",
-                    "WriteTransferCount",
-                    "OtherTransferCount",
-                )
-            ]
-
-        class Extended(ctypes.Structure):
-            _fields_ = [
-                ("BasicLimitInformation", Basic),
-                ("IoInfo", Counters),
-                ("ProcessMemoryLimit", ctypes.c_size_t),
-                ("JobMemoryLimit", ctypes.c_size_t),
-                ("PeakProcessMemoryUsed", ctypes.c_size_t),
-                ("PeakJobMemoryUsed", ctypes.c_size_t),
-            ]
-
-        self.api = ctypes.WinDLL("kernel32", use_last_error=True)
-        self.api.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
-        self.api.CreateJobObjectW.restype = wintypes.HANDLE
-        self.api.SetInformationJobObject.argtypes = [
-            wintypes.HANDLE,
-            ctypes.c_int,
-            ctypes.c_void_p,
-            wintypes.DWORD,
-        ]
-        self.api.SetInformationJobObject.restype = wintypes.BOOL
-        self.api.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
-        self.api.AssignProcessToJobObject.restype = wintypes.BOOL
-        self.api.CloseHandle.argtypes = [wintypes.HANDLE]
-        self.api.CloseHandle.restype = wintypes.BOOL
-        self.handle = self.api.CreateJobObjectW(None, None)
-        if not self.handle:
-            raise ctypes.WinError(ctypes.get_last_error())
-        limits = Extended()
-        limits.BasicLimitInformation.LimitFlags = 0x00002000  # KILL_ON_JOB_CLOSE
-        if not self.api.SetInformationJobObject(
-            self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)
-        ) or not self.api.AssignProcessToJobObject(
-            self.handle, wintypes.HANDLE(int(process._handle))
-        ):
-            error = ctypes.WinError(ctypes.get_last_error())
-            self.close()
-            raise error
-
-    def close(self) -> None:
-        if self.handle:
-            self.api.CloseHandle(self.handle)
-            self.handle = None
+from sdk.process_guard import WindowsJobObject
 
 
 class AgentWorkerSupervisor:
@@ -113,7 +39,7 @@ class AgentWorkerSupervisor:
         )
         self.process: subprocess.Popen | None = None
         self.peer: JsonRpcPeer | None = None
-        self.job: _WindowsJob | None = None
+        self.job: WindowsJobObject | None = None
         self.stderr: deque[str] = deque(maxlen=64)
         self.opened_sessions: set[str] = set()
 
@@ -140,7 +66,7 @@ class AgentWorkerSupervisor:
         )
         try:
             if os.name == "nt":
-                self.job = _WindowsJob(self.process)
+                self.job = WindowsJobObject(self.process)
             process = self.process
 
             def drain() -> None:

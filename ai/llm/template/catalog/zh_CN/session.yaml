@@ -50,6 +50,12 @@ dialog_repair_retry_selective: 该回复仍然不符合有效格式。你必须�
 dialog_repair_bound_speakers_heading: '以下已绑定演员表角色必须提供 `{media_field}` 字段：'
 dialog_repair_xml_initial: 请将你上一条回复重新整理为符合应用要求的 XML/HTML 舞台标签序列（使用 `<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>`、`<choice>` 等有效标签）。至少输出一个完整舞台标签；不要调用工具，不要输出 JSON，也不要使用 Markdown 代码块。
 dialog_repair_xml_retry: 该回复仍然不符合有效的 XML/HTML 舞台标签格式。你必须仅以符合要求的 `<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>` 等标签序列作答，不要调用工具，不要输出 JSON 或多余说明。
+dialog_repair_renpy_initial: '请将你上一条回复重新整理为符合应用要求的 Ren''Py 风格 DSL 指令行（使用 `角色名 [{media_field}="..."] "台词"`、旁白与场景指令等）。至少输出一条完整台词或舞台指令；不要调用工具，不要输出 JSON、XML 或 Markdown 代码块。'
+dialog_repair_renpy_retry: '该回复仍然不符合有效的 Ren''Py DSL 格式。请仅输出合法的 `角色名 [{media_field}="..."] "台词"` 与对应舞台指令行；不要调用工具或输出多余说明。'
+dialog_repair_renpy_initial_selective: '请将你上一条回复重新整理为符合应用要求的 Ren''Py 风格 DSL 指令行（使用 `角色名 [{media_field}="..."] "台词"` 等）。已绑定角色以及 `scene` / `play music` 必须填写非空 `{media_field}`，未绑定的龙套/NPC 可省略 `{media_field}`。不要调用工具、JSON、XML 或 Markdown 代码块。'
+dialog_repair_renpy_retry_selective: '该回复仍然不符合有效的 Ren''Py DSL 格式。请严格按逐行指令作答；已绑定角色及 `scene` / `play music` 必须填写 `{media_field}`，未绑定 NPC 可省略。不要调用工具或解释。'
+outfit_switch_rule_renpy: '剧情换装规则（Ren''Py DSL）：已开启自动换装。未锁定角色明确换装时，必须在当句方括号内写入 `outfit="可用分组名"`。普通表情变化省略该属性。'
+outfit_locked_rule_renpy: '当前已关闭自动换装或服装已锁定：请保持当前服装分组，不要在角色方括号内输出 `outfit` 属性。'
 memory_context_simple_guidance: 本轮相关的长期记忆。请仅将其作为背景参考，除非用户主动询问，否则不要提及检索过程。
 memory_context_tiered_guidance: 本轮相关的长期记忆。请遵循每条记忆的清晰度标记（[固有设定]、[清晰]、[较久远·印象模糊]、[唤醒的久远记忆]），自然地融入背景，除非用户询问，否则绝不要提及记忆检索系统。
 memory_tier_canon: 固有设定
@@ -73,3 +79,47 @@ outfit_lock_status_unlocked: 未锁定
 outfit_character_entry: '- {name}：当前服装分组「{active_group}」（{lock_desc}；可用分组：{groups}）'
 outfit_default_tag: 默认
 outfit_group_sprites_line: '  当前「{active_group}」分组可用 sprite 编号：{items}'
+novel_director_heading: '【小说剧场导演模式】'
+novel_director_rules: |-
+  你正在担任长篇小说视觉小说剧场的总导演兼分镜编剧。每一轮你会收到一段小说原片（[待演出正文]）以及后续一小段仅供消歧的只读预览（[下文预览]）。
+  请严格遵守以下创作与协议约束：
+  1. 忠实转译原文情节点、动作细节与对白，禁止编造后续剧情、禁止跳过核心对话，也禁止输出剧情分支选项（绝对不要输出 CHOICE 条目）。
+  2. [下文预览] 仅用于确认片尾倒装提示语（先出引号再写说话人）与代词指代，严禁提前演出 [下文预览] 中的台词或事件！
+  3. 说话人标注必须清晰准确：所有人物开口台词必须以该人物自己的 `character_name` 独立输出，严禁把人物台词并入旁白 `NARR`；`character_name` 必须严格填写原文标准人物名（与演出通道表左栏一致，不得使用表外别名或未在本剧登场的无关角色名）；若原文刻意隐瞒初登场说话人身份，写为 `？？？`（或原文称谓），直到正文揭晓后再使用标准名称。
+  4. 旁白 `NARR` 节奏紧凑（视觉小说分镜风格）：每条 `NARR` 只写 1–2 句短描（建议 20–55 字，最长不超过 65 字），严禁把整段长原文或大段环境心理描写塞进同一个 `NARR` 对话框！较长的叙述或心理活动请按句拆成多条简短 `NARR` 并与角色对白穿插推进。
+  5. 合理调度背景/氛围或音效（如适用）；已绑定立绘/配音的角色（含原文中使用别名指代同一人物时，输出 `character_name` 仍填标准原文名）必须严格输出立绘 `sprite`/`vibe` 字段，未绑定立绘的路人 NPC 与 `？？？` 走纯对话通道并省略立绘字段。
+novel_director_rules_actor: |-
+  你正在担任长篇小说视觉小说剧场的总导演兼分镜编剧。每一轮你会收到一段小说原片（[待演出正文]）以及后续一小段仅供消歧的只读预览（[下文预览]）。
+  请严格遵守以下创作与协议约束：
+  1. 忠实转译原文情节点、动作细节与对白，禁止编造后续剧情、禁止跳过核心对话，也禁止输出剧情分支选项（绝对不要输出 CHOICE 条目）。
+  2. [下文预览] 仅用于确认片尾倒装提示语（先出引号再写说话人）与代词指代，严禁提前演出 [下文预览] 中的台词或事件！
+  3. 演员本名代入与说话人标注：凡在演出通道表标明「-> 替换为演员名：XXX」的角色，无论在 `character_name`、旁白 `NARR` 还是其他人的对白称呼中，都要统一改写为右侧对应的演员名「XXX」演出；严禁把人物开口台词并入旁白 `NARR`。未绑定演员的路人 NPC 与显式标注保持原文名的角色保留原名；初登场刻意隐瞒身份者写为 `？？？`（或原文称谓），直到正文揭晓后再使用对应角色名。
+  4. 旁白 `NARR` 节奏紧凑（视觉小说分镜风格）：每条 `NARR` 只写 1–2 句短描（建议 20–55 字，最长不超过 65 字），严禁把整段长原文或大段环境心理描写塞进同一个 `NARR` 对话框！较长的叙述或心理活动请按句拆成多条简短 `NARR` 并与角色对白穿插推进。
+  5. 合理调度背景/氛围或音效（如适用）；已绑定立绘/配音的角色（含原文中使用别名或旧称指代时）必须严格输出立绘 `sprite`/`vibe` 字段且 `character_name` 使用演员名（或表内标明保持的原文名），未绑定立绘的路人 NPC 与 `？？？` 走纯对话通道并省略立绘字段。
+novel_director_cast_heading: '【本剧登场角色与演出通道】'
+novel_director_cast_actor_arrow: ' -> 已绑定立绘与配音（出场必须保持此原文角色名）'
+novel_director_cast_replace_arrow: ' -> 替换为演员名：'
+novel_director_cast_unbound: ' -> 未绑定立绘（纯对话框 NPC）'
+novel_director_cast_aliases_label: '别名：'
+novel_director_cast_empty: （未绑定本地角色，全部人物按纯对话框演出）
+novel_chunk_header: '【第 {chapter_num}/{total_chapters} 章 · 第 {chunk_num}/{total_chunks} 段】'
+novel_chunk_source_heading: '[待演出正文]'
+novel_chunk_lookahead_heading: '[下文预览（仅供消歧）]'
+novel_chunk_lookahead_rule: 以上预览仅供消歧末尾说话人与代词，严禁在本轮演出。
+novel_compact_instruction: 压缩小说剧场早先对话时，必须完整保留：所有已登场人物的标准名及外号/称呼映射、第一人称叙述者身份、核心人物关系与当前章节剧情进展。
+novel_compact_cast_heading: '当前核心人物映射摘要：'
+tts_style_header: 当前语音合成引擎支持的表现力控制能力：
+tts_style_inline_tags_rule: |-
+  内联语音标签：可在需要表现情绪、语气或副语言动作的位置插入自然语言方括号标签（如 [laugh]、[sigh]、[soft whisper]、[laughing nervously]、[excited]），可置于句首或句中；请克制自然地使用，无特殊表现需要时不要强行添加。
+tts_style_inline_tags_channel_json: |-
+  输出位置要求：方括号语音标签只能写在 `translate` 字段中供语音合成使用，`speech` 字段必须保持干净可读，绝对不要把 `[...]` 标签写进 `speech`。即使台词与配音语言相同，也仅在需要使用标签的条目中把带标签的朗读文本写入 `translate`。
+tts_style_inline_tags_channel_xml: |-
+  输出位置要求：方括号语音标签只能写在 `<tr>...</tr>` 标签内供语音合成使用，`<say>` 主体台词必须保持干净可读，绝对不要把 `[...]` 标签写进主台词。即使台词与配音语言相同，也仅在需要使用标签的条目中补充带标签的 `<tr>...</tr>`。
+tts_style_inline_tags_channel_custom: |-
+  输出位置要求：方括号语音标签只能写在供语音合成使用的翻译/朗读通道（`translate`）中，保持展示给用户的台词正文干净，不要混入 `[...]` 标签。
+tts_style_voice_instruct_json: |-
+  自然语言演绎指导：可在角色对话条目中按需添加可选字段 `voice_instruct`（简短自然语言短语，描述语气、情绪或语速，例如 "低声轻笑、语速偏慢" 或 "soft teasing whisper"），不要复述台词本身；常规中性语气时省略该字段。
+tts_style_voice_instruct_xml: |-
+  自然语言演绎指导：可在 `<say>` 标签上按需添加可选属性 `voice_instruct="..."`（简短自然语言短语，描述语气、情绪或语速，例如 `voice_instruct="低声轻笑、语速偏慢"`），不要复述台词本身；常规中性语气时省略该属性。
+tts_style_voice_instruct_custom: |-
+  自然语言演绎指导：若当前输出格式支持扩展字段，可在角色台词条目提供可选的 `voice_instruct` 字段描述语气、情绪或语速；常规中性语气时省略。

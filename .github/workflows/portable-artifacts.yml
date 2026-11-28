@@ -25,7 +25,7 @@ on:
         default: "all"
         type: string
       models:
-        description: "Model packs: 'default', 'none', or comma-separated (embedding,sherpa-asr,perception-gguf)"
+        description: "Model packs: 'default', 'none', or comma-separated (embedding,sherpa-asr,perception-gguf,qwen3-tts-gguf,pi-agent)"
         required: false
         default: "default"
         type: string
@@ -112,7 +112,7 @@ jobs:
     needs: plan
     name: Portable ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}

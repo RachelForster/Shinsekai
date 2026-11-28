@@ -1,0 +1,45 @@
+.cast-mapping {
+  display: grid;
+  gap: var(--space-3);
+}
+.cast-mapping__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+.cast-mapping__list {
+  display: grid;
+  gap: var(--space-2);
+}
+.cast-mapping__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(130px, 1.1fr) minmax(105px, 0.7fr) minmax(150px, 1.1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-subtle, transparent);
+}
+.cast-mapping__field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.cast-mapping__desc {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.cast-mapping__actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+@media (max-width: 780px) {
+  .cast-mapping__row {
+    grid-template-columns: 1fr;
+  }
+}

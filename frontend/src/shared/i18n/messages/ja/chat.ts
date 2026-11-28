@@ -79,6 +79,8 @@ export const chatJaMessages: Record<ChatMessageKey, string> = {
   "conversation.next": "次へ",
   "conversation.chooseType": "チャットの種類",
   "conversation.normalHint": "キャラクターとテンプレートを選んで自由に会話",
+  "conversation.novel": "小説シアター",
+  "conversation.novelHint": "TXT や PDF 小説を取り込み、配役または純対話で上演",
   "conversation.storyHint": "ストーリーを選択または作成して物語を進める",
   "conversation.delete": "チャットを削除",
   "conversation.deleteConfirm":

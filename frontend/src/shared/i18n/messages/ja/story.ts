@@ -351,8 +351,6 @@ export const storyJaMessages: Record<StoryMessageKey, string> = {
     "自動同期中：下のルールやキャラクター・背景を変更するとシステムプロンプトが自動更新されます。",
   "template.field.outputFormat": "出力形式",
   "template.field.outputFormatHint":
-    "AI演出ディレクティブの出力形式を選択します（新規テンプレートはXML/HTMLタグ、既存テンプレートはJSON互換）。",
-  "template.outputFormat.xml_v1": "XML / HTML タグ（場面転換・キャラ動作対応）",
-  "template.outputFormat.json_v1": "JSON（クラシック互換）",
+    "AI演出ディレクティブの出力形式を選択します（新規テンプレートはXML/HTMLタグ、内蔵Ren'Py風スクリプトDSL・既存JSON互換に対応）。",
   "template.bar.outputFormat": "形式：{format}",
 };

@@ -16,12 +16,14 @@ Shinsekai 绿色免安装整合包 使用说明
    （全平台均已内置 `.shinsekai-portable` 便携模式识别，所有配置、存档、记忆与模型都会自动保存在当前文件夹的 `data/` 目录内，不与本机其他安装目录冲突。）
 
 3. 首次使用设置
-   - 打开软件后进入【设置】，填写你的大模型 API Key（如 DeepSeek / OpenAI / Gemini 等）即可开始对话。
-   - 如需语音合成（TTS）或图像生成（ComfyUI），可在设置中按需开启并填写对应服务地址。
+   - 打开软件后进入【设置】，填写你的大模型 API Key（如 DeepSeek / OpenAI / Gemini 等）即可立即开始对话，并同时使用预置语音合成（Qwen3-TTS 0.6B GGUF）与内置 Pi Agent 智能助手。
+   - 配音语言默认设为 `auto`（自动跟随角色参考音频的语言）；如需固定配音语种、开启图像生成（ComfyUI）或切换音色更拟真的 Genie / GPT-SoVITS，可在设置中一键调整或下载。
 
 4. 本整合包已预置的本地模型与目录结构
    所有用户数据、模型与缓存已统一整理至 `data/` 目录下：
    - `data/cache/huggingface/`     ：长期记忆 ONNX 向量模型 + Sherpa-ONNX 双阶段语音模型（流式 Zipformer 实时出字 + SenseVoiceSmall 中/英/日/粤/韩停顿秒修；Windows ARM64 版本因上游轮子限制默认不包含 Sherpa-ONNX）
-   - `data/models/perception-gguf/`：本地实时感知模型（Qwen3VL-2B Q4_K_M + llama.cpp，零 PyTorch 开箱即用）
+   - `data/models/perception-gguf/`：本地实时感知模型（Qwen3VL-2B Q4_K_M + llama.cpp + RapidOCR 本地文字识别，默认均已开启且零 PyTorch 开箱即用；Windows ARM64 版本因上游轮子限制暂不包含 RapidOCR）
+   - `data/models/qwen3-tts-gguf/` ：本地开箱即用语音克隆模型（Qwen3-TTS 12Hz 0.6B-Base Q8_0 + mmproj-F16，复用 `perception-gguf` 内置 `llama.cpp`，默认已启用）
+   - `data/agent/runtimes/pi/`     ：预装官方 Pi Agent 运行时（填写 LLM API Key 后即可在助手面板直接使用，无需额外下载）
    - `data/config/`                ：干净的默认配置（不含任何个人密钥或历史记录）
    - `runtime/`                    ：内置 Python 运行环境（无需用户额外安装 Python；内置默认 ISNet 立绘抠图）

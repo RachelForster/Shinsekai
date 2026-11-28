@@ -17,31 +17,31 @@ CATALOG: dict[str, dict[str, str]] = {
         "platform": "windows-x64",
         "os": "windows-latest",
         "tauri_bundles": "none",
-        "default_models": "embedding,sherpa-asr,perception-gguf",
+        "default_models": "embedding,sherpa-asr,perception-gguf,qwen3-tts-gguf,pi-agent",
     },
     "windows-arm64": {
         "platform": "windows-arm64",
         "os": "windows-11-arm",
         "tauri_bundles": "none",
-        "default_models": "embedding,perception-gguf",
+        "default_models": "embedding,perception-gguf,qwen3-tts-gguf,pi-agent",
     },
     "macos-arm64": {
         "platform": "macos-arm64",
         "os": "macos-15",
         "tauri_bundles": "app",
-        "default_models": "embedding,sherpa-asr,perception-gguf",
+        "default_models": "embedding,sherpa-asr,perception-gguf,qwen3-tts-gguf,pi-agent",
     },
     "linux-x64": {
         "platform": "linux-x64",
         "os": "ubuntu-latest",
         "tauri_bundles": "none",
-        "default_models": "embedding,sherpa-asr,perception-gguf",
+        "default_models": "embedding,sherpa-asr,perception-gguf,qwen3-tts-gguf,pi-agent",
     },
     "linux-arm64": {
         "platform": "linux-arm64",
         "os": "ubuntu-24.04-arm",
         "tauri_bundles": "none",
-        "default_models": "embedding,sherpa-asr,perception-gguf",
+        "default_models": "embedding,sherpa-asr,perception-gguf,qwen3-tts-gguf,pi-agent",
     },
 }
 

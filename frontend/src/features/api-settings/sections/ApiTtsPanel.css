@@ -1,0 +1,55 @@
+/* Collapsible adapter extra options grouped inside the TTS settings card. */
+
+.api-tts-panel__extra {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-3);
+}
+
+.api-tts-panel__extra-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+  transition: color 120ms ease;
+}
+
+.api-tts-panel__extra-summary:hover {
+  color: var(--color-text-primary);
+}
+
+.api-tts-panel__extra-summary::-webkit-details-marker {
+  display: none;
+}
+
+.api-tts-panel__extra-summary::after {
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.api-tts-panel__extra[open] > .api-tts-panel__extra-summary::after {
+  transform: rotate(45deg);
+}
+
+.api-tts-panel__extra-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.api-tts-panel__extra .api-extra-grid {
+  margin-top: var(--space-3);
+  border-top: 0;
+  padding-top: 0;
+}

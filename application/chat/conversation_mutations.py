@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from application.chat import conversation_library as _lib
+from application.chat.regenerate_launch_system import regenerate_launch_system
 from application.chat.history.paths import (
     _state_project_root,
     is_unc_history_path,
@@ -149,11 +150,57 @@ def update_conversation_settings(
     return details
 
 
+def update_conversation_launch_fields(
+    state: Any,
+    conversation_id: str,
+    patch: Mapping[str, Any],
+) -> dict:
+    """Persist structured updates into a saved conversation's launch dictionary."""
+    if not isinstance(patch, Mapping):
+        raise ValueError("conversation launch patch must be an object")
+    store = _lib._conversation_store(state)
+    with _lib._metadata_lock:
+        record = _lib._record(state, conversation_id)
+        launch = record.get("launch")
+        launch_dict = dict(launch) if isinstance(launch, dict) else {}
+        for key, value in patch.items():
+            launch_dict[str(key)] = value
+        record["launch"] = launch_dict
+        if store is not None:
+            from core.storage.stores.conversation_store import ConversationRecord
+
+            store.put(
+                conversation_id,
+                ConversationRecord.from_legacy_dict(conversation_id, record),
+            )
+        else:
+            _lib._write(_lib._directory(state) / f"{conversation_id}.json", record)
+        return _lib._details(record)
+
+
+def _is_self_character_name(state: Any, name: str | None) -> bool:
+    from config.schema import is_self_persona, is_self_persona_id, is_self_persona_name
+
+    cleaned = str(name or "").strip()
+    if not cleaned:
+        return False
+    if is_self_persona_name(cleaned) or is_self_persona_id(cleaned):
+        return True
+    cfg = getattr(state, "config_manager", None)
+    getter = getattr(cfg, "get_character_by_name", None)
+    candidate = getter(cleaned) if callable(getter) else None
+    return candidate is not None and is_self_persona(candidate)
+
+
 def update_conversation_character(
     state: Any, old_name: str, new_name: str | None = None
 ) -> None:
     """Migrate renamed cast references; require editing after a cast member is deleted."""
     store = _lib._conversation_store(state)
+    is_self_rename = new_name is not None and (
+        _is_self_character_name(state, old_name)
+        or _is_self_character_name(state, new_name)
+    )
     with _lib._metadata_lock:
         if store is not None:
             from core.storage.stores.conversation_store import ConversationRecord
@@ -162,7 +209,13 @@ def update_conversation_character(
                 record = rec.to_legacy_dict()
                 if not isinstance(record.get("launch"), dict):
                     continue
-                if _rewrite_launch_cast_reference(record, old_name, new_name):
+                cast_changed = _rewrite_launch_cast_reference(record, old_name, new_name)
+                sys_changed = bool(
+                    new_name is not None
+                    and (cast_changed or is_self_rename)
+                    and regenerate_launch_system(state, record["launch"])
+                )
+                if cast_changed or sys_changed:
                     store.put(
                         rec.id,
                         ConversationRecord.from_legacy_dict(rec.id, record),
@@ -174,7 +227,13 @@ def update_conversation_character(
                 record.get("launch"), dict
             ):
                 continue
-            if _rewrite_launch_cast_reference(record, old_name, new_name):
+            cast_changed = _rewrite_launch_cast_reference(record, old_name, new_name)
+            sys_changed = bool(
+                new_name is not None
+                and (cast_changed or is_self_rename)
+                and regenerate_launch_system(state, record["launch"])
+            )
+            if cast_changed or sys_changed:
                 _lib._write(target, record)
 
 

@@ -12,6 +12,7 @@ import {
   composeTemplateContent,
   LEGACY_OUTPUT_FORMAT,
   normalizeTemplateSummary,
+  resolveSupportedOutputFormat,
   templateGenerationKey,
 } from "../templateFlow";
 import { buildSystemSyncKey } from "../templateContext";
@@ -52,11 +53,13 @@ export interface RestoredSessionSnapshot {
 }
 
 export function buildRestoredSessionSnapshot({
+  availableOutputFormats,
   createOnly,
   defaultName,
   launchSession,
   templates,
 }: {
+  availableOutputFormats?: readonly import("../../../shared/platform/types").DialogFormatOption[];
   createOnly: boolean;
   defaultName: string;
   launchSession: TemplateLaunchSession;
@@ -87,7 +90,11 @@ export function buildRestoredSessionSnapshot({
   const restoredUseStat = launchSession.useStat ?? true;
   const restoredMaxSpeech = Number(launchSession.maxSpeechChars) || 0;
   const restoredMaxDialog = Number(launchSession.maxDialogItems) || 0;
-  const restoredOutputFormat = launchSession.outputFormat || LEGACY_OUTPUT_FORMAT;
+  const restoredOutputFormat = resolveSupportedOutputFormat(
+    launchSession.outputFormat,
+    availableOutputFormats,
+    LEGACY_OUTPUT_FORMAT,
+  );
 
   const restoredCharKey = templateGenerationKey({
     characters: restoredCharacters,

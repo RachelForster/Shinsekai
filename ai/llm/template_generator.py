@@ -5,12 +5,19 @@ Configuration and plugin discovery stay at this boundary; rendering lives in
 method signatures and the ``(template, warning)`` result remain supported.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
-from config.config_manager import ConfigManager
-from config.schema import SELF_PERSONA_NAME, is_self_persona_name
-from core.messaging.formats.registry import resolve_dialog_format
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from ai.llm.formats import resolve_dialog_format
+from config.config_manager import ConfigManager, character_name_key
+from config.schema import (
+    SELF_PERSONA_NAME,
+    find_self_persona,
+    is_self_persona,
+    is_self_persona_id,
+    is_self_persona_name,
+)
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.types import OutputContractPatch
 
 from .template.dialog import DialogTemplateContext, DialogTemplateSection
@@ -68,6 +75,13 @@ def _render_template_keys(*keys: str, locale: str | None = None) -> str:
     return "\n".join(_T(key).strip() for key in keys)
 
 
+def _call_locale_hook(hook, *, locale: str, translate) -> str | None:
+    try:
+        return hook(locale=locale, translate=translate)
+    except TypeError:
+        return hook(locale=locale)
+
+
 def format_reminder(
     output_format_id: str = DEFAULT_DIALOG_FORMAT_ID,
     *,
@@ -75,69 +89,70 @@ def format_reminder(
 ) -> str:
     """Close system prompts with the active output-format and tool protocol rules."""
     resolved = resolve_dialog_format(output_format_id)
-    fmt_id = resolved.format_id
-    if fmt_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
-        resolved_locale = (
-            locale if locale is not None else resolve_template_locale(config_manager)
-        )
-        custom = resolved.render_format_reminder(locale=resolved_locale)
-        protocol = _render_template_keys("closing_custom_tool_protocol", locale=locale)
-        if isinstance(custom, str) and custom.strip():
-            return f"{custom.strip()}\n{protocol}"
-        return _render_template_keys(
-            "closing_custom_reminder",
-            "closing_custom_tool_protocol",
-            locale=locale,
-        )
-    if fmt_id == XML_DIALOG_FORMAT_ID:
-        return _render_template_keys(
-            "closing_xml_reminder",
-            "closing_xml_tool_protocol",
-            locale=locale,
-        )
-    return _render_template_keys(
-        "closing_json_reminder",
-        "closing_tool_protocol",
-        locale=locale,
+    resolved_locale = (
+        locale if locale is not None else resolve_template_locale(config_manager)
     )
+    tr = _T if _T is not _DEFAULT_T else None
+    reminder = _call_locale_hook(
+        resolved.render_format_reminder,
+        locale=resolved_locale,
+        translate=tr,
+    )
+    if not isinstance(reminder, str) or not reminder.strip():
+        reminder = _render_template_keys("closing_custom_reminder", locale=locale)
+    protocol = _call_locale_hook(
+        resolved.render_tool_protocol,
+        locale=resolved_locale,
+        translate=tr,
+    )
+    if not isinstance(protocol, str) or not protocol.strip():
+        protocol = _render_template_keys("closing_custom_tool_protocol", locale=locale)
+    return f"{reminder.strip()}\n{protocol.strip()}"
 
 
 def json_format_reminder(*, locale: str | None = None) -> str:
     """Close system prompts with the output format and tool protocol rules."""
-    return _render_template_keys(
-        "closing_json_reminder",
-        "closing_tool_protocol",
-        locale=locale,
-    )
+    return format_reminder(DEFAULT_DIALOG_FORMAT_ID, locale=locale)
 
 
 def _format_llm_tools_block() -> str:
     return format_llm_tools_block(_T)
 
 
+_DEFAULT_FORMAT_LLM_TOOLS_BLOCK = _format_llm_tools_block
+
+
 def _format_llm_tools_block_for_format(output_format_id: str) -> str:
-    if output_format_id == DEFAULT_DIALOG_FORMAT_ID:
+    if _format_llm_tools_block is not _DEFAULT_FORMAT_LLM_TOOLS_BLOCK:
         return _format_llm_tools_block()
-    intro_key = (
-        "xml_tools_intro"
-        if output_format_id == XML_DIALOG_FORMAT_ID
-        else "custom_tools_intro"
+    resolved = resolve_dialog_format(output_format_id)
+    resolved_locale = resolve_template_locale(config_manager)
+    tr = _T if _T is not _DEFAULT_T else None
+    custom_intro = _call_locale_hook(
+        resolved.render_tools_intro,
+        locale=resolved_locale,
+        translate=tr,
+    )
+    intro_text = (
+        custom_intro
+        if isinstance(custom_intro, str) and custom_intro.strip()
+        else _T("custom_tools_intro")
     )
 
     def _format_translate(key: str, **kwargs: Any) -> str:
         if key == "tools_intro":
-            return _T(intro_key, **kwargs)
+            return intro_text
         return _T(key, **kwargs)
 
     return format_llm_tools_block(_format_translate)
 
 
-def _ui_voice_same_lang() -> bool:
-    return _same_voice_language(config_manager)
+def _ui_voice_same_lang(characters=None) -> bool:
+    return _same_voice_language(config_manager, characters=characters)
 
 
-def _target_voice_display_name() -> str:
-    return _voice_display_name(config_manager, _T)
+def _target_voice_display_name(characters=None) -> str:
+    return _voice_display_name(config_manager, _T, characters=characters)
 
 
 class TemplateGenerator:
@@ -182,42 +197,139 @@ class TemplateGenerator:
         read_player_speech: bool = False,
         allow_player_dialogue: bool = True,
         output_format: str = DEFAULT_DIALOG_FORMAT_ID,
+        include_character_profiles: bool = True,
+        character_entries: Sequence[tuple[str, str]] | None = None,
     ):
-        if not selected_characters:
-            raise NoValidCharactersError()
-        characters = self.resolve_chat_template_characters(selected_characters)
+        if character_entries is not None:
+            resolved_pairs: list[tuple[str, Any]] = []
+            seen_display: set[str] = set()
+            for entry in character_entries:
+                if not isinstance(entry, (tuple, list)) or len(entry) != 2:
+                    continue
+                display_name = str(entry[0] or "").strip()
+                local_name = str(entry[1] or "").strip()
+                if not local_name:
+                    continue
+                matched = self.resolve_chat_template_characters([local_name])
+                if not matched:
+                    continue
+                canonical_local, char_obj = matched[0]
+                prompt_name = display_name or canonical_local
+                if prompt_name in seen_display:
+                    continue
+                seen_display.add(prompt_name)
+                resolved_pairs.append((prompt_name, char_obj))
+            characters = resolved_pairs
+            if not characters:
+                raise NoValidCharactersError()
+        else:
+            if not selected_characters:
+                raise NoValidCharactersError()
+            characters = self.resolve_chat_template_characters(selected_characters)
+        cleaned_player_arg = str(player_character or "").strip()
         player = next(
-            (character for name, character in characters if name == player_character),
+            (
+                character
+                for name, character in characters
+                if character_name_key(name) == character_name_key(cleaned_player_arg)
+                or (
+                    (is_self_persona_name(cleaned_player_arg) or is_self_persona_id(cleaned_player_arg))
+                    and is_self_persona(character)
+                )
+            ),
             None,
         )
-        if player is None and is_self_persona_name(player_character):
-            getter = getattr(config_manager, "get_character_by_name", None)
-            candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
-            if candidate is not None and is_self_persona_name(getattr(candidate, "name", "")):
-                player = candidate
+        if player is None and cleaned_player_arg:
+            if is_self_persona_name(cleaned_player_arg) or is_self_persona_id(
+                cleaned_player_arg
+            ):
+                getter_self = getattr(config_manager, "get_self_persona", None)
+                candidate = getter_self() if callable(getter_self) else None
+                if candidate is None:
+                    getter = getattr(config_manager, "get_character_by_name", None)
+                    candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
+                if candidate is not None and is_self_persona(candidate):
+                    player = candidate
+            else:
+                getter = getattr(config_manager, "get_character_by_name", None)
+                candidate = getter(cleaned_player_arg) if callable(getter) else None
+                if candidate is None:
+                    getter_self = getattr(config_manager, "get_self_persona", None)
+                    self_candidate = getter_self() if callable(getter_self) else None
+                    if (
+                        self_candidate is not None
+                        and is_self_persona(self_candidate)
+                        and character_name_key(
+                            str(getattr(self_candidate, "name", "") or "")
+                        )
+                        == character_name_key(cleaned_player_arg)
+                    ):
+                        candidate = self_candidate
+                if candidate is not None and is_self_persona(candidate):
+                    player = candidate
+        resolved_player_name = (
+            str(getattr(player, "name", "") or cleaned_player_arg).strip()
+            if player is not None
+            else ""
+        )
         if player is not None and not allow_player_dialogue:
-            characters = [(name, character) for name, character in characters if name != player_character]
+            player_is_self = is_self_persona(player)
+            resolved_player_key = character_name_key(resolved_player_name)
+            characters = [
+                (name, character)
+                for name, character in characters
+                if not (
+                    is_self_persona(character)
+                    if player_is_self
+                    else character_name_key(name) == resolved_player_key
+                )
+            ]
         if not characters and player is None:
             raise NoValidCharactersError()
-        has_self_in_cast = any(is_self_persona_name(name) for name, _character in characters)
+        has_self_in_cast = any(is_self_persona(character) for _name, character in characters)
         self_persona_setting = ""
-        if not player_character and player is None and not has_self_in_cast:
-            getter = getattr(config_manager, "get_character_by_name", None)
-            self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
-            if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
+        self_persona_name = ""
+        if (
+            include_character_profiles
+            and not cleaned_player_arg
+            and player is None
+            and not has_self_in_cast
+        ):
+            getter_self = getattr(config_manager, "get_self_persona", None)
+            self_char = getter_self() if callable(getter_self) else None
+            if self_char is None:
+                chars = getattr(getattr(config_manager, "config", None), "characters", None)
+                if chars is not None:
+                    self_char = find_self_persona(chars)
+            if self_char is None:
+                getter = getattr(config_manager, "get_character_by_name", None)
+                self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
+            if self_char is not None and is_self_persona(self_char):
                 self_persona_setting = str(getattr(self_char, "character_setting", "") or "").strip()
+                self_persona_name = str(getattr(self_char, "name", "") or "").strip()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         resolved_locale = resolve_template_locale(config_manager)
         resolved_format = resolve_dialog_format(output_format).format_id
+        voice_characters = list(characters)
+        if (
+            player is not None
+            and read_player_speech
+            and not any(
+                character_name_key(name) == character_name_key(resolved_player_name)
+                for name, _character in voice_characters
+            )
+        ):
+            voice_characters.append((resolved_player_name, player))
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
-            target_voice_name=_target_voice_display_name(),
+            target_voice_name=_target_voice_display_name(characters=voice_characters),
             json_reminder=format_reminder(resolved_format),
             locale=resolved_locale,
-            player_name=player_character if player is not None else "",
+            player_name=resolved_player_name,
             player_character=player,
             self_persona_setting=self_persona_setting,
+            self_persona_name=self_persona_name,
             read_player_speech=bool(read_player_speech and player is not None),
             allow_player_dialogue=allow_player_dialogue,
             primary_character_names=(
@@ -240,7 +352,7 @@ class TemplateGenerator:
             output_contract_patches=tuple(self._get_output_contract_patches()),
             use_effect=use_effect,
             use_cg=use_cg,
-            use_llm_translation=bool(use_llm_translation and not _ui_voice_same_lang()),
+            use_llm_translation=bool(use_llm_translation and not _ui_voice_same_lang(characters=voice_characters)),
             use_cot=use_cot,
             use_choice=use_choice,
             use_narration=use_narration,
@@ -250,6 +362,7 @@ class TemplateGenerator:
             media_selection_mode=(
                 "semantic" if media_selection_mode == "semantic" else "indexed"
             ),
+            include_character_profiles=include_character_profiles,
             output_format_id=resolved_format,
         )
         return DialogTemplateSection().render(context), ""

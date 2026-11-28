@@ -38,6 +38,10 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.api.ttsSpeed": "Speech speed",
   "onboarding.api.unsavedWarning":
     "You haven't saved your API configuration yet. Shinsekai can't respond without an LLM provider. Skip anyway?",
+  "onboarding.api.voiceBundledDescription":
+    "Built-in Qwen3-TTS voice is ready to use; expand to one-click download Genie / GPT-SoVITS for closer character voice likeness.",
+  "onboarding.api.voiceBundledHint":
+    "Built-in Qwen3-TTS is enabled by default and works once your API key is saved. For closer character voice likeness, one-click download the Genie / GPT-SoVITS voice bundle (extraction after download can take a while; keep this page open).",
   "onboarding.api.voiceDescription": "Choose a voice provider and keep a practical speech speed.",
   "onboarding.api.voiceTitle": "Voice",
   "onboarding.backgrounds.description":
@@ -74,17 +78,26 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
     "Everything important is ready. Continue in Templates for character and template selection.",
   "onboarding.complete.openTemplates": "Open templates",
   "onboarding.complete.title": "Ready",
-  "onboarding.plugins.aiDependencyHint":
-    "The visual plugin needs AI dependencies. Installation can take a while during package download and extraction.",
   "onboarding.plugins.browserBody": "Lets tools browse and operate webpages during chat.",
   "onboarding.plugins.browserGuide":
     "After installation, open plugin settings and turn off headless mode when you want to see browser actions.",
   "onboarding.plugins.browserTitle": "Browser plugin",
+  "onboarding.plugins.chatPhoneBody":
+    "Adds a virtual phone for texting, calling, and listening to music with characters, including proactive outreach.",
+  "onboarding.plugins.chatPhoneGuide":
+    "After installation, customize character avatars and phone theme colors in plugin settings.",
+  "onboarding.plugins.chatPhoneTitle": "Doki Chat phone",
   "onboarding.plugins.configReady": "Installed and reloaded. Configuration is ready.",
   "onboarding.plugins.configure": "Configure",
-  "onboarding.plugins.dependencyStep": "Install AI dependencies first, then download plugins.",
+  "onboarding.plugins.dependencyStep":
+    "Download and install the selected plugins along with any required runtime dependencies.",
   "onboarding.plugins.description": "Install common extensions directly from the guide.",
   "onboarding.plugins.empty": "No plugin packages are available right now.",
+  "onboarding.plugins.heartbeatBody":
+    "Lets characters speak up naturally when you are idle, with study supervision, Pomodoro, and proactive prompts.",
+  "onboarding.plugins.heartbeatGuide":
+    "After installation, adjust idle intervals and study supervision options in plugin settings.",
+  "onboarding.plugins.heartbeatTitle": "Heartbeat companion",
   "onboarding.plugins.installDone":
     "Dependencies and selected plugins are installed. Plugins were reloaded and are ready to configure.",
   "onboarding.plugins.installPending":
@@ -92,8 +105,9 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.installSelected": "One-click download",
   "onboarding.plugins.installedNoConfig": "Installed and reloaded. No separate plugin settings are needed.",
   "onboarding.plugins.keywords.browser": "playwright,playwright browser,playwright_browser,browser,浏览器",
+  "onboarding.plugins.keywords.chatPhone": "shinsekai_chat_phone,chat_phone,doki chat,小手机",
+  "onboarding.plugins.keywords.heartbeat": "shinsekai_heartbeat,heartbeat,heartbeat companion,心跳陪伴",
   "onboarding.plugins.keywords.voiceExclude": "asr,whisper,speech,voice,microphone,语音,麦克风",
-  "onboarding.plugins.keywords.visual": "vision,visual,screen,screenshot,image,视觉,屏幕",
   "onboarding.plugins.loading": "Loading plugin catalog",
   "onboarding.plugins.marketplaceHint": "Find more plugins in Plugins > Discover.",
   "onboarding.plugins.noMatch": "No matching market plugin was found yet.",
@@ -105,11 +119,7 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.selectedCount": "{count} selected",
   "onboarding.plugins.title": "Common plugins",
   "onboarding.plugins.uninstalledWarning":
-    "No plugins have been installed yet. Vision and browser features won't be available. Skip anyway?",
-  "onboarding.plugins.visualBody": "Gives the assistant visual understanding for screen and image workflows.",
-  "onboarding.plugins.visualGuide":
-    "After installation, enable active screen recognition in the visual plugin settings.",
-  "onboarding.plugins.visualTitle": "Visual plugin",
+    "No plugins have been installed yet. Heartbeat companion, phone, and browser features won't be available. Skip anyway?",
   "onboarding.finishLabel": "Open templates",
   "onboarding.optionalLabel": "Skippable",
   "onboarding.requiredLabel": "Required",

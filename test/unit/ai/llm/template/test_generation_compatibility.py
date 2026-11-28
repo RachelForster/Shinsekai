@@ -94,3 +94,79 @@ def test_large_sprite_catalog_uses_full_ids_in_the_schema_and_rules(monkeypatch,
     assert PROMPT_CATALOG.translate("dialog.json_full_sprite_head_top", locale=language) in text
     assert PROMPT_CATALOG.translate("dialog.r_full_sprite", locale=language) in text
     assert PROMPT_CATALOG.translate("dialog.r_sprite", locale=language) not in text
+
+
+def test_auto_voice_language_follows_character_prompt_languages(monkeypatch):
+    def run(
+        cast_defs,
+        *,
+        ui_language="zh_CN",
+        player_character="",
+        allow_player_dialogue=True,
+        read_player_speech=False,
+    ):
+        char_map = {
+            name: SimpleNamespace(
+                name=name,
+                sprites=[object()],
+                emotion_tags="",
+                character_setting="Profile",
+                prompt_lang=plang,
+                prompt_text=ptext,
+            )
+            for name, plang, ptext in cast_defs
+        }
+        manager = SimpleNamespace(
+            get_character_by_name=lambda n: char_map.get(n),
+            get_background_by_name=lambda _n: None,
+            config=SimpleNamespace(system_config=SimpleNamespace(ui_language=ui_language, voice_language="auto")),
+        )
+        monkeypatch.setattr(legacy, "config_manager", manager)
+        monkeypatch.setattr(
+            legacy,
+            "_T",
+            lambda key, **kwargs: PROMPT_CATALOG.translate(f"dialog.{key}", locale=ui_language, **kwargs),
+        )
+        monkeypatch.setattr(legacy, "_format_llm_tools_block", lambda: "")
+        text, _ = legacy.TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+            selected_characters=[name for name, _, _ in cast_defs],
+            bg_name="",
+            use_effect=False,
+            use_cg=False,
+            use_llm_translation=True,
+            player_character=player_character,
+            allow_player_dialogue=allow_player_dialogue,
+            read_player_speech=read_player_speech,
+        )
+        return text
+
+    zh_only = run([("寸策", "zh", "")])
+    assert '"translate"' not in zh_only
+
+    ja_only = run([("七海", "ja", "")])
+    assert "该句台词的日语译文" in ja_only
+
+    ko_zh_ui = run([("수진", "ko", "")], ui_language="zh_CN")
+    assert "该句台词的韩语译文" in ko_zh_ui
+
+    ko_en_ui = run([("Sujin", "ko", "")], ui_language="en")
+    assert "Korean translation of the line" in ko_en_ui
+
+    controlled_player_mixed = run(
+        [("寸策", "zh", ""), ("七海", "ja", "")],
+        player_character="七海",
+        allow_player_dialogue=False,
+        read_player_speech=True,
+    )
+    assert "该角色参考语音对应的语言（寸策:中文，七海:日语）" in controlled_player_mixed
+
+    controlled_player_only = run(
+        [("七海", "ja", "")],
+        player_character="七海",
+        allow_player_dialogue=False,
+        read_player_speech=True,
+    )
+    assert "日语译文" in controlled_player_only
+
+    mixed = run([("七海", "ja", ""), ("寸策", "", "今天天气不错")])
+    assert "该角色参考语音对应的语言（七海:日语，寸策:中文）" in mixed

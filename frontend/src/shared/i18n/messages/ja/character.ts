@@ -265,4 +265,9 @@ export const characterJaMessages: Record<CharacterMessageKey, string> = {
   "character.memory.awaken": "呼び覚ます",
   "character.memory.expandDetail": "詳細を表示",
   "character.memory.collapseDetail": "詳細を隠す",
+  "character.renameText.title": "設定・紹介文の名前も更新しますか？",
+  "character.renameText.body":
+    "このキャラクターの設定または紹介文に旧名称「{oldName}」が {count} 件含まれています。「{newName}」に一括置換しますか？",
+  "character.renameText.keepOnly": "名前のみ変更",
+  "character.renameText.replaceAndSave": "置換して改名",
 };

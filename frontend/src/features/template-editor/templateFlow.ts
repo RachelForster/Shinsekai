@@ -6,6 +6,7 @@ import type {
   AppliedUserPromptPreset,
   ChatLaunchPayload,
   ChatSnapshot,
+  DialogFormatOption,
   DialogOutputFormatId,
   InitialOutfitValue,
   MediaSelectionMode,
@@ -19,7 +20,35 @@ import type {
 export const DEFAULT_NEW_OUTPUT_FORMAT: DialogOutputFormatId = "xml_v1";
 export const LEGACY_OUTPUT_FORMAT: DialogOutputFormatId = "json_v1";
 
+export const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
+  { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+  { id: "renpy_v1", label: "Ren'Py Script DSL", builtin: true },
+  { id: "json_v1", label: "JSON", builtin: true },
+];
+
+export function resolveSupportedOutputFormat(
+  candidate: DialogOutputFormatId | null | undefined,
+  dialogFormats: readonly DialogFormatOption[] | undefined,
+  fallback: DialogOutputFormatId = LEGACY_OUTPUT_FORMAT,
+): DialogOutputFormatId {
+  const preferred = candidate || fallback;
+  if (!dialogFormats?.length) {
+    return preferred;
+  }
+  if (dialogFormats.some((item) => item.id === preferred)) {
+    return preferred;
+  }
+  if (dialogFormats.some((item) => item.id === fallback)) {
+    return fallback;
+  }
+  if (dialogFormats.some((item) => item.id === DEFAULT_NEW_OUTPUT_FORMAT)) {
+    return DEFAULT_NEW_OUTPUT_FORMAT;
+  }
+  return dialogFormats[0].id;
+}
+
 export const templateVoiceLanguages = [
+  { labelKey: "system.asr.langAuto", value: "auto" },
   { labelKey: "system.asr.langJa", value: "ja" },
   { labelKey: "system.asr.langEn", value: "en" },
   { labelKey: "system.asr.langZh", value: "zh" },

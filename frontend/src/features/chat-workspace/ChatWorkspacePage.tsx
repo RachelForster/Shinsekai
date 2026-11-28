@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from "react";
-import { ArrowLeft, BookOpen, MessageCircle } from "lucide-react";
+import { ArrowLeft, BookOpen, MessageCircle, ScrollText } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useI18n } from "../../shared/i18n";
 import { Button } from "../../shared/ui/Button";
@@ -25,6 +25,16 @@ const StorySettings = lazy(() =>
     default: StoryConversationSettings,
   })),
 );
+const NovelMode = lazy(() =>
+  import("../novel-theater/NovelTheaterWizardPage").then(({ NovelTheaterWizardPage }) => ({
+    default: NovelTheaterWizardPage,
+  })),
+);
+const NovelSettings = lazy(() =>
+  import("../novel-theater/NovelConversationSettings").then(({ NovelConversationSettings }) => ({
+    default: NovelConversationSettings,
+  })),
+);
 
 export function ChatWorkspacePage() {
   const { t } = useI18n();
@@ -34,13 +44,19 @@ export function ChatWorkspacePage() {
   const conversationId = params.get("conversation") || undefined;
   const configuring =
     params.get("tab") === "new" || Boolean(conversationId) || (!params.has("tab") && params.has("mode"));
-  const mode = params.get("mode") === "story" ? "story" : "normal";
-  const isNormalEditor =
-    configuring &&
-    !(conversationId && (params.get("kind") === "story" || mode === "story")) &&
-    (Boolean(conversationId) || mode === "normal");
+  const modeParam = params.get("mode");
+  const mode = modeParam === "story" ? "story" : modeParam === "novel" ? "novel" : "normal";
+  const urlKind = params.get("kind");
+  const activeKind: "normal" | "story" | "novel" = conversationId
+    ? urlKind === "story"
+      ? "story"
+      : urlKind === "novel"
+        ? "novel"
+        : mode
+    : mode;
+  const isNormalEditor = configuring && activeKind === "normal";
   const [creating, setCreating] = useState(false);
-  const [kind, setKind] = useState<"normal" | "story">("normal");
+  const [kind, setKind] = useState<"normal" | "story" | "novel">("normal");
   const [draftTitle, setDraftTitle] = useState("");
   const [title, setTitle] = useState("");
   const [draftKey, setDraftKey] = useState(0);
@@ -53,9 +69,7 @@ export function ChatWorkspacePage() {
             <Button variant="ghost" icon={<ArrowLeft aria-hidden className="button__icon" />} onClick={back}>
               {t("conversation.workspace")}
             </Button>
-            <ConversationTypeBadge
-              kind={conversationId ? (params.get("kind") === "story" ? "story" : "normal") : mode}
-            />
+            <ConversationTypeBadge kind={activeKind} />
             {conversationId ? (
               <h1 className="conversation-setup__title">{t("conversation.settings")}</h1>
             ) : (
@@ -71,9 +85,11 @@ export function ChatWorkspacePage() {
             )}
           </header>
           <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
-            {conversationId && (params.get("kind") === "story" || mode === "story") ? (
+            {conversationId && activeKind === "story" ? (
               <StorySettings key={conversationId} conversationId={conversationId} />
-            ) : conversationId || mode === "normal" ? (
+            ) : conversationId && activeKind === "novel" ? (
+              <NovelSettings key={conversationId} conversationId={conversationId} />
+            ) : conversationId || activeKind === "normal" ? (
               <NormalMode
                 key={conversationId || draftKey}
                 createOnly={!conversationId}
@@ -82,6 +98,14 @@ export function ChatWorkspacePage() {
                 initializationService={conversationId ? undefined : initialization}
                 onLaunchStarted={conversationId ? undefined : back}
                 onApplied={conversationId ? undefined : mobileAccess.openChat}
+              />
+            ) : activeKind === "novel" ? (
+              <NovelMode
+                key={draftKey}
+                conversationTitle={title}
+                initializationService={initialization}
+                onLaunchStarted={back}
+                onLaunched={mobileAccess.openChat}
               />
             ) : (
               <StoryMode key={draftKey} conversationTitle={title} />
@@ -156,6 +180,11 @@ export function ChatWorkspacePage() {
                 icon: <BookOpen aria-hidden className="segmented-radio__icon" />,
                 label: t("conversation.story"),
                 value: "story",
+              },
+              {
+                icon: <ScrollText aria-hidden className="segmented-radio__icon" />,
+                label: t("conversation.novel"),
+                value: "novel",
               },
             ]}
             value={kind}

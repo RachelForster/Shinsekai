@@ -44,4 +44,47 @@ describe("AdapterExtraForm", () => {
     expect(screen.getByRole("checkbox")).not.toBeChecked();
     expect(screen.getByRole("combobox")).toBeDisabled();
   });
+
+  it("translates known labelKey entries across locales and falls back to label otherwise", () => {
+    const schema = {
+      base_url: {
+        default: "https://api.fish.audio",
+        label: "Fallback URL",
+        labelKey: "ops.api.tts.fishAudio.extra.baseUrl",
+      },
+      enable_inline_tags: {
+        default: true,
+        label: "Fallback Inline",
+        labelKey: "ops.api.tts.fishAudio.extra.enableInlineTags",
+        type: "bool",
+      },
+      enable_voice_instruction: {
+        default: false,
+        label: "Fallback Instruct",
+        labelKey: "ops.api.tts.qwen3Gguf.extra.enableVoiceInstruction",
+        type: "bool",
+      },
+      custom: { default: "", label: "Plugin Custom Option", labelKey: "unknown.plugin.field" },
+    };
+
+    const { rerender } = render(
+      <I18nProvider language="zh_CN">
+        <AdapterExtraForm onChange={vi.fn()} schema={schema} values={{}} />
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText("Fish Audio API / 本地服务地址")).toBeInTheDocument();
+    expect(screen.getByLabelText("启用行内语音标签（如 [laugh]、[soft whisper]）")).toBeInTheDocument();
+    expect(screen.getByLabelText("启用自然语言语音指导（需服务端支持）")).toBeInTheDocument();
+    expect(screen.getByLabelText("Plugin Custom Option")).toBeInTheDocument();
+
+    rerender(
+      <I18nProvider language="ja">
+        <AdapterExtraForm onChange={vi.fn()} schema={schema} values={{}} />
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText("Fish Audio API / ローカルサーバー URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("インライン音声タグを有効化（例: [laugh]、[soft whisper]）")).toBeInTheDocument();
+    expect(screen.getByLabelText("自然言語による発話指示を有効化（サーバー対応が必要）")).toBeInTheDocument();
+    expect(screen.getByLabelText("Plugin Custom Option")).toBeInTheDocument();
+  });
 });

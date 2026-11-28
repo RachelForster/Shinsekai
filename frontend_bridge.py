@@ -137,6 +137,12 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         shutdown_perception_local_server()
     except Exception as exc:
         _restart_debug_log(f"bridge perception local server shutdown failed reason={reason} error={exc}")
+    try:
+        from sdk.process_guard import get_process_registry
+
+        get_process_registry().shutdown_host_all(timeout=3.0)
+    except Exception as exc:
+        _restart_debug_log(f"bridge managed process shutdown failed reason={reason} error={exc}")
 
     with _bridge_state_lock:
         state = _bridge_state
@@ -306,10 +312,20 @@ def _prepare_project_root(raw_path: str, source: str) -> Path:
             except OSError as exc:
                 probe_errors.append(f"close: {exc}")
         if owned_probe:
-            try:
-                probe.unlink()
-            except OSError as exc:
-                probe_errors.append(f"cleanup: {exc}")
+            for attempt in range(3):
+                try:
+                    probe.unlink()
+                    break
+                except FileNotFoundError:
+                    break
+                except PermissionError as exc:
+                    if attempt < 2:
+                        time.sleep(0.05)
+                        continue
+                    probe_errors.append(f"cleanup: {exc}")
+                except OSError as exc:
+                    probe_errors.append(f"cleanup: {exc}")
+                    break
     if probe_errors:
         raise RuntimeError(
             f"{source} project root is not safely writable: {root}: {'; '.join(probe_errors)}"
@@ -352,12 +368,33 @@ def _start_plugin_loader(state, logger) -> None:
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
             from core.media.avatar.registry import configure_registered_formats
-            from core.messaging.formats.registry import configure_registered_dialog_formats
-            from ai.asr.asr_manager import ASRAdapterFactory
-            from ai.llm.llm_manager import LLMAdapterFactory
+            from ai.llm.formats import (
+                configure_builtin_dialog_formats,
+                configure_registered_dialog_formats,
+            )
+            from ai.asr.registry import (
+                configure_builtin_asr_adapters,
+                configure_registered_asr_adapters,
+            )
+            from ai.llm.registry import (
+                configure_builtin_llm_adapters,
+                configure_registered_llm_adapters,
+            )
             from ai.tools.tool_manager import ToolManager
-            from ai.t2i.t2i_manager import T2IAdapterFactory
-            from ai.tts.tts_manager import TTSAdapterFactory
+            from ai.t2i.registry import (
+                configure_builtin_t2i_adapters,
+                configure_registered_t2i_adapters,
+            )
+            from ai.tts.registry import (
+                configure_builtin_tts_adapters,
+                configure_registered_tts_adapters,
+            )
+
+            configure_builtin_llm_adapters()
+            configure_builtin_tts_adapters()
+            configure_builtin_asr_adapters()
+            configure_builtin_t2i_adapters()
+            configure_builtin_dialog_formats()
 
             def register_mcp_tools(tool_manager) -> None:
                 from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
@@ -374,10 +411,10 @@ def _start_plugin_loader(state, logger) -> None:
             ensure_plugins_loaded(
                 state.config_manager,
                 runtime_bindings=PluginRuntimeBindings(
-                    llm_adapters=LLMAdapterFactory._adapters,
-                    tts_adapters=TTSAdapterFactory._adapters,
-                    asr_adapters=ASRAdapterFactory._adapters,
-                    t2i_adapters=T2IAdapterFactory._adapters,
+                    configure_llm_adapters=configure_registered_llm_adapters,
+                    configure_tts_adapters=configure_registered_tts_adapters,
+                    configure_asr_adapters=configure_registered_asr_adapters,
+                    configure_t2i_adapters=configure_registered_t2i_adapters,
                     create_tool_manager=ToolManager,
                     configure_vision_fallbacks=configure_registered_fallbacks,
                     configure_avatar_formats=configure_registered_formats,
@@ -446,6 +483,13 @@ def run(
         app_root,
     )
     resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
+    from core.storage.layout import StorageLayout
+    from sdk.process_guard import get_process_registry
+
+    get_process_registry().activate_host(
+        StorageLayout.from_env(resolved_project_root).runtime_dir
+        / f"managed_processes_{os.getpid()}.jsonl"
+    )
     from sdk.logging import configure_logging, get_logger
 
     configure_logging("frontend-bridge", project_root=Path(resolved_project_root))
@@ -483,7 +527,7 @@ def run(
 
     from core.media.avatar.registry import configure_builtin_formats
     configure_builtin_formats()
-    from core.messaging.formats.registry import configure_builtin_dialog_formats
+    from ai.llm.formats import configure_builtin_dialog_formats
     configure_builtin_dialog_formats()
     state = BridgeState(
         config_manager=config_manager,

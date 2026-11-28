@@ -241,8 +241,10 @@ def test_five_step_startup_auto_migration_rename_fk_and_idempotency(tmp_path: Pa
     try:
         # 1) Migrated SQLite catalogs and order/IDs
         chars = stores.characters.list_catalog()
-        assert [c.name for c in chars] == ["自设", "Alice", "澪"]
+        assert [c.name for c in chars] == ["主人公", "Alice", "澪"]
         assert chars[0].id == SELF_PERSONA_ID
+        assert chars[0].display_name == ""
+        assert stores.characters.get_by_name("自设") == chars[0]
         alice, mio = chars[1], chars[2]
         assert alice.portrait_sprite_index == 2
         assert alice.sprites[0].path == "data/sprite/alice/smile.png"

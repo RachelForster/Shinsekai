@@ -1,40 +1,39 @@
 use std::{
     env,
-    ffi::OsString,
-    io::{Read, Write},
+    fs::{File, OpenOptions},
+    io::{Read, Seek, SeekFrom, Write},
     net::{SocketAddr, TcpListener, TcpStream},
-    path::Path,
-    process::{Child, Command},
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
     sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
 
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use crate::{
+    bridge_restart::stop_bridge_child_process,
+    process_guard::{assign_child_to_job, ChildProcessJob},
     runtime,
-    state::{
-        restart_debug_log, restart_debug_log_path, DesktopResult, DesktopState, BRIDGE_HOST,
-        DEFAULT_BRIDGE_PORT,
-    },
+    state::{restart_debug_log, restart_debug_log_path, DesktopResult, DesktopState, BRIDGE_HOST, DEFAULT_BRIDGE_PORT},
 };
 
-const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
-const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+pub(crate) use crate::bridge_restart::{request_bridge_chat_close, shutdown_desktop_app};
+#[cfg(test)]
+pub(crate) use crate::bridge_restart::{
+    send_bridge_agent_close, send_bridge_chat_close, send_bridge_runtime_shutdown,
+};
 
-#[cfg(unix)]
-unsafe extern "C" {
-    fn setsid() -> i32;
-}
+const BRIDGE_STDERR_TAIL_BYTES: usize = 4096;
+const BRIDGE_STDERR_SUMMARY_MAX_CHARS: usize = 240;
 
 pub(crate) struct BridgeProcess {
     child: Mutex<Option<Child>>,
+    job: Mutex<Option<ChildProcessJob>>,
     pub(crate) candidate_id: Option<String>,
     bridge_port: u16,
     auth_token: String,
@@ -43,12 +42,14 @@ pub(crate) struct BridgeProcess {
 impl BridgeProcess {
     fn new(
         child: Child,
+        job: Option<ChildProcessJob>,
         candidate_id: Option<String>,
         bridge_port: u16,
         auth_token: String,
     ) -> Self {
         Self {
             child: Mutex::new(Some(child)),
+            job: Mutex::new(job),
             candidate_id,
             bridge_port,
             auth_token,
@@ -57,77 +58,12 @@ impl BridgeProcess {
 
     pub(crate) fn stop(&self) {
         if let Ok(mut child) = self.child.lock() {
-            if let Some(mut child) = child.take() {
-                restart_debug_log(format!("bridge stop requested child_pid={}", child.id()));
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        restart_debug_log(format!(
-                            "bridge stop skipped; child already exited status={status}"
-                        ));
-                        return;
-                    }
-                    Ok(None) => {}
-                    Err(error) => {
-                        restart_debug_log(format!(
-                            "bridge stop initial status failed error={error}"
-                        ));
-                    }
-                }
-                match send_bridge_agent_close(self.bridge_port, &self.auth_token) {
-                    Ok(()) => restart_debug_log("bridge stop closed Agent runtime"),
-                    Err(error) => {
-                        restart_debug_log(format!("bridge stop Agent close failed error={error}"))
-                    }
-                }
-                match send_bridge_chat_close(self.bridge_port, &self.auth_token) {
-                    Ok(()) => restart_debug_log(format!(
-                        "bridge stop closed active chat port={}",
-                        self.bridge_port
-                    )),
-                    Err(error) => restart_debug_log(format!(
-                        "bridge stop chat close failed port={} error={error}",
-                        self.bridge_port
-                    )),
-                }
-                let mut forced_kill_sent = match request_bridge_child_stop(&mut child) {
-                    Ok(forced) => forced,
-                    Err(error) => {
-                        restart_debug_log(format!("bridge stop terminate failed error={error}"));
-                        false
-                    }
-                };
-                let graceful_deadline = Instant::now() + Duration::from_secs(1);
-                let started = Instant::now();
-                loop {
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            restart_debug_log(format!("bridge stop completed status={status}"));
-                            break;
-                        }
-                        Ok(None) if !forced_kill_sent && Instant::now() >= graceful_deadline => {
-                            if let Err(error) = child.kill() {
-                                restart_debug_log(format!("bridge stop kill failed error={error}"));
-                            }
-                            forced_kill_sent = true;
-                        }
-                        Ok(None) if started.elapsed() < BRIDGE_STOP_TIMEOUT => {
-                            thread::sleep(Duration::from_millis(50));
-                        }
-                        Ok(None) => {
-                            restart_debug_log(format!(
-                                "bridge stop timed out child_pid={} elapsed_ms={}",
-                                child.id(),
-                                started.elapsed().as_millis()
-                            ));
-                            break;
-                        }
-                        Err(error) => {
-                            restart_debug_log(format!("bridge stop wait failed error={error}"));
-                            break;
-                        }
-                    }
-                }
+            if let Some(child) = child.take() {
+                stop_bridge_child_process(child, self.bridge_port, &self.auth_token);
             }
+        }
+        if let Ok(mut job) = self.job.lock() {
+            let _ = job.take();
         }
     }
 }
@@ -138,24 +74,9 @@ impl Drop for BridgeProcess {
     }
 }
 
-#[cfg(unix)]
-fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
-    let result = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
-    if result == 0 {
-        Ok(false)
-    } else {
-        Err(std::io::Error::last_os_error().to_string())
-    }
-}
-
-#[cfg(windows)]
-fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
-    child.kill().map_err(|error| error.to_string())?;
-    Ok(true)
-}
-
 struct BridgeLaunch {
     child: Child,
+    job: Option<ChildProcessJob>,
 }
 
 #[tauri::command]
@@ -164,7 +85,7 @@ pub(crate) fn desktop_app_restart(
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
     restart_debug_log("desktop_app_restart command received");
-    restart_desktop_app(&app, &state)
+    crate::bridge_restart::restart_desktop_app(&app, &state)
 }
 
 pub(crate) fn start_bridge_for_state(
@@ -193,6 +114,7 @@ pub(crate) fn start_bridge_for_state(
     )?;
     let mut child = Some(BridgeProcess::new(
         bridge.child,
+        bridge.job,
         candidate_id.clone(),
         state.bridge_port,
         state.bridge_auth_token.clone(),
@@ -263,6 +185,10 @@ fn spawn_bridge(
         }
     }
 
+    let stderr_log_path = (!crate::state::show_backend_console())
+        .then(|| prepare_bridge_stderr_log(&mut command))
+        .flatten();
+
     let mut child = command.spawn().map_err(|error| {
         restart_debug_log(format!("spawn_bridge failed error={error}"));
         format!(
@@ -271,14 +197,21 @@ fn spawn_bridge(
         )
     })?;
     restart_debug_log(format!("spawn_bridge child_pid={}", child.id()));
+    let job = match assign_child_to_job(&child) {
+        Ok(job) => Some(job),
+        Err(error) => {
+            restart_debug_log(format!("spawn_bridge assign_child_to_job failed error={error}"));
+            None
+        }
+    };
 
-    wait_for_bridge(&mut child, port)?;
+    wait_for_bridge(&mut child, port, stderr_log_path.as_deref())?;
     restart_debug_log(format!(
         "spawn_bridge health ready child_pid={} port={}",
         child.id(),
         port
     ));
-    Ok(BridgeLaunch { child })
+    Ok(BridgeLaunch { child, job })
 }
 
 fn sanitize_python_environment(command: &mut Command) {
@@ -287,6 +220,21 @@ fn sanitize_python_environment(command: &mut Command) {
     if env::var_os("APPIMAGE").is_some() || env::var_os("APPDIR").is_some() {
         command.env_remove("LD_LIBRARY_PATH");
     }
+}
+
+pub(crate) fn port_pair_available(port: u16) -> bool {
+    let Some(ws_port) = port.checked_add(1) else {
+        return false;
+    };
+    let Ok(http_listener) = TcpListener::bind((BRIDGE_HOST, port)) else {
+        return false;
+    };
+    TcpListener::bind((BRIDGE_HOST, ws_port))
+        .map(|ws_listener| {
+            drop(ws_listener);
+            drop(http_listener);
+        })
+        .is_ok()
 }
 
 pub(crate) fn choose_bridge_port() -> DesktopResult<u16> {
@@ -298,22 +246,103 @@ pub(crate) fn choose_bridge_port() -> DesktopResult<u16> {
         return Ok(port);
     }
 
-    if TcpListener::bind((BRIDGE_HOST, DEFAULT_BRIDGE_PORT)).is_ok() {
+    if port_pair_available(DEFAULT_BRIDGE_PORT) {
         restart_debug_log(format!(
             "choose_bridge_port default port={DEFAULT_BRIDGE_PORT}"
         ));
         return Ok(DEFAULT_BRIDGE_PORT);
     }
 
-    let listener = TcpListener::bind((BRIDGE_HOST, 0))?;
-    let port = listener.local_addr()?.port();
+    let mut fallback_port = None;
+    for _ in 0..8 {
+        let listener = TcpListener::bind((BRIDGE_HOST, 0))?;
+        let candidate = listener.local_addr()?.port();
+        drop(listener);
+        if candidate
+            .checked_add(1)
+            .is_some_and(|ws_port| TcpListener::bind((BRIDGE_HOST, ws_port)).is_ok())
+        {
+            restart_debug_log(format!(
+                "choose_bridge_port default_busy paired_fallback_port={candidate}"
+            ));
+            return Ok(candidate);
+        }
+        fallback_port = Some(candidate);
+    }
+
+    let port = fallback_port.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AddrNotAvailable,
+            "no bridge port available",
+        )
+    })?;
     restart_debug_log(format!(
         "choose_bridge_port default_busy fallback_port={port}"
     ));
     Ok(port)
 }
 
-fn wait_for_bridge(child: &mut Child, port: u16) -> DesktopResult<()> {
+fn bridge_stderr_log_path() -> PathBuf {
+    env::temp_dir().join(format!("shinsekai-bridge-stderr-{}.log", std::process::id()))
+}
+
+fn prepare_bridge_stderr_log(command: &mut Command) -> Option<PathBuf> {
+    let path = bridge_stderr_log_path();
+    match OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&path)
+    {
+        Ok(file) => {
+            command.stderr(Stdio::from(file));
+            Some(path)
+        }
+        Err(error) => {
+            restart_debug_log(format!(
+                "spawn_bridge stderr log open failed path={} error={error}",
+                path.display()
+            ));
+            None
+        }
+    }
+}
+
+fn read_bridge_stderr_tail(path: &Path) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = len.saturating_sub(BRIDGE_STDERR_TAIL_BYTES as u64);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+pub(crate) fn summarize_bridge_stderr(stderr_text: &str) -> Option<String> {
+    let line = stderr_text
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+    let mut chars = line.chars();
+    let truncated: String = chars
+        .by_ref()
+        .take(BRIDGE_STDERR_SUMMARY_MAX_CHARS)
+        .collect();
+    Some(if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    })
+}
+
+fn wait_for_bridge(
+    child: &mut Child,
+    port: u16,
+    stderr_log_path: Option<&Path>,
+) -> DesktopResult<()> {
     let addr: SocketAddr = format!("{BRIDGE_HOST}:{port}").parse()?;
     let started = Instant::now();
     let timeout = Duration::from_secs(45);
@@ -324,11 +353,28 @@ fn wait_for_bridge(child: &mut Child, port: u16) -> DesktopResult<()> {
 
     while started.elapsed() < timeout {
         if let Some(status) = child.try_wait()? {
-            restart_debug_log(format!(
-                "wait_for_bridge child exited before ready child_pid={} status={status}",
-                child.id()
-            ));
-            return Err(format!("Python bridge exited before startup completed: {status}").into());
+            let stderr_tail = stderr_log_path.and_then(read_bridge_stderr_tail);
+            if let Some(tail) = &stderr_tail {
+                restart_debug_log(format!(
+                    "wait_for_bridge child exited before ready child_pid={} status={status} stderr={tail}",
+                    child.id()
+                ));
+            } else {
+                restart_debug_log(format!(
+                    "wait_for_bridge child exited before ready child_pid={} status={status}",
+                    child.id()
+                ));
+            }
+            let summary = stderr_tail
+                .as_deref()
+                .and_then(summarize_bridge_stderr);
+            let message = match summary {
+                Some(summary) => {
+                    format!("Python bridge exited before startup completed: {status} ({summary})")
+                }
+                None => format!("Python bridge exited before startup completed: {status}"),
+            };
+            return Err(message.into());
         }
 
         if bridge_health_ok(&addr) {
@@ -367,233 +413,4 @@ fn bridge_health_ok(addr: &SocketAddr) -> bool {
         return false;
     }
     response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200")
-}
-
-pub(crate) fn request_bridge_chat_close(state: &DesktopState, reason: &str) {
-    if !state.has_bridge() {
-        restart_debug_log(format!(
-            "request_bridge_chat_close skipped reason={reason} bridge_running=false"
-        ));
-        return;
-    }
-    match send_bridge_chat_close(state.bridge_port, &state.bridge_auth_token) {
-        Ok(()) => restart_debug_log(format!(
-            "request_bridge_chat_close dispatched reason={reason} port={}",
-            state.bridge_port
-        )),
-        Err(error) => restart_debug_log(format!(
-            "request_bridge_chat_close failed reason={reason} port={} error={error}",
-            state.bridge_port
-        )),
-    }
-}
-
-pub(crate) fn send_bridge_chat_close(port: u16, auth_token: &str) -> Result<(), String> {
-    send_bridge_close_request(
-        port,
-        auth_token,
-        "/api/chat/close",
-        BRIDGE_CHAT_CLOSE_TIMEOUT,
-    )
-}
-
-pub(crate) fn send_bridge_agent_close(port: u16, auth_token: &str) -> Result<(), String> {
-    send_bridge_close_request(
-        port,
-        auth_token,
-        "/api/agent/runtime/stop",
-        Duration::from_secs(7),
-    )
-}
-
-fn send_bridge_close_request(
-    port: u16,
-    auth_token: &str,
-    path: &str,
-    timeout: Duration,
-) -> Result<(), String> {
-    let addr: SocketAddr = format!("{BRIDGE_HOST}:{port}")
-        .parse::<SocketAddr>()
-        .map_err(|error| error.to_string())?;
-    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(200))
-        .map_err(|error| error.to_string())?;
-    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
-    let _ = stream.set_read_timeout(Some(timeout));
-    let request = format!(
-        "POST {path} HTTP/1.1\r\nHost: {BRIDGE_HOST}\r\nContent-Type: application/json\r\nX-Shinsekai-Bridge-Token: {auth_token}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
-    );
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|error| error.to_string())?;
-    stream.flush().map_err(|error| error.to_string())?;
-
-    let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .map_err(|error| error.to_string())?;
-    if response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200") {
-        return Ok(());
-    }
-    if response.is_empty() {
-        return Err("bridge closed connection before responding".to_string());
-    }
-    let status_line = response.lines().next().unwrap_or_default();
-    Err(format!("unexpected bridge response: {status_line}"))
-}
-
-pub(crate) fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), String> {
-    let env = app.env();
-    let exe = tauri::process::current_binary(&env).map_err(|error| error.to_string())?;
-    let args = env.args_os.iter().skip(1).cloned().collect::<Vec<_>>();
-    restart_debug_log(format!(
-        "restart begin exe={} args_count={} bridge_port={}",
-        exe.display(),
-        args.len(),
-        state.bridge_port
-    ));
-    spawn_delayed_restart(&exe, &args, std::process::id(), state.bridge_port)?;
-    restart_debug_log("restart helper spawned; hiding and destroying main window");
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
-        let _ = window.destroy();
-    }
-    if let Some(bridge) = state.take_bridge() {
-        restart_debug_log("restart stopping bridge before app exit");
-        bridge.stop();
-    }
-    restart_debug_log("restart requested app.exit(0)");
-    app.exit(0);
-    Ok(())
-}
-
-pub(crate) fn shutdown_desktop_app(app: &AppHandle, state: &DesktopState, reason: &str) {
-    restart_debug_log(format!("shutdown requested reason={reason}"));
-    if let Some(bridge) = state.take_bridge() {
-        restart_debug_log("shutdown stopping bridge");
-        bridge.stop();
-    } else {
-        restart_debug_log("shutdown no bridge to stop");
-    }
-    restart_debug_log("shutdown requested app.exit(0)");
-    app.exit(0);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn spawn_delayed_restart(
-    exe: &Path,
-    args: &[OsString],
-    pid: u32,
-    _port: u16,
-) -> Result<(), String> {
-    let log_path = restart_debug_log_path();
-    restart_debug_log(format!(
-        "spawn_delayed_restart posix exe={} parent_pid={} port={} log={}",
-        exe.display(),
-        pid,
-        _port,
-        log_path.display()
-    ));
-    let mut command = Command::new("sh");
-    command
-        .arg("-c")
-        .arg(
-            r#"log="$3"; log_line() { printf 'ts=%s pid=%s component=restart-helper %s\n' "$(date +%s.%3N)" "$$" "$1" >> "$log"; }; log_line "waiting parent=$1 exe=$2"; while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; log_line "parent exited; sleeping before relaunch"; sleep 0.8; exe="$2"; shift 3; log_line "launch exe=$exe cwd=$(pwd) args=$*"; "$exe" "$@" >> "$log" 2>&1 & child=$!; log_line "launched child_pid=$child"; sleep 0.2; if kill -0 "$child" 2>/dev/null; then log_line "relaunch child alive; helper exiting"; exit 0; fi; wait "$child"; status=$?; log_line "relaunch child exited early status=$status"; exit "$status""#,
-        )
-        .arg("shinsekai-restart")
-        .arg(pid.to_string())
-        .arg(exe)
-        .arg(log_path)
-        .args(args);
-    #[cfg(unix)]
-    unsafe {
-        command.pre_exec(|| {
-            if setsid() == -1 {
-                Err(std::io::Error::last_os_error())
-            } else {
-                Ok(())
-            }
-        });
-    }
-    if let Ok(cwd) = env::current_dir() {
-        command.current_dir(cwd);
-    }
-    match command.spawn() {
-        Ok(child) => {
-            restart_debug_log(format!(
-                "spawn_delayed_restart posix spawned helper_pid={}",
-                child.id()
-            ));
-            Ok(())
-        }
-        Err(error) => {
-            restart_debug_log(format!("spawn_delayed_restart posix failed error={error}"));
-            Err(error.to_string())
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn spawn_delayed_restart(
-    exe: &Path,
-    args: &[OsString],
-    pid: u32,
-    _port: u16,
-) -> Result<(), String> {
-    let log_path = restart_debug_log_path();
-    restart_debug_log(format!(
-        "spawn_delayed_restart windows exe={} parent_pid={} port={} log={}",
-        exe.display(),
-        pid,
-        _port,
-        log_path.display()
-    ));
-    let script = r#"
-$parentProcessId = [int]$args[0]
-$exe = $args[1]
-$log = $args[2]
-$argv = @()
-function Write-RestartLog([string]$Message) {
-  $ts = [DateTimeOffset]::Now.ToUnixTimeMilliseconds()
-  Add-Content -Path $log -Value "ts=$ts pid=$PID component=restart-helper $Message"
-}
-Write-RestartLog "waiting parent=$parentProcessId exe=$exe"
-if ($args.Length -gt 3) {
-  $argv = $args[3..($args.Length - 1)]
-}
-try { Wait-Process -Id $parentProcessId -ErrorAction SilentlyContinue } catch {}
-Write-RestartLog "parent exited; sleeping before relaunch"
-Start-Sleep -Milliseconds 800
-Write-RestartLog "start-process exe=$exe args=$($argv -join ' ')"
-Start-Process -FilePath $exe -ArgumentList $argv
-"#;
-    let mut command = Command::new("powershell");
-    command
-        .arg("-NoProfile")
-        .arg("-WindowStyle")
-        .arg("Hidden")
-        .arg("-Command")
-        .arg(script)
-        .arg(pid.to_string())
-        .arg(exe)
-        .arg(log_path)
-        .args(args);
-    command.creation_flags(0x0000_0008 | 0x0000_0200 | 0x0800_0000);
-    if let Ok(cwd) = env::current_dir() {
-        command.current_dir(cwd);
-    }
-    match command.spawn() {
-        Ok(child) => {
-            restart_debug_log(format!(
-                "spawn_delayed_restart windows spawned helper_pid={}",
-                child.id()
-            ));
-            Ok(())
-        }
-        Err(error) => {
-            restart_debug_log(format!(
-                "spawn_delayed_restart windows failed error={error}"
-            ));
-            Err(error.to_string())
-        }
-    }
 }
