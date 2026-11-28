@@ -1,14 +1,20 @@
 """Persist per-dialog presentation checkpoints and derived replay audio."""
 from __future__ import annotations
 
-import copy
 import json
 import os
 import re
 import tempfile
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from application.chat.stage_events import (
+    REPLAY_OBSERVED_EVENTS,
+    fold_event_into_snapshot,
+    make_empty_chat_snapshot,
+    project_replay_frame,
+)
 from core.chat_history.storage import chat_history_session_dir
 from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
 from core.chat_history.text import parse_assistant_dialog_content
@@ -116,17 +122,15 @@ class ReplayStore:
 
 class ReplayRecorder:
     """Observe resolved stage output; never re-run media selection on playback."""
+
     def __init__(self, store):
         self.store = store
-        self.frame = {
-            "backgroundPath": "",
-            "bgmPath": "",
-            "cgPath": "",
-            "ambientEffects": [],
-            "sprites": [],
-            "stats": [],
-        }
+        self._snapshot = make_empty_chat_snapshot()
         self.message = None
+
+    @property
+    def frame(self) -> dict[str, Any]:
+        return project_replay_frame(self._snapshot)
 
     def record_message(self, message):
         if message.dialog_id and message.text:
@@ -134,83 +138,13 @@ class ReplayRecorder:
             self.message = (message.dialog_id, message.model_dump(exclude={"audio_path", "voice_id"}))
 
     def observe(self, event):
-        kind = event.get("type")
-        if kind == "background.change":
-            if self.frame["backgroundPath"] != event.get("url", ""):
-                self.frame["sprites"] = []
-            self.frame["backgroundPath"] = event.get("url", "")
-        elif kind == "bgm.change":
-            self.frame["bgmPath"] = event.get("url", "")
-        elif kind in {"cg.show", "cg.hide"}:
-            self.frame["cgPath"] = event.get("url", "") if kind == "cg.show" else ""
-        elif kind == "ambient.start":
-            key = str(event.get("key") or "")
-            if key:
-                current = [
-                    dict(item)
-                    for item in (self.frame.get("ambientEffects") or [])
-                    if isinstance(item, dict) and str(item.get("key") or "") != key
-                ]
-                current.append(
-                    {
-                        "key": key,
-                        "url": str(event.get("url") or ""),
-                        "audioUrl": str(event.get("audioUrl") or ""),
-                        "layer": "front" if event.get("layer") == "front" else "back",
-                        "seq": int(event.get("seq") or 0),
-                    }
-                )
-                self.frame["ambientEffects"] = current[-32:]
-        elif kind == "ambient.layer":
-            key = str(event.get("key") or "")
-            layer = "front" if event.get("layer") == "front" else "back"
-            audio_url = str(event.get("audioUrl") or "")
-            self.frame["ambientEffects"] = [
-                {
-                    **dict(item),
-                    "layer": layer,
-                    **({"audioUrl": audio_url} if audio_url else {}),
-                }
-                if isinstance(item, dict) and str(item.get("key") or "") == key
-                else dict(item)
-                for item in (self.frame.get("ambientEffects") or [])
-                if isinstance(item, dict)
-            ]
-        elif kind == "ambient.stop":
-            key = str(event.get("key") or "")
-            self.frame["ambientEffects"] = [
-                dict(item)
-                for item in (self.frame.get("ambientEffects") or [])
-                if isinstance(item, dict) and str(item.get("key") or "") != key
-            ]
-        elif kind == "ambient.stop-all":
-            self.frame["ambientEffects"] = []
-        elif kind == "sprite.show":
-            sprite = {k: v for k, v in event.items() if k != "type"}
-            sprite["id"] = str(event.get("characterName") or event.get("slot", 0))
-            sprite["label"] = str(event.get("characterName") or "")
-            sprite["path"] = sprite.pop("url", "")
-            sprite["applyMode"] = "restore"
-            sprite.pop("transitions", None)
-            self.frame["sprites"] = [s for s in self.frame["sprites"]
-                                     if s.get("slot") != sprite.get("slot") and s["id"] != sprite["id"]] + [sprite]
-        elif kind == "sprites.clear":
-            self.frame["sprites"] = []
-        elif kind == "sprite.remove":
-            name = event.get("characterName")
-            self.frame["sprites"] = [sprite for sprite in self.frame["sprites"] if sprite["label"] != name]
-        elif kind == "stats.update":
-            self.frame["stats"] = event.get("stats", [])
-        elif kind == "player.portrait.show":
-            self.frame["playerPortrait"] = {
-                "characterName": event.get("characterName", ""),
-                "url": event.get("url", ""),
-                "crop": event.get("crop"),
-            }
+        kind = str(event.get("type") or "")
+        if kind in REPLAY_OBSERVED_EVENTS:
+            self._snapshot = fold_event_into_snapshot(self._snapshot, event)
         elif kind == "dialog.end":
             match = re.search(r"data-dialog-id=['\"]([0-9a-f]{64})['\"]", event.get("fullHtml", ""))
             if match:
-                frame = copy.deepcopy(self.frame)
+                frame = project_replay_frame(self._snapshot)
                 if self.message and self.message[0] == match[1]:
                     frame["message"] = self.message[1]
                     self.message = None

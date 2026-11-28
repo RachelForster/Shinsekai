@@ -10,6 +10,7 @@ and edit/restart use cases remain at the package root.
 | `runtime/` | Child-process bootstrap, initialization, command execution and turn/stream wiring |
 | `history/` | Shared history paths, state, branches and template-to-history session records |
 | `presentation/` | Initial assets, restoration, presentation updates and output handlers |
+| `stage_events/` | Stage event registry, snapshot folding and replay checkpoint projection |
 | `dialog_media/` | Existing media resolution, lookup, generation and replay |
 | `export_vn/` | Playable HTML/CSS/JS visual novel export orchestration, selection validation, theme metadata and asset/voice resolution |
 
