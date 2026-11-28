@@ -20,6 +20,8 @@ export const inputPerceptionHandlers: Pick<StageEventHandlerMap, InputPerception
       inputDraft: event.text,
       status: "listening",
     }),
+  // Note: chatStageReducer intentionally promotes asr.final into submitUserMessageState
+  // (preserving optimisticSubmission.previous), whereas backend snapshots fold the accepted turn directly.
   "asr.final": (state, event, ctx) =>
     withResolvedLayers({
       ...clearTransientNotificationState(state),

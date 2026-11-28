@@ -98,3 +98,90 @@ def test_project_replay_frame_strips_transitions_and_sets_restore_mode() -> None
     assert projected["sprites"][0]["id"] == "Mio"
     assert projected["sprites"][0]["applyMode"] == "restore"
     assert "transitions" not in projected["sprites"][0]
+
+
+def test_ambient_layer_explicit_empty_audio_url_clears_but_omitted_preserves() -> None:
+    started = fold_event_into_snapshot(
+        make_empty_chat_snapshot(),
+        {
+            "type": "ambient.start",
+            "key": "rain",
+            "url": "/api/media?path=rain.webm",
+            "audioUrl": "/api/media?path=rain.wav",
+            "layer": "back",
+            "seq": 1,
+        },
+    )
+    omitted = fold_event_into_snapshot(
+        started,
+        {"type": "ambient.layer", "key": "rain", "layer": "front", "seq": 2},
+    )
+    assert omitted["ambientEffects"][0]["layer"] == "front"
+    assert omitted["ambientEffects"][0]["audioUrl"] == "/api/media?path=rain.wav"
+
+    cleared = fold_event_into_snapshot(
+        omitted,
+        {"type": "ambient.layer", "key": "rain", "layer": "back", "audioUrl": "", "seq": 3},
+    )
+    assert cleared["ambientEffects"][0]["layer"] == "back"
+    assert cleared["ambientEffects"][0]["audioUrl"] == ""
+
+
+@pytest.mark.parametrize(
+    ("initial_status", "expected_status"),
+    [
+        ("generating", "idle"),
+        ("streaming", "idle"),
+        ("speaking", "idle"),
+        ("paused", "paused"),
+        ("listening", "listening"),
+        ("replaying", "replaying"),
+    ],
+)
+def test_reply_finished_clears_active_reply_statuses_and_preserves_paused_listening(
+    initial_status: str, expected_status: str
+) -> None:
+    snapshot = make_empty_chat_snapshot()
+    snapshot["status"] = initial_status
+    snapshot["activePlayback"] = {"playbackId": "p1"}
+
+    updated = fold_event_into_snapshot(snapshot, {"type": "reply.finished", "seq": 5})
+    assert updated["activePlayback"] is None
+    assert updated["status"] == expected_status
+
+
+def test_story_progress_ignores_events_before_story_state_exists() -> None:
+    snapshot = make_empty_chat_snapshot()
+    updated = fold_event_into_snapshot(
+        snapshot,
+        {
+            "type": "story.node.entered",
+            "payload": {"nodeId": "intro"},
+            "revision": 1,
+            "seq": 4,
+        },
+    )
+    assert "story" not in updated
+
+    with_story = fold_event_into_snapshot(
+        updated,
+        {
+            "type": "story.state.replace",
+            "story": {"currentNodeId": "intro"},
+            "seq": 5,
+        },
+    )
+    progressed = fold_event_into_snapshot(
+        with_story,
+        {
+            "type": "story.node.unlocked",
+            "payload": {"nodeId": "gate"},
+            "revision": 2,
+            "seq": 6,
+        },
+    )
+    assert progressed["story"]["lastEvent"] == {
+        "type": "story.node.unlocked",
+        "payload": {"nodeId": "gate"},
+        "revision": 2,
+    }

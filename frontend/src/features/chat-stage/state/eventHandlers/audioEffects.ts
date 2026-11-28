@@ -127,7 +127,7 @@ export const audioEffectHandlers: Pick<StageEventHandlerMap, AudioEffectEventTyp
           seq: event.seq,
           url: event.url,
         },
-      ],
+      ].slice(-32),
       eventSeq: ctx.eventSeq,
     }),
   "ambient.layer": (state, event, ctx) =>

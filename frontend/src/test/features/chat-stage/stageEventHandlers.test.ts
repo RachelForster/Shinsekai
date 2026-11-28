@@ -171,4 +171,71 @@ describe("stageEventHandlers", () => {
     });
     expect(state.userDisplayName).toBe("Aoi");
   });
+
+  it("retains at most 32 ambient effects on ambient.start", () => {
+    let state = emptyChatState;
+    for (let i = 1; i <= 35; i += 1) {
+      state = applyStageEvent(state, {
+        v: 1,
+        seq: i,
+        ts: i,
+        type: "ambient.start",
+        key: `ambient-${i}`,
+        layer: "back",
+        url: `/api/media?path=ambient-${i}.webm`,
+      });
+    }
+    expect(state.ambientEffects).toHaveLength(32);
+    expect(state.ambientEffects?.[0]?.key).toBe("ambient-4");
+    expect(state.ambientEffects?.[31]?.key).toBe("ambient-35");
+  });
+
+  it.each([
+    ["generating", "idle"],
+    ["streaming", "idle"],
+    ["speaking", "idle"],
+    ["paused", "paused"],
+    ["listening", "listening"],
+  ] as const)("transitions %s -> %s on reply.finished", (initialStatus, expectedStatus) => {
+    const state = applyStageEvent(
+      {
+        ...emptyChatState,
+        status: initialStatus,
+        activePlayback: { characterName: "Mio", playbackId: "p1", seq: 1, url: "v.wav", volume: 1 },
+      },
+      { v: 1, seq: 2, ts: 20, type: "reply.finished" },
+    );
+    expect(state.activePlayback).toBeNull();
+    expect(state.status).toBe(expectedStatus);
+  });
+
+  it("removes sprites and motions matching characterName even when id and label differ", () => {
+    const initial = {
+      ...emptyChatState,
+      sprites: [
+        {
+          id: "Mio:0",
+          label: "Mio (Live)",
+          characterName: "Mio",
+          path: "mio.png",
+          avatarType: "static",
+          modelUrl: "",
+        },
+      ],
+      spriteMotions: {
+        "Mio:0": { durationMs: 500, motion: "nod", seq: 1 },
+        "Mio (Live)": { durationMs: 500, motion: "nod", seq: 1 },
+        Mio: { durationMs: 500, motion: "shake", seq: 2 },
+      },
+    };
+    const next = applyStageEvent(initial, {
+      v: 1,
+      seq: 3,
+      ts: 30,
+      type: "sprite.remove",
+      characterName: "Mio",
+    });
+    expect(next.sprites).toEqual([]);
+    expect(next.spriteMotions).toEqual({});
+  });
 });

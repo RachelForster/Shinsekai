@@ -73,14 +73,17 @@ export const visualHandlers: Pick<StageEventHandlerMap, VisualEventType> = {
     });
   },
   "sprite.remove": (state, event, ctx) => {
-    const remaining = state.sprites.filter(
-      (sprite) => sprite.id !== event.characterName && sprite.label !== event.characterName,
-    );
+    const matchesTarget = (sprite: ChatStageSprite) =>
+      sprite.id === event.characterName ||
+      sprite.label === event.characterName ||
+      sprite.characterName === event.characterName;
+    const remaining = state.sprites.filter((sprite) => !matchesTarget(sprite));
     const removedKeys = new Set<string>([event.characterName]);
     for (const sprite of state.sprites) {
-      if (sprite.id === event.characterName || sprite.label === event.characterName) {
+      if (matchesTarget(sprite)) {
         if (sprite.id) removedKeys.add(sprite.id);
         if (sprite.label) removedKeys.add(sprite.label);
+        if (sprite.characterName) removedKeys.add(sprite.characterName);
       }
     }
     const nextSpriteMotions = { ...state.spriteMotions };
