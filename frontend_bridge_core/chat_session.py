@@ -20,6 +20,7 @@ from application.chat.host.session_lifecycle import ChatSessionLifecycle
 from application.chat.host.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
+    read_history_behavior_id,
     resolve_chat_history_path,
     resume_template_outfit_preferences,
 )
@@ -39,6 +40,7 @@ from application.chat.composition import (
 )
 from application.chat.start_chat import start_chat
 from application.chat.stop_chat import stop_chat
+from application.plugins.session_behaviors import find_session_behavior_plugin_id
 from application.chat.templates import (
     _compose_for_llm,
     _latest_history_json,
@@ -59,6 +61,7 @@ from application.story.coordinator import (
 )
 from frontend_bridge_core.effects import EffectConfigAdapter
 from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
+from sdk.exception import AppError
 from sdk.logging import get_logger
 
 
@@ -361,6 +364,41 @@ def _launch_chat_locked(
     if not raw_memory_mode and (body.get("storyPath") or is_novel_launch):
         raw_memory_mode = "isolated"
     raw_initial_outfits = body.get("initialOutfits")
+    behavior_id = str(body.get("behaviorId") or "").strip()
+    raw_behavior_config = body.get("behaviorConfig")
+    behavior_config = (
+        dict(raw_behavior_config)
+        if isinstance(raw_behavior_config, dict)
+        else {}
+    )
+    behavior_plugin_id = (
+        find_session_behavior_plugin_id(behavior_id) if behavior_id else ""
+    )
+    effective_behavior_id = behavior_id or ("novel_theater" if is_novel_launch else "")
+    if effective_behavior_id and not start_fresh_history:
+        existing_behavior_id = read_history_behavior_id(history_path)
+        if existing_behavior_id and existing_behavior_id != effective_behavior_id:
+            if str(body.get("historyPath") or "").strip():
+                raise AppError(
+                    "behavior.identity_mismatch",
+                    params={
+                        "expectedBehaviorId": effective_behavior_id,
+                        "actualBehaviorId": existing_behavior_id,
+                    },
+                    fallback_message=(
+                        f"History is bound to behavior '{existing_behavior_id}', "
+                        f"not '{effective_behavior_id}'."
+                    ),
+                    http_status=409,
+                )
+            history_target = plan_chat_history_launch(
+                state,
+                {**body, "characters": characters},
+                row,
+                start_fresh=True,
+            )
+            history_path = history_target.history_path
+            clear_story_session(state)
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
@@ -376,6 +414,9 @@ def _launch_chat_locked(
         ),
         "workflowPath": str(body.get("workflowPath") or ""),
         "memoryMode": raw_memory_mode,
+        "behaviorId": behavior_id,
+        "behaviorConfig": behavior_config,
+        "behaviorPluginId": behavior_plugin_id,
         "autoOutfitSwitch": (
             bool(body["autoOutfitSwitch"])
             if isinstance(body.get("autoOutfitSwitch"), bool)
@@ -484,6 +525,11 @@ def _launch_chat_locked(
             "mediaSelectionMode": media_selection_mode,
             "outputFormat": output_format,
             "initSpritePath": init_sprite_path,
+            **(
+                {"behaviorId": behavior_id, "behaviorConfig": behavior_config}
+                if behavior_id
+                else {}
+            ),
         })
     except OSError:
         logger.exception("Chat launched but its conversation settings could not be saved")

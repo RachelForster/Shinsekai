@@ -48,6 +48,7 @@ class ApiRequest:
     params: Mapping[str, str]
     body: dict[str, Any]
     uploads: UploadedFiles | None = None
+    auth_plugin_id: str | None = None
 
 
 RouteResponse = JsonResponse | TaskResponse

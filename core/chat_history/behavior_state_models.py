@@ -79,6 +79,25 @@ class BehaviorVersionConflictError(RuntimeError):
         )
 
 
+class BehaviorIdentityMismatchError(RuntimeError):
+    """Raised when attaching or committing a different behavior_id on a bound branch."""
+
+    def __init__(
+        self,
+        expected_behavior_id: str,
+        actual_behavior_id: str,
+        *,
+        branch_id: str = "main",
+    ) -> None:
+        self.expected_behavior_id = expected_behavior_id
+        self.actual_behavior_id = actual_behavior_id
+        self.branch_id = branch_id
+        super().__init__(
+            f"Behavior identity mismatch on branch {branch_id!r}: "
+            f"expected {expected_behavior_id!r}, got {actual_behavior_id!r}"
+        )
+
+
 @dataclass(frozen=True)
 class BehaviorStateSnapshot:
     branch_id: str
@@ -171,9 +190,60 @@ def atomic_write_journal(path: Path, payload: Mapping[str, Any]) -> None:
         raise
 
 
+def read_latest_behavior_id_readonly(
+    session_dir: str | Path,
+    *,
+    branch_id: str = "main",
+) -> str:
+    """Read the bound behavior_id on ``branch_id`` without mutating or creating DB files."""
+    from core.chat_history.sqlite_session_store import (
+        HISTORY_DB_FILENAME,
+        peek_open_session_store_for_dir,
+    )
+
+    directory = Path(session_dir)
+    b = normalize_branch_id(branch_id)
+    sql = (
+        "SELECT behavior_id FROM session_state_snapshots "
+        "WHERE branch_id = ? ORDER BY state_version DESC, turn_seq DESC LIMIT 1"
+    )
+    cached = peek_open_session_store_for_dir(directory)
+    if cached is not None:
+        try:
+            with cached._store._borrow_conn() as conn:
+                has_tbl = conn.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type='table' AND name='session_state_snapshots' LIMIT 1"
+                ).fetchone()
+                if has_tbl is None:
+                    return ""
+                row = conn.execute(sql, (b,)).fetchone()
+                return str(row["behavior_id"] or "").strip() if row is not None else ""
+        except sqlite3.Error:
+            return ""
+    db_file = directory / HISTORY_DB_FILENAME
+    if not db_file.is_file():
+        return ""
+    try:
+        conn = sqlite3.connect(
+            db_file.resolve().as_uri() + "?mode=ro", uri=True, timeout=2.0
+        )
+    except sqlite3.Error:
+        return ""
+    try:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(sql, (b,)).fetchone()
+        return str(row["behavior_id"] or "").strip() if row is not None else ""
+    except sqlite3.Error:
+        return ""
+    finally:
+        conn.close()
+
+
 __all__ = [
     "BEHAVIOR_TURN_JOURNAL_FILENAME",
     "BehaviorCommitResult",
+    "BehaviorIdentityMismatchError",
     "BehaviorRecoveryReport",
     "BehaviorStateSnapshot",
     "BehaviorTurnJournalRecord",
@@ -181,5 +251,6 @@ __all__ = [
     "atomic_write_journal",
     "ensure_behavior_state_schema",
     "normalize_branch_id",
+    "read_latest_behavior_id_readonly",
     "row_to_behavior_snapshot",
 ]

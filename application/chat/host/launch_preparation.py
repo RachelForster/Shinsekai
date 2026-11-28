@@ -256,6 +256,16 @@ class ChatLaunchPreparation:
             launch_config["init_stream_endpoint"] = init_stream_endpoint
         if workflow_path:
             launch_config["workflow"] = workflow_path
+        behavior_id = str(chat_session.get("behaviorId") or "").strip()
+        if behavior_id:
+            launch_config["behavior_id"] = behavior_id
+            behavior_config = chat_session.get("behaviorConfig")
+            if isinstance(behavior_config, dict) and behavior_config:
+                launch_config["behavior_config"] = json.dumps(
+                    behavior_config, ensure_ascii=False
+                )
+            elif isinstance(behavior_config, str) and behavior_config.strip():
+                launch_config["behavior_config"] = behavior_config.strip()
         env = os.environ.copy()
         if use_current_template_for_history or player_name:
             launch_config["use_current_template_for_history"] = True

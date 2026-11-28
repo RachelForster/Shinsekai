@@ -24,6 +24,10 @@ def __getattr__(name: str):
         from application.session_behavior.capability import SessionBehaviorCapability
 
         return SessionBehaviorCapability
+    if name == "HostSessionRuntimePort":
+        from application.session_behavior.runtime_port import HostSessionRuntimePort
+
+        return HostSessionRuntimePort
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -36,6 +40,7 @@ __all__ = [
     "CastingMap",
     "CommandIdempotencyCache",
     "CommandResolution",
+    "HostSessionRuntimePort",
     "InteractionPolicy",
     "PlaybackEndAction",
     "PrefetchHandle",

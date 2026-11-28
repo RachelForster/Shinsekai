@@ -118,6 +118,9 @@ class ChatCommandDispatcher:
             [on_history_mutated] if callable(on_history_mutated) else []
         )
         self._free_text_guards: list[Callable[[], None]] = []
+        self._user_input_interceptors: list[
+            Callable[[str, list[dict[str, Any]]], tuple[bool, str | None]]
+        ] = []
 
         self._handlers: dict[str, Callable[[object], None]] = {
             "replay-start": lambda payload: self.replay.start(payload),
@@ -155,6 +158,13 @@ class ChatCommandDispatcher:
     def add_free_text_guard(self, guard: Callable[[], None]) -> None:
         if callable(guard) and guard not in self._free_text_guards:
             self._free_text_guards.append(guard)
+
+    def add_user_input_interceptor(
+        self,
+        interceptor: Callable[[str, list[dict[str, Any]]], tuple[bool, str | None]],
+    ) -> None:
+        if callable(interceptor) and interceptor not in self._user_input_interceptors:
+            self._user_input_interceptors.append(interceptor)
 
     def _ensure_free_text_allowed(self) -> None:
         for guard in tuple(self._free_text_guards):
@@ -211,19 +221,32 @@ class ChatCommandDispatcher:
         self.bindings.ui.notify("语音已保存")
 
     def _send_message(self, payload: object) -> None:
-        self._ensure_free_text_allowed()
-        self.runtime_asr.pause_for_turn()
         if isinstance(payload, Mapping):
             raw_attachments = payload.get("attachments")
-            self.bindings.submit_text(
-                str(payload.get("text") or ""),
-                attachments=(
-                    list(raw_attachments) if isinstance(raw_attachments, list) else []
-                ),
-                notify_key=None,
+            text = str(payload.get("text") or "")
+            attachments = (
+                list(raw_attachments) if isinstance(raw_attachments, list) else []
             )
+            has_attachment_list = True
+        else:
+            text = str(payload or "")
+            attachments = []
+            has_attachment_list = False
+
+        for interceptor in tuple(self._user_input_interceptors):
+            handled, next_text = interceptor(text, list(attachments))
+            if handled:
+                self.runtime_asr.pause_for_turn()
+                return
+            if next_text is not None:
+                text = str(next_text)
+
+        self._ensure_free_text_allowed()
+        self.runtime_asr.pause_for_turn()
+        if has_attachment_list or attachments:
+            self.bindings.submit_text(text, attachments=attachments, notify_key=None)
             return
-        self.bindings.submit_text(str(payload or ""), notify_key=None)
+        self.bindings.submit_text(text, notify_key=None)
 
     def _submit_option(self, payload: object) -> None:
         if isinstance(payload, Mapping) and payload.get("kind") == "tool-confirmation":
