@@ -1,6 +1,9 @@
+import { useMemo } from "react";
 import { RotateCcw, Save } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
+import { usePluginPageSectionDescriptors } from "../../shared/plugin/PluginPageSections";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import {
   AsyncButton,
   EmptyState,
@@ -22,7 +25,12 @@ interface ApiSettingsReadyViewProps {
 
 function ApiSettingsReadyView({ ctx, initialization }: ApiSettingsReadyViewProps) {
   const { t } = useI18n();
-  const navItems = useVisibleSectionNavItems(API_SETTINGS_SECTIONS, ctx);
+  const pluginSections = usePluginPageSectionDescriptors<ApiSettingsPageContext>(
+    { page: "api" },
+    { context: { page: "api" }, defaultSlot: "body", orderBase: 1000 },
+  );
+  const allSections = useMemo(() => [...API_SETTINGS_SECTIONS, ...pluginSections], [pluginSections]);
+  const navItems = useVisibleSectionNavItems(allSections, ctx);
 
   return (
     <div className="page api-page">
@@ -31,6 +39,7 @@ function ApiSettingsReadyView({ ctx, initialization }: ApiSettingsReadyViewProps
           <h1 className="page__title">{t("api.title")}</h1>
         </div>
         <div className="page__actions">
+          <PluginSlot context={{ page: "api" }} maxInline={2} slot="api-header-actions" />
           <AsyncButton
             disabled={ctx.resumeDisabled}
             icon={<RotateCcw aria-hidden className="button__icon" />}
@@ -52,7 +61,7 @@ function ApiSettingsReadyView({ ctx, initialization }: ApiSettingsReadyViewProps
         <PageSectionNav ariaLabel={t("api.title")} items={navItems} />
       </header>
 
-      <PageSectionHost ctx={ctx} sections={API_SETTINGS_SECTIONS} />
+      <PageSectionHost ctx={ctx} sections={allSections} />
 
       <ChatInitializationDialog
         error={initialization.initializationError}

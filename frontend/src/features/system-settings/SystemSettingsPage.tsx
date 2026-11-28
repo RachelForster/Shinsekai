@@ -1,215 +1,73 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Palette, RefreshCw, Save } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useMemo } from "react";
+import { Save } from "lucide-react";
 
-import {
-  buildPayloadFromSchema,
-  hasSchemaErrors,
-  type SchemaErrorMap,
-  systemConfigFormSchema,
-  validatePayloadFromSchema,
-} from "../../entities/config/schema";
-import { chatThemeQueryKey, listChatThemes, setActiveChatTheme } from "../../entities/chat/repository";
-import { configQueryKey, detectNetworkProxy, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
-import type { SystemConfig } from "../../entities/config/types";
-import { useOptionalChatTheme } from "../chat-stage/theme/ChatThemeProvider";
-import { useAppState } from "../../shared/app-state/AppState";
-import { isTauriDesktop } from "../../shared/desktop/desktopApi";
-import {
-  canConnectRemotePc,
-  getRuntimeTarget,
-  isRemotePcActive,
-  isStandaloneRuntimeActive,
-} from "../../shared/platform/runtimeTarget";
-import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
-import { resolveFormGroupTitle } from "../../shared/form-schema";
 import { useI18n } from "../../shared/i18n";
-import { applyThemeColor } from "../../shared/theme/appTheme";
-import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
+import { usePluginPageSectionDescriptors } from "../../shared/plugin/PluginPageSections";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import {
   AsyncButton,
-  Button,
   EmptyState,
+  PageSectionHost,
   PageSectionNav,
   QueryErrorState,
-  SchemaDrivenForm,
-  SchemaFieldGrid,
-  Select,
-  useToast,
+  useVisibleSectionNavItems,
 } from "../../shared/ui";
-import { DesktopRuntimeSection } from "./DesktopRuntimeSection";
-import { DesktopBackgroundSection } from "./DesktopBackgroundSection";
+import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
+import { useSystemSettingsController } from "./controllers/useSystemSettingsController";
+import { SYSTEM_SETTINGS_SECTIONS } from "./systemSections";
+import type { SystemSettingsPageContext } from "./systemSettingsContext";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
 import "./SystemSettingsPage.css";
 
-const systemConfigPageSchema = systemConfigFormSchema
-  .map((group) => {
-    if (group.id !== "ui") {
-      return group;
-    }
-    return {
-      ...group,
-      fields: group.fields.filter((field) => field.name !== "ui_language" && field.name !== "chat_ui_theme_id"),
-    };
-  })
-  .filter((group) => group.id !== "voice" && group.id !== "music-cover");
+function SystemSettingsReadyView({
+  closeRuntimeModeDialog,
+  ctx,
+  handleSave,
+  runtimeModeOpen,
+}: {
+  closeRuntimeModeDialog: () => void;
+  ctx: SystemSettingsPageContext;
+  handleSave: () => void;
+  runtimeModeOpen: boolean;
+}) {
+  const { t } = useI18n();
+  const pluginSections = usePluginPageSectionDescriptors<SystemSettingsPageContext>(
+    { page: "system" },
+    { context: { page: "system" }, defaultSlot: "body", orderBase: 1000 },
+  );
+  const allSections = useMemo(() => [...SYSTEM_SETTINGS_SECTIONS, ...pluginSections], [pluginSections]);
+  const navItems = useVisibleSectionNavItems(allSections, ctx);
 
-const systemGeneralGroups = systemConfigPageSchema.filter((group) => group.id === "ui");
-const systemNetworkProxyGroup = systemConfigPageSchema.find((group) => group.id === "network-proxy");
-const systemRemainingGroups = systemConfigPageSchema.filter(
-  (group) => group.id !== "ui" && group.id !== "network-proxy",
-);
+  return (
+    <div className="page system-page">
+      <header className="page__header">
+        <div>
+          <h1 className="page__title">{t("system.title")}</h1>
+        </div>
+        <div className="page__actions">
+          <PluginSlot context={{ page: "system" }} maxInline={2} slot="system-header-actions" />
+          <AsyncButton
+            icon={<Save aria-hidden className="button__icon" />}
+            loading={ctx.savePending}
+            onClick={handleSave}
+            variant="primary"
+          >
+            {t("common.save")}
+          </AsyncButton>
+        </div>
+        <PageSectionNav ariaLabel={t("system.title")} items={navItems} />
+      </header>
 
-function networkProxySourceLabel(source: string, t: ReturnType<typeof useI18n>["t"]) {
-  switch (source) {
-    case "environment":
-      return t("ops.system.proxy.source.env");
-    case "process-environment":
-      return t("ops.system.proxy.source.processEnv");
-    case "windows":
-      return t("ops.system.proxy.source.windows");
-    case "macos":
-      return t("ops.system.proxy.source.macos");
-    case "gnome":
-      return t("ops.system.proxy.source.gnome");
-    case "kde":
-      return t("ops.system.proxy.source.kde");
-    default:
-      return source;
-  }
+      <PageSectionHost ctx={ctx} sections={allSections} />
+      <RuntimeModeDialog onClose={closeRuntimeModeDialog} open={runtimeModeOpen} />
+    </div>
+  );
 }
 
 export function SystemSettingsPage() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { showToast } = useToast();
-  const { language, t } = useI18n();
-  const { dispatch } = useAppState();
-  const chatTheme = useOptionalChatTheme();
-  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
-  const chatThemesQuery = useQuery({ queryFn: listChatThemes, queryKey: chatThemeQueryKey });
-  const { data, isLoading } = configQuery;
-  const [draft, setDraft] = useState<SystemConfig | null>(null);
-  const [errors, setErrors] = useState<SchemaErrorMap<SystemConfig>>({});
-  const [runtimeModeOpen, setRuntimeModeOpen] = useState(false);
-  const showCrossPlatformCard =
-    !isTauriDesktop() || isStandaloneRuntimeActive() || isRemotePcActive() || canConnectRemotePc();
-  const themeOptions = useMemo(
-    () =>
-      [...(chatThemesQuery.data ?? [])].sort((left, right) =>
-        chatThemeDisplayName(left, language).localeCompare(chatThemeDisplayName(right, language)),
-      ),
-    [chatThemesQuery.data, language],
-  );
-  const fallbackThemeId =
-    themeOptions.find((theme) => theme.id === DEFAULT_CHAT_THEME_ID)?.id ?? themeOptions[0]?.id ?? "";
-  const selectedThemeId =
-    (themeOptions.some((theme) => theme.id === draft?.chat_ui_theme_id) ? draft?.chat_ui_theme_id : fallbackThemeId) ??
-    "";
-  const systemSectionNavItems = [
-    ...(isTauriDesktop() ? [{ id: "system-runtime", label: t("system.runtime.title") }] : []),
-    ...(isTauriDesktop() ? [{ id: "system-background", label: t("desktop.background.title") }] : []),
-    ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: resolveFormGroupTitle(group, t) })),
-    { id: "system-chat-theme", label: t("chat.theme.title") },
-    ...(systemNetworkProxyGroup
-      ? [{ id: "system-network-proxy", label: resolveFormGroupTitle(systemNetworkProxyGroup, t) }]
-      : []),
-    ...systemRemainingGroups.map((group) => ({ id: `system-${group.id}`, label: resolveFormGroupTitle(group, t) })),
-  ];
-
-  useEffect(() => {
-    if (data?.system_config) {
-      setDraft({ ...data.system_config, chat_ui_runtime_mode: "react" });
-      setErrors({});
-      applyThemeColor(data.system_config.theme_color);
-      if (["zh_CN", "en", "ja"].includes(data.system_config.ui_language)) {
-        dispatch({ language: data.system_config.ui_language as "zh_CN" | "en" | "ja", type: "setLanguage" });
-      }
-    }
-  }, [data?.system_config, dispatch]);
-
-  useEffect(() => {
-    applyThemeColor(draft?.theme_color);
-  }, [draft?.theme_color]);
-
-  useEffect(() => {
-    if (!draft || themeOptions.length === 0 || draft.chat_ui_theme_id === selectedThemeId) {
-      return;
-    }
-    setDraft({
-      ...draft,
-      chat_ui_theme_id: selectedThemeId,
-    });
-  }, [draft, selectedThemeId, themeOptions.length]);
-
-  const saveMutation = useMutation({
-    async mutationFn(payload: SystemConfig) {
-      const saved = await saveSystemConfig({ ...payload, chat_ui_runtime_mode: "react" });
-      const themeId = (saved.chat_ui_theme_id || payload.chat_ui_theme_id || "").trim();
-      if (themeId) {
-        const previousThemeId = (data?.system_config.chat_ui_theme_id || "").trim();
-        if (themeId !== previousThemeId) {
-          if (chatTheme) {
-            await chatTheme.switchTheme(themeId);
-          } else {
-            await setActiveChatTheme(themeId);
-          }
-        }
-      }
-      return { ...saved, chat_ui_theme_id: themeId };
-    },
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("system.error.saveFallback"),
-        title: t("common.saveFailed"),
-      });
-    },
-    onSuccess(saved) {
-      queryClient.invalidateQueries({ queryKey: configQueryKey });
-      applyThemeColor(saved.theme_color);
-      if (["zh_CN", "en", "ja"].includes(saved.ui_language)) {
-        dispatch({ language: saved.ui_language as "zh_CN" | "en" | "ja", type: "setLanguage" });
-      }
-      showToast({ kind: "success", title: t("system.toast.saved") });
-    },
-  });
-
-  const detectNetworkProxyMutation = useMutation({
-    mutationFn: detectNetworkProxy,
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("ops.system.proxy.detectError"),
-        title: t("ops.system.proxy.detectFailedTitle"),
-      });
-    },
-    onSuccess(result) {
-      const hasProxy = Boolean(result.http_proxy_url || result.https_proxy_url || result.socks5_proxy_url);
-      const sourceLabel = networkProxySourceLabel(result.source, t);
-      setDraft((current) =>
-        current
-          ? {
-              ...current,
-              http_proxy_url: result.http_proxy_url,
-              https_proxy_url: result.https_proxy_url,
-              network_proxy_enabled: hasProxy || current.network_proxy_enabled,
-              socks5_proxy_url: result.socks5_proxy_url,
-            }
-          : current,
-      );
-      showToast({
-        kind: hasProxy ? "success" : "info",
-        message: hasProxy
-          ? sourceLabel
-            ? t("ops.system.proxy.sourcePrefix", { source: sourceLabel })
-            : undefined
-          : t("ops.system.proxy.emptyBody"),
-        title: hasProxy ? t("ops.system.proxy.detectedTitle") : t("ops.system.proxy.emptyTitle"),
-      });
-    },
-  });
+  const { t } = useI18n();
+  const { closeRuntimeModeDialog, configQuery, ctx, handleSave, isLoading, runtimeModeOpen } =
+    useSystemSettingsController();
 
   if (configQuery.isError) {
     return (
@@ -223,159 +81,16 @@ export function SystemSettingsPage() {
     );
   }
 
-  if (isLoading || !draft) {
+  if (isLoading || !ctx) {
     return <EmptyState title={t("system.loading")} />;
   }
 
   return (
-    <div className="page system-page">
-      <header className="page__header">
-        <div>
-          <h1 className="page__title">{t("system.title")}</h1>
-        </div>
-        <div className="page__actions">
-          <AsyncButton
-            icon={<Save aria-hidden className="button__icon" />}
-            loading={saveMutation.isPending}
-            onClick={() => {
-              const nextErrors = validatePayloadFromSchema(systemConfigPageSchema, draft, t);
-              setErrors(nextErrors);
-              if (hasSchemaErrors(nextErrors)) {
-                showToast({
-                  kind: "error",
-                  message: t("common.fixInvalidFields"),
-                  title: t("common.validationFailed"),
-                });
-                return;
-              }
-              saveMutation.mutate({
-                ...draft,
-                ...buildPayloadFromSchema(systemConfigPageSchema, draft),
-                chat_ui_runtime_mode: "react",
-              });
-            }}
-            variant="primary"
-          >
-            {t("common.save")}
-          </AsyncButton>
-        </div>
-        <PageSectionNav ariaLabel={t("system.title")} items={systemSectionNavItems} />
-      </header>
-      <DesktopRuntimeSection />
-      <DesktopBackgroundSection />
-      {showCrossPlatformCard ? (
-        <section className="section page-section-anchor" id="system-cross-platform">
-          <div className="section__header">
-            <h2 className="section__title">{t("ops.system.crossPlatformTitle")}</h2>
-            <div className="section__actions">
-              <Button onClick={() => setRuntimeModeOpen(true)} variant="primary">
-                {t("ops.system.crossPlatformButton")}
-              </Button>
-            </div>
-          </div>
-          <p className="page__subtitle">
-            {isRemotePcActive()
-              ? t("ops.system.crossPlatformRemote")
-              : getRuntimeTarget() === "toy"
-                ? t("ops.system.crossPlatformToy")
-                : getRuntimeTarget() === "mobile"
-                  ? t("ops.system.crossPlatformMobile")
-                  : t("ops.system.crossPlatformStandalone")}
-          </p>
-        </section>
-      ) : null}
-      <RuntimeModeDialog onClose={() => setRuntimeModeOpen(false)} open={runtimeModeOpen} />
-      <SchemaDrivenForm
-        disabled={saveMutation.isPending}
-        errors={errors}
-        groups={systemGeneralGroups}
-        onChange={setDraft}
-        sectionIdPrefix="system-"
-        value={draft}
-      />
-      <section className="section system-chat-theme page-section-anchor" id="system-chat-theme">
-        <div className="section__header">
-          <h2 className="section__title">{t("chat.theme.title")}</h2>
-          <div className="section__actions">
-            <Button
-              icon={<Palette aria-hidden className="button__icon" />}
-              onClick={() => navigate("/settings/system/chat-themes")}
-            >
-              {t("chat.theme.open")}
-            </Button>
-          </div>
-        </div>
-        <div className="field-row">
-          <span className="field-row__label">
-            <Palette aria-hidden className="system-chat-theme__icon" />
-            <label className="field-row__label-text" htmlFor="chat_ui_theme_id">
-              {t("chat.theme.title")}
-            </label>
-          </span>
-          <span className="field-row__control">
-            <Select
-              aria-describedby="chat_ui_theme_id-help"
-              disabled={saveMutation.isPending || chatThemesQuery.isLoading || themeOptions.length === 0}
-              id="chat_ui_theme_id"
-              onChange={(event) => setDraft({ ...draft, chat_ui_theme_id: event.target.value })}
-              value={selectedThemeId}
-            >
-              {themeOptions.map((theme) => (
-                <option key={theme.id} value={theme.id}>
-                  {chatThemeDisplayName(theme, language)}
-                  {theme.source === "builtin"
-                    ? ` · ${t("chat.theme.sourceBuiltin")}`
-                    : ` · ${t("chat.theme.sourceUser")}`}
-                </option>
-              ))}
-            </Select>
-            <span className="field-row__help" id="chat_ui_theme_id-help">
-              {t("ops.system.chatThemeHelp")}
-            </span>
-            {chatThemesQuery.isLoading ? <span className="field-row__help">{t("system.loading")}</span> : null}
-            {!chatThemesQuery.isLoading && themeOptions.length === 0 ? (
-              <span className="field-row__help">{t("chat.theme.empty")}</span>
-            ) : null}
-            {chatThemesQuery.isError ? (
-              <span className="field-error">
-                {chatThemesQuery.error instanceof Error ? chatThemesQuery.error.message : t("chat.theme.error.apply")}
-              </span>
-            ) : null}
-          </span>
-        </div>
-      </section>
-      {systemNetworkProxyGroup ? (
-        <section className="section schema-section system-network-proxy page-section-anchor" id="system-network-proxy">
-          <div className="section__header">
-            <h2 className="section__title">{resolveFormGroupTitle(systemNetworkProxyGroup, t)}</h2>
-            <div className="section__actions">
-              <AsyncButton
-                disabled={saveMutation.isPending}
-                icon={<RefreshCw aria-hidden className="button__icon" />}
-                loading={detectNetworkProxyMutation.isPending}
-                onClick={() => detectNetworkProxyMutation.mutate()}
-              >
-                {t("ops.system.proxy.detectButton")}
-              </AsyncButton>
-            </div>
-          </div>
-          <SchemaFieldGrid
-            disabled={saveMutation.isPending}
-            errors={errors}
-            group={systemNetworkProxyGroup}
-            onChange={setDraft}
-            value={draft}
-          />
-        </section>
-      ) : null}
-      <SchemaDrivenForm
-        disabled={saveMutation.isPending}
-        errors={errors}
-        groups={systemRemainingGroups}
-        onChange={setDraft}
-        sectionIdPrefix="system-"
-        value={draft}
-      />
-    </div>
+    <SystemSettingsReadyView
+      closeRuntimeModeDialog={closeRuntimeModeDialog}
+      ctx={ctx}
+      handleSave={handleSave}
+      runtimeModeOpen={runtimeModeOpen}
+    />
   );
 }

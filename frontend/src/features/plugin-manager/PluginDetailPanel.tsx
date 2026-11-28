@@ -12,6 +12,7 @@ import {
 import type { PluginConfigAction, PluginManifest, PluginUIPage } from "../../entities/plugin/types";
 import { useI18n } from "../../shared/i18n";
 import { resolvePlatformHttpUrl } from "../../shared/platform/platform";
+import { PluginIframeHost } from "../../shared/plugin/PluginIframeHost";
 import {
   AlertDialog,
   AsyncButton,
@@ -160,13 +161,14 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
 
 function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIPage }) {
   if (page.frontendUrl) {
-    const frontendFrameSrc = resolvePluginFrontendFrameSrc(page.frontendUrl);
     return (
       <section className="section plugin-frontend-frame-section">
-        <iframe
+        <PluginIframeHost
           className="plugin-frontend-frame"
-          sandbox="allow-forms allow-same-origin allow-scripts"
-          src={frontendFrameSrc}
+          context={{ page: `plugins/${page.pluginId}/${page.id}` }}
+          frontendUrl={page.frontendUrl}
+          pluginId={page.pluginId}
+          surface="page"
           title={page.title}
         />
       </section>

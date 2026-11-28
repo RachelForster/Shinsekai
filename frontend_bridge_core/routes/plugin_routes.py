@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+import json
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -31,11 +32,20 @@ from frontend_bridge_core.plugin_install import BridgePluginInstallProgress
 from frontend_bridge_core.plugin_ui import (
     _frontend_chat_ui_contribution_payloads,
     _plugin_ui_detail,
-    _run_frontend_chat_ui_contribution,
     _run_plugin_ui_action,
     _save_plugin_ui_config,
 )
-from frontend_bridge_core.plugin_auth import inject_scoped_plugin_tokens
+from frontend_bridge_core.plugin_ui_extensions import (
+    _frontend_section_payloads,
+    _run_frontend_action_with_context,
+    _run_frontend_section_action,
+    _save_frontend_section_values,
+    _sidebar_page_payloads,
+)
+from frontend_bridge_core.plugin_auth import (
+    inject_scoped_plugin_token_urls,
+    inject_scoped_plugin_tokens,
+)
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -75,6 +85,37 @@ def inject_bridge_token(state, detail: dict) -> dict:
 
 def _list_session_behaviors(_request: ApiRequest) -> JsonResponse:
     return JsonResponse({"behaviors": list_session_behavior_contributions()})
+
+
+def _list_sidebar_pages(request: ApiRequest) -> JsonResponse:
+    pages = inject_scoped_plugin_token_urls(request.state, _sidebar_page_payloads())
+    return JsonResponse({"pages": pages})
+
+
+def _list_page_sections(request: ApiRequest) -> JsonResponse:
+    page = str((request.query.get("page") or [""])[0] or "").strip() or None
+    entity_type = str((request.query.get("entityType") or [""])[0] or "").strip()
+    entity_id = str((request.query.get("entityId") or [""])[0] or "").strip()
+    locale = str((request.query.get("locale") or ["zh_CN"])[0] or "zh_CN").strip()
+    extra_raw = str((request.query.get("extra") or [""])[0] or "").strip()
+    extra: dict | None = None
+    if extra_raw:
+        try:
+            parsed_extra = json.loads(extra_raw)
+            if isinstance(parsed_extra, dict):
+                extra = parsed_extra
+        except ValueError:
+            extra = None
+    sections = _frontend_section_payloads(
+        page,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        locale=locale,
+        extra=extra,
+    )
+    return JsonResponse(
+        {"sections": inject_scoped_plugin_token_urls(request.state, sections)}
+    )
 
 
 def _list_plugins(request: ApiRequest) -> JsonResponse:
@@ -201,9 +242,34 @@ def _set_enabled(request: ApiRequest) -> JsonResponse:
 
 def _run_chat_ui_contribution(request: ApiRequest) -> JsonResponse:
     return JsonResponse(
-        _run_frontend_chat_ui_contribution(
+        _run_frontend_action_with_context(
             request.params["plugin_id"],
             request.params["contribution_id"],
+            request.body,
+            state=request.state,
+        )
+    )
+
+
+def _save_section_values(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _save_frontend_section_values(
+            request.params["plugin_id"],
+            request.params["section_id"],
+            request.body,
+            state=request.state,
+        )
+    )
+
+
+def _run_section_action(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _run_frontend_section_action(
+            request.params["plugin_id"],
+            request.params["section_id"],
+            request.params["action_id"],
+            request.body,
+            state=request.state,
         )
     )
 
@@ -267,6 +333,20 @@ PLUGIN_ROUTES = (
         handler=_list_session_behaviors,
         body_kind=BodyKind.NONE,
         name="plugins.session_behaviors",
+    ),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/plugins/sidebar-pages",
+        handler=_list_sidebar_pages,
+        body_kind=BodyKind.NONE,
+        name="plugins.sidebar_pages",
+    ),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/plugins/sections",
+        handler=_list_page_sections,
+        body_kind=BodyKind.NONE,
+        name="plugins.sections",
     ),
     Route(
         methods=frozenset({"GET"}),
@@ -355,6 +435,18 @@ PLUGIN_ROUTES = (
         pattern="/api/plugins/{plugin_id}/chat-ui/{contribution_id}/run",
         handler=_run_chat_ui_contribution,
         name="plugins.chat_ui.run",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/plugins/{plugin_id}/sections/{section_id}/values",
+        handler=_save_section_values,
+        name="plugins.sections.values.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/plugins/{plugin_id}/sections/{section_id}/actions/{action_id}",
+        handler=_run_section_action,
+        name="plugins.sections.actions.run",
     ),
     Route(
         methods=frozenset({"POST"}),

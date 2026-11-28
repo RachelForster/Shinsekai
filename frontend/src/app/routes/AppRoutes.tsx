@@ -61,6 +61,11 @@ const PluginManagerPage = lazy(() =>
     default: PluginManagerPage,
   })),
 );
+const PluginStandalonePage = lazy(() =>
+  import("../../features/plugin-manager/PluginStandalonePage").then(({ PluginStandalonePage }) => ({
+    default: PluginStandalonePage,
+  })),
+);
 const SystemSettingsPage = lazy(() =>
   import("../../features/system-settings/SystemSettingsPage").then(({ SystemSettingsPage }) => ({
     default: SystemSettingsPage,
@@ -123,6 +128,7 @@ export function AppRoutes() {
         <Route element={lazyRouteElement(<EffectManagerPage />)} path="effects" />
         <Route element={lazyRouteElement(<ChatWorkspacePage />)} path="templates" />
         <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
+        <Route element={lazyRouteElement(<PluginStandalonePage />)} path="plugins/:pluginId/:pageId" />
         <Route element={lazyRouteElement(<LogsPage />)} path="logs" />
         <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
         <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />

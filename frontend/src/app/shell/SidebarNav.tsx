@@ -15,12 +15,17 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { openExternal } from "../../entities/files/repository";
+import { listPluginSidebarPages, pluginSidebarPagesQueryKey } from "../../entities/plugin/repository";
 import { RuntimeModeDialog } from "../../features/runtime-mode/RuntimeModeDialog";
 import type { MessageKey } from "../../shared/i18n";
-import { useI18n } from "../../shared/i18n";
+import { useI18n, type FrontendLanguage } from "../../shared/i18n";
 import { canConnectRemotePc, isRemotePcActive, isStandaloneRuntimeActive } from "../../shared/platform/runtimeTarget";
+import { hasUseQueryExport, useOptionalQueryClient } from "../../shared/plugin/optionalQueryClient";
+import { localizePluginSidebarPage } from "../../shared/plugin/pluginI18n";
+import { renderPluginIcon } from "../../shared/plugin/pluginIcons";
 import { useAppUpdateInfo } from "./useAppUpdateInfo";
 
 const GITHUB_REPO_URL = "https://github.com/RachelForster/Shinsekai";
@@ -127,8 +132,48 @@ function opensVirtualKeyboard(el: Element | null): boolean {
   return Boolean(el.isContentEditable || el.getAttribute("contenteditable") === "true");
 }
 
+function SidebarPluginPagesLoaded({ language }: { language: FrontendLanguage }) {
+  const sidebarPagesQuery = useQuery({
+    queryFn: () => listPluginSidebarPages(),
+    queryKey: pluginSidebarPagesQueryKey,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const pluginSidebarPages = (sidebarPagesQuery.data ?? []).map((item) => localizePluginSidebarPage(item, language));
+
+  return (
+    <>
+      {pluginSidebarPages.map((page) => {
+        const to = `/settings/plugins/${encodeURIComponent(page.pluginId)}/${encodeURIComponent(page.pageId)}`;
+        const label = page.navLabel || page.title;
+        return (
+          <NavLink
+            className="sidebar__link"
+            data-plugin-id={page.pluginId}
+            data-plugin-page={page.pageId}
+            key={`${page.pluginId}:${page.pageId}`}
+            title={label}
+            to={to}
+          >
+            {renderPluginIcon(page.navIcon, "sidebar__icon")}
+            <span className="sidebar__link-label">{label}</span>
+          </NavLink>
+        );
+      })}
+    </>
+  );
+}
+
+function SidebarPluginPages({ language, standaloneActive }: { language: FrontendLanguage; standaloneActive: boolean }) {
+  const queryClient = useOptionalQueryClient();
+  if (standaloneActive || !queryClient || !hasUseQueryExport() || typeof listPluginSidebarPages !== "function") {
+    return null;
+  }
+  return <SidebarPluginPagesLoaded language={language} />;
+}
+
 export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const location = useLocation();
   const standaloneActive = isStandaloneRuntimeActive();
   const showRuntimeModeControl = standaloneActive || isRemotePcActive() || canConnectRemotePc();
@@ -255,6 +300,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
                   </NavLink>
                 );
               })}
+              <SidebarPluginPages language={language} standaloneActive={standaloneActive} />
             </>
           ) : null}
           <div className="sidebar__section-label">{t("nav.groupMaintenance")}</div>

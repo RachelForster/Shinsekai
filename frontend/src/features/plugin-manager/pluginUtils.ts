@@ -1,17 +1,14 @@
-import type {
-  PluginConfigFieldType,
-  PluginConfigI18nMap,
-  PluginConfigGroupSchema,
-  PluginCatalogItem,
-  PluginInstallInput,
-  PluginManifest,
-  PluginUIPage,
-} from "../../entities/plugin/types";
-import type { FieldKind, FormGroupSchema } from "../../shared/form-schema";
-import type { FrontendLanguage } from "../../shared/i18n/messages";
+import type { PluginCatalogItem, PluginInstallInput, PluginManifest, PluginUIPage } from "../../entities/plugin/types";
+
+export type { PluginConfigDraft } from "../../shared/plugin/pluginConfigSchema";
+export {
+  pluginConfigGroupsToFormGroups,
+  pluginConfigInitialValues,
+  pluginFieldTypeToFormType,
+} from "../../shared/plugin/pluginConfigSchema";
+export { localizePluginUiPage } from "../../shared/plugin/pluginI18n";
 
 export type PluginView = "installed" | "discover" | "mcp";
-export type PluginConfigDraft = Record<string, unknown>;
 
 export function catalogInstallSource(item: PluginCatalogItem) {
   if (item.packageUrl || item.downloadUrl) {
@@ -294,50 +291,6 @@ export function installedPluginDescription(
   return catalogDescription(catalog);
 }
 
-function localizedPageI18n(i18n: PluginConfigI18nMap | undefined, language: FrontendLanguage) {
-  if (!i18n) {
-    return undefined;
-  }
-  return i18n[language] ?? i18n.en ?? i18n.zh_CN ?? Object.values(i18n)[0];
-}
-
-export function localizePluginUiPage(page: PluginUIPage, language: FrontendLanguage): PluginUIPage {
-  const pageI18n = localizedPageI18n(page.i18n, language);
-  if (!pageI18n) {
-    return page;
-  }
-  const groups = pageI18n.groups ?? {};
-  return {
-    ...page,
-    description: pageI18n.description ?? page.description,
-    restartHint: pageI18n.restartHint ?? page.restartHint,
-    schema: page.schema?.map((group) => {
-      const groupI18n = groups[group.id] ?? {};
-      const fields = groupI18n.fields ?? {};
-      return {
-        ...group,
-        description: groupI18n.description ?? group.description,
-        fields: group.fields.map((field) => {
-          const fieldI18n = fields[field.key] ?? {};
-          const optionLabels = fieldI18n.options ?? {};
-          return {
-            ...field,
-            description: fieldI18n.description ?? field.description,
-            label: fieldI18n.label ?? field.label,
-            options: field.options?.map((option) => ({
-              ...option,
-              label: optionLabels[option.value] ?? option.label,
-            })),
-            placeholder: fieldI18n.placeholder ?? field.placeholder,
-          };
-        }),
-        title: groupI18n.title ?? group.title,
-      };
-    }),
-    title: pageI18n.title ?? page.title,
-  };
-}
-
 export function fallbackPluginUiPages(plugin: PluginManifest | null): PluginUIPage[] {
   if (!plugin) {
     return [];
@@ -361,53 +314,4 @@ export function fallbackPluginUiPages(plugin: PluginManifest | null): PluginUIPa
     unavailableReason: "",
   }));
   return [...settingsPages, ...toolsPages];
-}
-
-export function pluginFieldTypeToFormType(type: PluginConfigFieldType): FieldKind {
-  if (type === "boolean") {
-    return "checkbox";
-  }
-  return type;
-}
-
-export function pluginConfigGroupsToFormGroups(
-  groups: PluginConfigGroupSchema[],
-): Array<FormGroupSchema<PluginConfigDraft>> {
-  return groups.map((group) => ({
-    columns: 1,
-    description: group.description,
-    fields: group.fields.map((field) => ({
-      defaultValue: field.defaultValue,
-      description: field.description,
-      label: field.label,
-      max: field.max,
-      min: field.min,
-      name: field.key,
-      options: field.options,
-      pathKind: field.pathKind,
-      placeholder: field.placeholder,
-      required: field.required,
-      span: field.span,
-      step: field.step,
-      type: pluginFieldTypeToFormType(field.type),
-      visibleWhen: field.visibleWhen
-        ? (draft) => Object.entries(field.visibleWhen!).every(([key, expected]) => draft[key] === expected)
-        : undefined,
-    })),
-    id: group.id,
-    title: group.title,
-  }));
-}
-
-export function pluginConfigInitialValues(page: PluginUIPage): PluginConfigDraft {
-  const values = page.values ?? {};
-  const draft: PluginConfigDraft = {};
-  for (const group of page.schema ?? []) {
-    for (const field of group.fields) {
-      draft[field.key] = Object.prototype.hasOwnProperty.call(values, field.key)
-        ? values[field.key]
-        : field.defaultValue;
-    }
-  }
-  return draft;
 }

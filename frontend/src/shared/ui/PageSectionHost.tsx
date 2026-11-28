@@ -13,6 +13,7 @@ export interface PageSectionDescriptor<TCtx, TSlot extends string = "body"> {
   id: string;
   order: number;
   slot?: TSlot;
+  navLabel?: string;
   navLabelKey?: MessageKey;
   isVisible?: (ctx: TCtx) => boolean;
   Component: ComponentType<PageSectionProps<TCtx>>;
@@ -44,9 +45,10 @@ export function useVisibleSectionNavItems<TCtx, TSlot extends string = "body">(
 
   return useMemo(
     () =>
-      resolveVisibleSections(sections, ctx).flatMap((section) =>
-        section.navLabelKey ? [{ id: section.id, label: t(section.navLabelKey) }] : [],
-      ),
+      resolveVisibleSections(sections, ctx).flatMap((section) => {
+        const label = section.navLabelKey ? t(section.navLabelKey) : section.navLabel;
+        return label ? [{ id: section.id, label }] : [];
+      }),
     [ctx, sections, t],
   );
 }

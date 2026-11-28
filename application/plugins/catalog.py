@@ -374,6 +374,38 @@ def frontend_chat_ui_contributions() -> list[Any]:
     )
 
 
+def frontend_page_contributions() -> list[Any]:
+    """Return all registered React frontend page contributions in order."""
+
+    try:
+        from plugin_system.host import collect_frontend_page_contributions
+    except Exception:
+        return []
+    return sorted(
+        collect_frontend_page_contributions(),
+        key=lambda item: (
+            float(getattr(item, "order", 100.0) or 100.0),
+            str(getattr(item, "title", "") or ""),
+        ),
+    )
+
+
+def frontend_section_contributions() -> list[Any]:
+    """Return all registered workspace section contributions in order."""
+
+    try:
+        from plugin_system.host import collect_frontend_section_contributions
+    except Exception:
+        return []
+    return sorted(
+        collect_frontend_section_contributions(),
+        key=lambda item: (
+            float(getattr(item, "order", 100.0) or 100.0),
+            str(getattr(item, "title", "") or ""),
+        ),
+    )
+
+
 def _set_plugin_enabled(plugin_id: str, enabled: bool) -> dict[str, Any]:
     from plugin_system.host import set_plugin_manifest_enabled
 

@@ -7,6 +7,7 @@ from urllib.parse import quote
 
 from application.plugins.catalog import _plugin_rows
 from frontend_bridge_core.i18n_helpers import bind_bridge_state, bridge_error, bridge_tr
+from sdk.ui_extensions import PLUGIN_ACTION_SLOTS, PLUGIN_UI_ICONS
 
 
 def _plugin_data_root(plugin_id: str) -> Path:
@@ -334,8 +335,8 @@ def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
 
 
 def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
-    allowed_slots = {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar", "chat-workspace-actions"}
-    allowed_icons = {"info", "play", "puzzle", "settings", "smartphone", "sparkles"}
+    allowed_slots = PLUGIN_ACTION_SLOTS
+    allowed_icons = PLUGIN_UI_ICONS
     allowed_presentations = {"button", "icon-only"}
     allowed_variants = {"danger", "ghost", "primary"}
     rows: list[dict[str, Any]] = []
@@ -355,6 +356,8 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
         if slot == "chat-top-toolbar":
             presentation = "icon-only"
         variant = str(getattr(contribution, "variant", "") or "ghost").strip()
+        raw_i18n = getattr(contribution, "i18n", None)
+        i18n_dict = dict(raw_i18n) if isinstance(raw_i18n, Mapping) and raw_i18n else None
         rows.append(
             {
                 "actionLabel": str(getattr(contribution, "action_label", "") or "").strip() or title,
@@ -363,6 +366,7 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
                 **({"externalLaunch": True} if slot == "chat-workspace-actions"
                    and getattr(contribution, "external_launch", False) is True else {}),
                 "description": str(getattr(contribution, "description", "") or "").strip()[:500],
+                **({"i18n": i18n_dict} if i18n_dict else {}),
                 "icon": icon if icon in allowed_icons else "puzzle",
                 "id": contribution_id,
                 "order": float(getattr(contribution, "order", 100.0) or 100.0),
@@ -480,11 +484,16 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
             f"/api/plugins/{quote(plugin_id, safe='')}/frontend/{quote(page_id, safe='')}/"
             f"?pluginId={quote(plugin_id, safe='')}&pageId={quote(page_id, safe='')}"
         ),
+        "i18n": dict(getattr(contribution, "i18n", {}) or {}),
         "id": page_id,
+        "injectHostTheme": bool(getattr(contribution, "inject_host_theme", True)),
         "kind": kind,
+        "navIcon": str(getattr(contribution, "nav_icon", "puzzle") or "puzzle").strip(),
+        "navLabel": str(getattr(contribution, "nav_label", "") or "").strip() or title,
         "order": float(getattr(contribution, "order", 100.0) or 100.0),
         "pluginId": plugin_id,
         "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
+        "showInSidebar": bool(getattr(contribution, "show_in_sidebar", False)),
         "title": title,
     }
     for config_contribution in _frontend_config_contributions_for(plugin_id):

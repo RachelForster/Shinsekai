@@ -1,17 +1,77 @@
 import type { TaskProgressOptions } from "./taskTypes";
 
+import type {
+  PluginActionRunContext,
+  PluginSectionActionResult,
+  PluginSectionContribution,
+  PluginSectionI18n,
+  PluginSectionPageId,
+  PluginSectionQuery,
+  PluginSectionSaveResult,
+  PluginSectionSlotId,
+  PluginSidebarPageContribution,
+  PluginSidebarPageI18n,
+} from "./pluginExtensionTypes";
+
+export type {
+  PluginActionRunContext,
+  PluginSectionActionI18n,
+  PluginSectionActionResult,
+  PluginSectionContribution,
+  PluginSectionI18n,
+  PluginSectionPageId,
+  PluginSectionQuery,
+  PluginSectionSaveResult,
+  PluginSectionSlotId,
+  PluginSidebarPageContribution,
+  PluginSidebarPageI18n,
+} from "./pluginExtensionTypes";
+
 export type PluginSlotId =
+  | "api-header-actions"
+  | "app-topbar-actions"
+  | "background-header-actions"
+  | "character-header-actions"
   | "chat-dialog-actions"
   | "chat-output"
   | "chat-toolbar"
   | "chat-top-toolbar"
   | "chat-workspace-actions"
+  | "effect-header-actions"
   | "settings-extension"
-  | "settings-tools";
+  | "settings-tools"
+  | "system-header-actions"
+  | "template-header-actions";
 
 export type PluginSlotContributionActionType = "callback" | "none" | "open-plugin-page";
 export type PluginSlotContributionPageMode = "navigate" | "overlay";
-export type PluginSlotContributionIcon = "info" | "play" | "puzzle" | "settings" | "smartphone" | "sparkles";
+export type PluginSlotContributionIcon =
+  | "book"
+  | "bot"
+  | "brush"
+  | "database"
+  | "file"
+  | "gamepad"
+  | "globe"
+  | "image"
+  | "info"
+  | "layers"
+  | "play"
+  | "puzzle"
+  | "settings"
+  | "sliders"
+  | "smartphone"
+  | "sparkles"
+  | "terminal"
+  | "wand"
+  | "wrench";
+
+export interface PluginSlotContributionI18nEntry {
+  description?: string;
+  label?: string;
+  title?: string;
+  tooltip?: string;
+}
 export type PluginSlotContributionPresentation = "button" | "icon-only";
 export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
 
@@ -21,6 +81,7 @@ export interface PluginSlotContribution {
   actionType: PluginSlotContributionActionType;
   actionable: boolean;
   description: string;
+  i18n?: Record<string, PluginSlotContributionI18nEntry>;
   icon: PluginSlotContributionIcon;
   id: string;
   order: number;
@@ -36,10 +97,12 @@ export interface PluginSlotContribution {
 
 export interface PluginSlotActionResult {
   conversationId?: string;
+  i18nMessage?: Record<string, string>;
   id: string;
-  kind: "error" | "info" | "success";
+  kind: "error" | "info" | "success" | "warning";
   message: string;
   pluginId: string;
+  refresh?: string[];
 }
 
 export type AppUpdateRefKind = "latest" | "head" | "tag";
@@ -280,6 +343,7 @@ export interface PluginConfigGroupI18n {
 export interface PluginConfigPageI18n {
   description?: string;
   groups?: Record<string, PluginConfigGroupI18n>;
+  navLabel?: string;
   restartHint?: string;
   title?: string;
 }
@@ -303,12 +367,16 @@ export interface PluginUIPage {
   frontendUrl?: string;
   i18n?: PluginConfigI18nMap;
   id: string;
+  injectHostTheme?: boolean;
   kind: PluginUIPageKind;
+  navIcon?: PluginSlotContributionIcon | null;
+  navLabel?: string;
   order: number;
   pluginId: string;
   pluginVersion: string;
   restartHint?: string;
   schema?: PluginConfigGroupSchema[];
+  showInSidebar?: boolean;
   title: string;
   unavailableReason?: string;
   values?: Record<string, unknown>;
@@ -346,6 +414,8 @@ export interface PluginsPlatform {
   ) => Promise<PluginManifest>;
   getUi: (id: string) => Promise<PluginUIDetail>;
   list: () => Promise<PluginManifest[]>;
+  listPageSections: (query: PluginSectionQuery) => Promise<PluginSectionContribution[]>;
+  listSidebarPages: () => Promise<PluginSidebarPageContribution[]>;
   listSlotContributions: () => Promise<PluginSlotContribution[]>;
   status: () => Promise<PluginLoadStatus>;
   repoTags: (repo: string) => Promise<string[]>;
@@ -353,13 +423,30 @@ export interface PluginsPlatform {
   validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;
   buildSubmissionIssueUrl: (input: PluginSubmissionInput) => Promise<PluginSubmissionIssueResult>;
   copySubmissionJson: (input: PluginSubmissionInput) => Promise<PluginSubmissionClipboardResult>;
+  runPageSectionAction: (
+    pluginId: string,
+    sectionId: string,
+    actionId: string,
+    values: Record<string, unknown>,
+    context?: PluginActionRunContext,
+  ) => Promise<PluginSectionActionResult>;
   runUiAction: (
     id: string,
     pageId: string,
     actionId: string,
     values: Record<string, unknown>,
   ) => Promise<PluginConfigActionResult>;
-  runSlotContribution: (pluginId: string, contributionId: string) => Promise<PluginSlotActionResult>;
+  runSlotContribution: (
+    pluginId: string,
+    contributionId: string,
+    context?: PluginActionRunContext,
+  ) => Promise<PluginSlotActionResult>;
+  savePageSectionValues: (
+    pluginId: string,
+    sectionId: string,
+    values: Record<string, unknown>,
+    context?: PluginActionRunContext,
+  ) => Promise<PluginSectionSaveResult>;
   saveUiConfig: (id: string, pageId: string, values: Record<string, unknown>) => Promise<PluginConfigSaveResult>;
   setEnabled: (id: string, enabled: boolean) => Promise<PluginManifest>;
   uninstall: (id: string) => Promise<PluginUninstallResult>;

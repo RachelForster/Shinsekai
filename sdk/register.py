@@ -71,6 +71,12 @@ from sdk.types import (
     ToolsTabContribution,
     WorkflowContribution,
 )
+from sdk.ui_extensions import (
+    FrontendSectionContribution,
+    validate_frontend_action_contribution,
+    validate_frontend_page_contribution,
+    validate_frontend_section_contribution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +190,7 @@ class PluginCapabilityRegistry:
         self._frontend_config_contributions: list[FrontendConfigContribution] = []
         self._frontend_chat_ui_contributions: list[FrontendChatUIContribution] = []
         self._frontend_page_contributions: list[FrontendPageContribution] = []
+        self._frontend_section_contributions: list[FrontendSectionContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
@@ -472,6 +479,9 @@ class PluginCapabilityRegistry:
         self._frontend_config_contributions.append(contribution)
 
     def register_frontend_page(self, contribution: FrontendPageContribution) -> None:
+        contribution = validate_frontend_page_contribution(
+            contribution, MAX_FRONTEND_UI_IDENTIFIER_LENGTH
+        )
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -480,42 +490,19 @@ class PluginCapabilityRegistry:
                 plugin_id=contribution.plugin_id or pid,
                 plugin_version=contribution.plugin_version or ver,
             )
+        plugin_id = str(contribution.plugin_id or "").strip()
+        if len(plugin_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendPageContribution plugin_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+            )
         self._frontend_page_contributions.append(contribution)
 
     def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
-        """Register a JSON-only Chat UI item rendered by the host application."""
-        if contribution.slot not in {
-            "chat-dialog-actions",
-            "chat-output",
-            "chat-toolbar",
-            "chat-top-toolbar",
-            "chat-workspace-actions",
-        }:
-            raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
-        if not contribution.contribution_id.strip() or not contribution.title.strip():
-            raise ValueError(
-                "FrontendChatUIContribution requires a non-empty id and title"
-            )
-        if (
-            len(contribution.contribution_id.strip())
-            > MAX_FRONTEND_UI_IDENTIFIER_LENGTH
-        ):
-            raise ValueError(
-                "FrontendChatUIContribution contribution_id cannot exceed "
-                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
-            )
-        if contribution.presentation not in {"button", "icon-only"}:
-            raise ValueError(f"Unsupported frontend chat UI presentation: {contribution.presentation}")
-        if isinstance(contribution.action, Mapping):
-            action_type = str(contribution.action.get("type") or "").strip()
-            page_id = str(contribution.action.get("page_id") or contribution.action.get("pageId") or "").strip()
-            if action_type != "open-plugin-page" or not page_id:
-                raise ValueError("FrontendChatUIContribution open-plugin-page action requires a non-empty page_id")
-            if len(page_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
-                raise ValueError(
-                    "FrontendChatUIContribution page_id cannot exceed "
-                    f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
-                )
+        """Register a JSON-only host UI action rendered by the React host."""
+        contribution = validate_frontend_action_contribution(
+            contribution, MAX_FRONTEND_UI_IDENTIFIER_LENGTH
+        )
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -531,6 +518,29 @@ class PluginCapabilityRegistry:
                 f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
             )
         self._frontend_chat_ui_contributions.append(contribution)
+
+    register_frontend_action = register_frontend_chat_ui
+
+    def register_frontend_section(self, contribution: FrontendSectionContribution) -> None:
+        """Register a declarative Schema or iframe Section inside a workspace page."""
+        contribution = validate_frontend_section_contribution(
+            contribution, MAX_FRONTEND_UI_IDENTIFIER_LENGTH
+        )
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
+        plugin_id = str(contribution.plugin_id or "").strip()
+        if len(plugin_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendSectionContribution plugin_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+            )
+        self._frontend_section_contributions.append(contribution)
 
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
         """Register deprecated Qt chat metadata for load compatibility.
@@ -763,6 +773,10 @@ class PluginCapabilityRegistry:
     @property
     def frontend_chat_ui_contributions(self) -> list[FrontendChatUIContribution]:
         return sorted(self._frontend_chat_ui_contributions, key=lambda c: c.order)
+
+    @property
+    def frontend_section_contributions(self) -> list[FrontendSectionContribution]:
+        return sorted(self._frontend_section_contributions, key=lambda c: c.order)
 
     @property
     def chat_ui_contributions(self) -> list[ChatUIContribution]:

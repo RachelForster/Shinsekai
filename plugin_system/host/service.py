@@ -423,6 +423,17 @@ def collect_frontend_chat_ui_contributions() -> List["FrontendChatUIContribution
         return []
 
 
+def collect_frontend_section_contributions() -> List[Any]:
+    mgr = _plugin_manager
+    if mgr is None:
+        return []
+    try:
+        return mgr.collect_frontend_section_contributions()
+    except Exception:
+        logger.exception("collect_frontend_section_contributions failed")
+        return []
+
+
 def collect_chat_ui_contributions() -> List["ChatUIContribution"]:
     """Deprecated compatibility endpoint; the host never loads Qt chat UI."""
     return []

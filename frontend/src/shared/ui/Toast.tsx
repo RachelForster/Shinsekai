@@ -76,3 +76,11 @@ export function useToast() {
   }
   return value;
 }
+
+const NOOP_TOAST_CONTEXT: ToastContextValue = {
+  showToast: () => {},
+};
+
+export function useOptionalToast(): ToastContextValue {
+  return useContext(ToastContext) ?? NOOP_TOAST_CONTEXT;
+}

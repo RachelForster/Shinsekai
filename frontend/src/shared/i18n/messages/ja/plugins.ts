@@ -236,4 +236,12 @@ export const pluginsJaMessages: Record<PluginsMessageKey, string> = {
     "このプラグインは以前レビュー済みですが、現在のバージョンまたはコミットはまだレビュー待ちです。更新内容と出所を確認してからインストールしてください。",
   "plugin.trust.pendingTitle": "レビュー待ち",
   "plugin.trust.verifiedHint": "メンテナーが手動レビュー済み",
+  "plugin.slot.moreActions": "その他のプラグイン操作",
+  "plugin.section.loading": "プラグインセクションを読み込み中...",
+  "plugin.section.unavailable": "プラグインセクションは利用できません",
+  "plugin.section.save": "セクションを保存",
+  "plugin.section.saved": "プラグインセクションを保存しました",
+  "plugin.section.saveFailed": "プラグインセクションの保存に失敗しました",
+  "plugin.page.notFound": "対象のプラグインページが見つかりません",
+  "plugin.page.backToPlugins": "プラグイン管理に戻る",
 };
