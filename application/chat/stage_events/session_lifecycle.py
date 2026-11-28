@@ -123,11 +123,15 @@ def _fold_notification_change(
     next_snapshot["notificationText"] = str(event.get("text") or "")
 
 
+_REPLY_ACTIVE_STATUSES = frozenset({"generating", "streaming", "speaking"})
+
+
 def _fold_reply_finished(
     next_snapshot: SnapshotDict, _event: EventDict
 ) -> None:
     next_snapshot["activePlayback"] = None
-    next_snapshot["status"] = "idle"
+    if str(next_snapshot.get("status") or "") in _REPLY_ACTIVE_STATUSES:
+        next_snapshot["status"] = "idle"
 
 
 def _fold_session_closed(

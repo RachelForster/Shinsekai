@@ -121,12 +121,13 @@ def _fold_ambient_start(next_snapshot: SnapshotDict, event: EventDict) -> None:
 def _fold_ambient_layer(next_snapshot: SnapshotDict, event: EventDict) -> None:
     key = str(event.get("key") or "")
     layer = "front" if event.get("layer") == "front" else "back"
-    audio_url = str(event.get("audioUrl") or "")
+    has_audio_url = "audioUrl" in event and event.get("audioUrl") is not None
+    audio_url = str(event.get("audioUrl") or "") if has_audio_url else ""
     next_snapshot["ambientEffects"] = [
         {
             **dict(item),
             "layer": layer,
-            **({"audioUrl": audio_url} if audio_url else {}),
+            **({"audioUrl": audio_url} if has_audio_url else {}),
         }
         if str(item.get("key") or "") == key
         else dict(item)

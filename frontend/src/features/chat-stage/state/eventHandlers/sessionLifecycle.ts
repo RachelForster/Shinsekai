@@ -64,7 +64,10 @@ export const sessionLifecycleHandlers: Pick<StageEventHandlerMap, SessionLifecyc
       ...clearTransientNotificationState(state),
       activePlayback: null,
       eventSeq: ctx.eventSeq,
-      status: state.status === "generating" || state.status === "streaming" ? "idle" : state.status,
+      status:
+        state.status === "generating" || state.status === "streaming" || state.status === "speaking"
+          ? "idle"
+          : state.status,
     }),
   "session.closed": (state, event, ctx) =>
     withResolvedLayers({

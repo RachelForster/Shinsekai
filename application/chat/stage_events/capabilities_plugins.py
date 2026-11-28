@@ -31,7 +31,10 @@ def _fold_behavior_state_replace(
 
 def _make_story_last_event_handler(event_type: str) -> EventHandler:
     def _handle(next_snapshot: SnapshotDict, event: EventDict) -> None:
-        story = dict(next_snapshot.get("story") or {})
+        existing = next_snapshot.get("story")
+        if not isinstance(existing, dict):
+            return
+        story = dict(existing)
         payload = event.get("payload")
         if isinstance(payload, dict):
             story["lastEvent"] = {
