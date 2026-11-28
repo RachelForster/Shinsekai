@@ -324,6 +324,9 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                     getattr(character_config, "speech_volume", 1.0) or 1.0
                 )
 
+            if out.voice_volume is not None:
+                volume = out.voice_volume
+
             def pause_asr_when_started() -> None:
                 get_asr_log().info(
                     "CharacterDialogUiHandler: playback started -> post_pause_asr "

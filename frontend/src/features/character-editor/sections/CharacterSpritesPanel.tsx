@@ -43,6 +43,7 @@ export function CharacterSpritesPanel({ ctx, id }: PageSectionProps<CharacterPag
         onSpriteVoiceTextBlur={sprites.saveSelectedSpriteVoiceText}
         onSpriteVoiceTextChange={sprites.updateSelectedSpriteVoiceText}
         onSpriteVoiceUpload={sprites.uploadSelectedSpriteVoice}
+        onSpriteVoiceProfileChange={ctx.voiceProfilesEnabled ? sprites.updateSelectedSpriteVoiceProfile : undefined}
         onSpriteVoiceTypeChange={sprites.handleSpriteVoiceTypeChange}
         pendingVoicePath={sprites.pendingVoicePath}
         selectedSprite={sprites.selectedSprite}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -10,6 +11,8 @@ from urllib.parse import urlparse
 from ai.tts.model_session import tts_model_session
 from ai.tts.voice_tags import split_tts_sentences_preserving_tags
 from .models import TtsGenerationRequest
+
+logger = logging.getLogger(__name__)
 
 
 class TtsGenerationStrategy(ABC):
@@ -53,22 +56,26 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
             return
 
         character = request.character
+        preset = sprite.voice_type == "preset" and sprite.voice_path
+        voice = character if preset else (self.voice_profile(request) or character)
         manager.switch_model(
             {
                 "character_name": request.character_name,
-                "sovits_model_path": self._absolute(character.sovits_model_path),
-                "gpt_model_path": self._absolute(character.gpt_model_path),
+                "sovits_model_path": self._absolute(voice.sovits_model_path),
+                "gpt_model_path": self._absolute(voice.gpt_model_path),
             }
         )
 
-        if sprite.voice_type == "preset" and sprite.voice_path:
+        if preset:
             yield self._absolute(sprite.voice_path)
             return
 
         speech_text, text_processor = self._speech_input(request)
-        ref_audio_path = self._absolute(character.refer_audio_path)
-        prompt_text = character.prompt_text
-        if self._can_use_sprite_reference(request):
+        ref_audio_path = self._absolute(voice.refer_audio_path)
+        prompt_text = voice.prompt_text
+        if self._can_use_sprite_reference(request) and (
+            voice is character or Path(self._absolute(sprite.voice_path)).is_file()
+        ):
             ref_audio_path = self._absolute(sprite.voice_path)
             prompt_text = sprite.voice_text
 
@@ -85,9 +92,9 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 text_processor=text_processor,
                 ref_audio_path=ref_audio_path,
                 prompt_text=prompt_text,
-                prompt_lang=character.prompt_lang,
+                prompt_lang=voice.prompt_lang,
                 character_name=request.character_name,
-                speed_factor=character.speech_speed,
+                speed_factor=voice.speech_speed,
                 **extra_tts_kwargs,
             )
             yield audio_path or ""
@@ -99,9 +106,9 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 text_processor=text_processor,
                 ref_audio_path=ref_audio_path,
                 prompt_text=prompt_text,
-                prompt_lang=character.prompt_lang,
+                prompt_lang=voice.prompt_lang,
                 character_name=request.character_name,
-                speed_factor=character.speech_speed,
+                speed_factor=voice.speech_speed,
                 **extra_tts_kwargs,
             )
             if not self._is_audio_file(audio_path):
@@ -131,6 +138,27 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
             return []
         max_length = getattr(api_config, "tts_max_sentence_length", 15)
         return split_tts_sentences_preserving_tags(speech_text, max_length)
+
+    def voice_profile(self, request: TtsGenerationRequest):
+        sprite = getattr(request.sprite, "sprite", None)
+        profile_id = sprite.get("voice_profile_id") if isinstance(sprite, dict) else getattr(sprite, "voice_profile_id", None)
+        if not profile_id:
+            return None
+        api = request.runtime.config.config.api_config
+        if getattr(api, "tts_provider", "") != "gpt-sovits" or self._is_remote_gpt_sovits(request):
+            return None
+
+        profile = (getattr(request.character, "voice_profiles", None) or {}).get(profile_id)
+        if profile and all(
+            path and Path(self._absolute(path)).is_file()
+            for path in (profile.gpt_model_path, profile.sovits_model_path)
+        ) and (
+            (profile.refer_audio_path and Path(self._absolute(profile.refer_audio_path)).is_file())
+            or (self._can_use_sprite_reference(request) and Path(self._absolute(request.sprite.voice_path)).is_file())
+        ):
+            return profile
+        logger.warning("Voice profile %r unavailable for %s; using default", profile_id, request.character_name)
+        return None
 
     @staticmethod
     def _can_use_sprite_reference(request: TtsGenerationRequest) -> bool:

@@ -1,22 +1,61 @@
+import { useState } from "react";
 import type { Character } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
-import { FilePicker, NumberInput, TextInput } from "../../shared/ui";
+import { AlertDialog, Button, FilePicker, NumberInput, Select, TextInput } from "../../shared/ui";
 import type { CharacterFieldChange } from "./characterEditorUtils";
 
 interface CharacterVoiceSectionProps {
   draft: Character;
   id?: string;
   onChange: CharacterFieldChange;
+  onRemoveProfile?: (profileId: string) => void;
   voiceReferenceReadOnly?: boolean;
+  voiceProfilesEnabled?: boolean;
 }
 
 export function CharacterVoiceSection({
-  draft,
+  draft: character,
   id,
-  onChange,
+  onChange: updateCharacter,
+  onRemoveProfile,
   voiceReferenceReadOnly = false,
+  voiceProfilesEnabled = false,
 }: CharacterVoiceSectionProps) {
   const { t } = useI18n();
+  const [selection, setSelection] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const profiles = character.voice_profiles ?? {};
+  const profile = voiceProfilesEnabled ? profiles[selection] : undefined;
+  const draft = profile ?? character;
+  const showProfiles = voiceProfilesEnabled && !voiceReferenceReadOnly;
+  const defaultName = character.default_voice_name?.trim();
+  const defaultLabel = defaultName
+    ? t("character.voice.namedDefaultProfile", { name: defaultName })
+    : t("character.voice.defaultProfile");
+
+  const firstProfile = Object.values(profiles)[0];
+  const unnamed = t("character.voice.unnamedProfile");
+
+  const addProfile = () => {
+    const profileId = crypto.randomUUID();
+    updateCharacter("voice_profiles", {
+      ...profiles,
+      [profileId]: {
+        name: t("character.voice.numberedProfile", { number: Object.keys(profiles).length + 2 }),
+        prompt_lang: character.prompt_lang,
+        speech_speed: character.speech_speed ?? 1,
+        speech_volume: character.speech_volume ?? 1,
+      },
+    });
+    setSelection(profileId);
+  };
+  const onChange: CharacterFieldChange = (key, value) => {
+    if (profile) {
+      updateCharacter("voice_profiles", { ...profiles, [selection]: { ...profile, [key]: value } });
+    } else {
+      updateCharacter(key, value);
+    }
+  };
 
   return (
     <section className="section page-section-anchor" id={id}>
@@ -27,6 +66,54 @@ export function CharacterVoiceSection({
         <p className="character-voice-section__locked-note">{t("character.voice.kaggleLockedHint")}</p>
       ) : null}
       <div className="form-grid form-grid--two">
+        {showProfiles && (
+          <>
+            <label className="field-row">
+              <span className="field-row__label">{t("character.voice.profile")}</span>
+              <span className="field-row__control">
+                <Select
+                  aria-label={t("character.voice.profile")}
+                  value={profile ? selection : ""}
+                  onChange={(event) => setSelection(event.target.value)}
+                >
+                  <option value="">{defaultLabel}</option>
+                  {Object.entries(profiles).map(([profileId, voice]) => (
+                    <option key={profileId} value={profileId}>
+                      {voice.name.trim() || t("character.voice.unnamedProfile")}
+                    </option>
+                  ))}
+                </Select>
+              </span>
+            </label>
+            <div className="inline-actions">
+              <Button onClick={addProfile}>＋ {t("character.voice.addProfile")}</Button>
+              {onRemoveProfile && (
+                <Button disabled={!firstProfile} onClick={() => setConfirmRemove(true)} variant="danger">
+                  {t("character.voice.removeProfile")}
+                </Button>
+              )}
+            </div>
+            <div className="form-grid form-grid--two field-row--full">
+              <label className="field-row">
+                <span className="field-row__label">{t("character.voice.profileName")}</span>
+                <span className="field-row__control">
+                  <TextInput
+                    placeholder={profile ? t("character.voice.unnamedProfile") : t("character.voice.defaultProfile")}
+                    value={profile ? profile.name : (character.default_voice_name ?? "")}
+                    onChange={(event) => {
+                      const name = event.target.value;
+                      if (profile) {
+                        updateCharacter("voice_profiles", { ...profiles, [selection]: { ...profile, name } });
+                      } else {
+                        updateCharacter("default_voice_name", name);
+                      }
+                    }}
+                  />
+                </span>
+              </label>
+            </div>
+          </>
+        )}
         <label className="field-row">
           <span className="field-row__label">{t("character.field.gptModel")}</span>
           <span className="field-row__control">
@@ -126,6 +213,25 @@ export function CharacterVoiceSection({
           </span>
         </label>
       </div>
+      {confirmRemove && firstProfile && (
+        <AlertDialog
+          body={t("character.voice.removeProfileBody", {
+            name: profile ? profile.name.trim() || unnamed : defaultName || defaultLabel,
+            fallback: profile ? defaultName || defaultLabel : firstProfile.name.trim() || unnamed,
+          })}
+          cancelLabel={t("common.cancel")}
+          closeLabel={t("common.close")}
+          confirmLabel={t("common.delete")}
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={() => {
+            onRemoveProfile?.(profile ? selection : "");
+            setSelection("");
+            setConfirmRemove(false);
+          }}
+          open
+          title={t("character.voice.removeProfile")}
+        />
+      )}
     </section>
   );
 }

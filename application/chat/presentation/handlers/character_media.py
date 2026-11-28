@@ -141,6 +141,7 @@ class CharacterMediaHandler(MessageHandler):
         sprite: ResolvedSpriteAsset,
         audio_paths: Iterable[str],
         voice_id: str = "",
+        voice_volume: float | None = None,
     ) -> Iterator[PresentationMessage]:
         speech = message.text or ""
         if sprite.voice_type == "preset" and sprite.voice_path:
@@ -153,6 +154,7 @@ class CharacterMediaHandler(MessageHandler):
             yield PresentationMessage(
                 audio_path=audio_path or "",
                 voice_id=voice_id,
+                voice_volume=voice_volume,
                 dialog_id=message.dialog_id,
                 name=character_name,
                 display_name=display_name,
@@ -393,6 +395,14 @@ class CharacterMediaHandler(MessageHandler):
                     else:
                         rt.ui_update_manager.sync_history_entries()
 
+            profile = None
+            if (
+                show_busy
+                and isinstance(self.tts_generation_strategy, DefaultTtsGenerationStrategy)
+                and not (speech_sprite.voice_type == "preset" and speech_sprite.voice_path)
+            ):
+                profile = self.tts_generation_strategy.voice_profile(generation_request)
+
             for output in self._presentation_messages(
                 character_name=name_s,
                 display_name=display_name,
@@ -400,6 +410,7 @@ class CharacterMediaHandler(MessageHandler):
                 sprite=speech_sprite,
                 audio_paths=track_audio(),
                 voice_id=voice_id,
+                voice_volume=profile.speech_volume if profile else None,
             ):
                 rt.presentation_queue.put(output)
         finally:
