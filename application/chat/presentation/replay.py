@@ -5,15 +5,10 @@ import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
+from application.chat.stage_events.snapshot import PRESENTATION_KEYS
 from config.config_manager import character_name_key
 from core.paths import resource_path
 from sdk.messages import PresentationMessage
-
-
-PRESENTATION_KEYS = (
-    "backgroundPath", "bgmPath", "cgPath", "ambientEffects", "sprites", "stats",
-    "characterName", "dialogHtml", "dialogText", "options", "systemMessageText", "playerPortrait",
-)
 
 
 class ReplayPresentationMessage(PresentationMessage):
